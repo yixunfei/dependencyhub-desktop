@@ -120,7 +120,7 @@ npm ls --all --json > $env:TEMP\dependencyhub-desktop-deps.json
 #### 直接使用发布包
 
 1. 打开 [Releases](https://github.com/yixunfei/dependencyhub-desktop/releases)。
-2. Windows 选择 \`DependencyHub Desktop Setup <version>.exe\`（安装版）或 \`DependencyHub Desktop <version>.exe\`（便携版）。
+2. Windows 选择 \`DependencyHub.Desktop.Setup.<version>.exe\`（安装版）或 \`DependencyHub.Desktop.<version>.exe\`（便携版）。GitHub Release 会将文件名中的空格规范化为点号。
 3. 首次启动后选择项目目录，平台会显示检测到的管理器。
 
 macOS 可使用 \`.dmg\` / \`.zip\`，Linux 可使用 \`.AppImage\` / \`.deb\` / \`.rpm\`（具体资产取决于发布版本）。
@@ -230,4 +230,3 @@ npm run dev
 \`\`\`
 
 Build the current platform with \`npm run dist\`. Run \`npm run build\` and the \`verify:*\` scripts before opening a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) and [LICENSE](LICENSE).
-
