@@ -949,7 +949,7 @@ function parseJson<T>(value: string, fallback: T): T {
 async function httpsGet(url: string): Promise<string> {
   const https = await import('https')
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { Accept: 'application/json', 'User-Agent': 'npmDesktopManager/1.0' } }, (res) => {
+    https.get(url, { headers: { Accept: 'application/json', 'User-Agent': 'DependencyHubDesktop/1.0' } }, (res) => {
       let data = ''
       res.on('data', (chunk) => { data += chunk })
       res.on('end', () => resolve(data))
@@ -967,7 +967,7 @@ async function httpsPostJson(url: string, payload: unknown): Promise<string> {
         Accept: 'application/json',
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
-        'User-Agent': 'npmDesktopManager/1.0'
+        'User-Agent': 'DependencyHubDesktop/1.0'
       }
     }, (res) => {
       let data = ''

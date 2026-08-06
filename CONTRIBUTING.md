@@ -1,6 +1,6 @@
-# Contributing to npmDesktopManager
+# Contributing to DependencyHub Desktop
 
-Thank you for your interest in contributing to npmDesktopManager! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to DependencyHub Desktop! This document provides guidelines and instructions for contributing.
 
 ## Table of Contents
 
@@ -29,8 +29,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
 1. Fork the repository
 2. Clone your fork:
    ```bash
-   git clone https://github.com/your-username/npmDesktopManager.git
-   cd npmDesktopManager
+   git clone https://github.com/your-username/dependencyhub-desktop.git
+   cd dependencyhub-desktop
    ```
 
 3. Install dependencies:
@@ -179,4 +179,4 @@ Feel free to open an issue with your question, and we'll be happy to help!
 
 ---
 
-Thank you for contributing to npmDesktopManager! 🎉
+Thank you for contributing to DependencyHub Desktop! 🎉

@@ -240,7 +240,7 @@ function buildPayload(sources) {
     .sort((left, right) => left.id.localeCompare(right.id))
   const canonicalValue = {
     schemaVersion: 'release-signature-v1',
-    purpose: 'npmDesktopManager.release-evidence',
+    purpose: 'DependencyHub Desktop.release-evidence',
     sourceCount: sources.length,
     includedSourceCount: payloadSources.length,
     sources: payloadSources

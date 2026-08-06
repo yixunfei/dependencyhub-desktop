@@ -548,7 +548,7 @@ function renderIcs(report: DependencyChangeCalendarReport): string {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//npmDesktopManager//Dependency Change Calendar//EN',
+    'PRODID:-//DependencyHub Desktop//Dependency Change Calendar//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${icsText('Dependency Change Calendar')}`,
@@ -557,7 +557,7 @@ function renderIcs(report: DependencyChangeCalendarReport): string {
 
   for (const item of report.freezeWindows) {
     lines.push(...renderIcsEvent({
-      uid: `${item.id}@npmDesktopManager`,
+      uid: `${item.id}@DependencyHub Desktop`,
       generatedAt: report.generatedAt,
       startAt: item.startsAt,
       endAt: item.endsAt || datePlusHours(item.startsAt, item.status === 'blocked' ? 168 : 72),
@@ -579,7 +579,7 @@ function renderIcs(report: DependencyChangeCalendarReport): string {
   for (const item of report.windows) {
     if (!item.startAt || !item.endAt) continue
     lines.push(...renderIcsEvent({
-      uid: `${item.id}@npmDesktopManager`,
+      uid: `${item.id}@DependencyHub Desktop`,
       generatedAt: report.generatedAt,
       startAt: item.startAt,
       endAt: item.endAt,

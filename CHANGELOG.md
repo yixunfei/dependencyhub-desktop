@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-08-06
+
+### Changed
+- Renamed the desktop product to **DependencyHub Desktop** to reflect its
+  multi-ecosystem project dependency and engineering governance scope.
+- Updated package metadata, Electron app identity, GitHub links, installer
+  naming, About dialog text, README, and contributor documentation.
+- Changed the distributable package name to `dependencyhub-desktop` while
+  retaining the existing `.npmDesktopManager` project data directory for
+  non-destructive local state continuity.
+
 ## [1.0.1] - 2026-08-06
 
 ### Added

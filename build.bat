@@ -19,7 +19,7 @@ if not "%~1"=="" goto unknown_arg
 :menu
 cls
 echo ==================================================
-echo npmDesktopManager Packaging
+echo DependencyHub Desktop Packaging
 echo ==================================================
 echo.
 echo  1. Windows all packages     ^(installer + portable^)

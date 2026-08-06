@@ -8,7 +8,7 @@ release/
 release-test/
 .npmDesktopManager/
 docs/
-npmDesktopManager/
+dependencyhub-desktop/
 *.local
 *.log
 npm-debug.log*

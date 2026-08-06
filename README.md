@@ -1,4 +1,4 @@
-# npmDesktopManager
+# DependencyHub Desktop
 
 <div align="center">
 
@@ -6,7 +6,7 @@
 
 把项目依赖、工具链、搜索、健康检查、安全审计、发布准备和扩展管理放在一个跨平台 Electron 工作区中。
 
-[![Latest release](https://img.shields.io/github/v/release/yixunfei/npmDesktopManager?display_name=tag&sort=semver)](https://github.com/yixunfei/npmDesktopManager/releases)
+[![Latest release](https://img.shields.io/github/v/release/yixunfei/dependencyhub-desktop?display_name=tag&sort=semver)](https://github.com/yixunfei/dependencyhub-desktop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-42-47848f.svg)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev/)
@@ -16,13 +16,13 @@
 
 </div>
 
-> 当前版本：**1.0.1**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/npmDesktopManager/releases) 下载）。
+> 当前版本：**1.0.2**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases) 下载）。
 
 ## 简体中文
 
 ### 项目定位
 
-npmDesktopManager 已从最初的 npm 依赖小工具升级为**项目依赖管理平台**。它以项目目录为上下文，检测项目使用的清单和锁文件，再通过统一工作区呈现不同生态的依赖、工具链、注册表和发布动作。你可以在同一界面中处理 Node.js、Python、JVM、Rust、Go、Flutter 与 C/C++ 项目，也可以使用扩展管理器查看后续生态的覆盖路线。
+DependencyHub Desktop 已从最初的 npm 依赖小工具升级为**项目依赖管理平台**。它以项目目录为上下文，检测项目使用的清单和锁文件，再通过统一工作区呈现不同生态的依赖、工具链、注册表和发布动作。你可以在同一界面中处理 Node.js、Python、JVM、Rust、Go、Flutter 与 C/C++ 项目，也可以使用扩展管理器查看后续生态的覆盖路线。
 
 平台强调三个原则：
 
@@ -95,7 +95,7 @@ npmDesktopManager 已从最初的 npm 依赖小工具升级为**项目依赖管�
 
 性能收益主要来自一次检测、复用上下文和按需加载页面，而不是替换底层包管理器。安装/解析速度仍由底层 CLI、网络和本地缓存决定。
 
-| 场景 | npmDesktopManager | 传统分散式 CLI 流程 |
+| 场景 | DependencyHub Desktop | 传统分散式 CLI 流程 |
 | --- | --- | --- |
 | 依赖盘点 | 自动检测清单/锁文件，列表和树视图共享结果 | 分别运行 \`npm ls\`、\`pip list\`、\`mvn dependency:tree\` 后手工拼接 |
 | 批量升级 | 统一选择、版本预览、执行和日志回看 | 每个生态使用不同命令或脚本，升级前后人工核对 |
@@ -110,7 +110,7 @@ npmDesktopManager 已从最初的 npm 依赖小工具升级为**项目依赖管�
 \`\`\`powershell
 Measure-Command { npm run build }
 Get-ChildItem dist -Recurse -File | Measure-Object -Property Length -Sum
-npm ls --all --json > $env:TEMP\npmDesktopManager-deps.json
+npm ls --all --json > $env:TEMP\dependencyhub-desktop-deps.json
 \`\`\`
 
 对比“CLI 命令串行执行”和“平台一次检测/批量操作”的总耗时；不要把单个包管理器的下载速度当作平台性能。构建产物和 Release 页面会提供版本、架构与 SHA-256，便于复核。
@@ -119,8 +119,8 @@ npm ls --all --json > $env:TEMP\npmDesktopManager-deps.json
 
 #### 直接使用发布包
 
-1. 打开 [Releases](https://github.com/yixunfei/npmDesktopManager/releases)。
-2. Windows 选择 \`npmDesktopManager Setup <version>.exe\`（安装版）或 \`npmDesktopManager <version>.exe\`（便携版）。
+1. 打开 [Releases](https://github.com/yixunfei/dependencyhub-desktop/releases)。
+2. Windows 选择 \`DependencyHub Desktop Setup <version>.exe\`（安装版）或 \`DependencyHub Desktop <version>.exe\`（便携版）。
 3. 首次启动后选择项目目录，平台会显示检测到的管理器。
 
 macOS 可使用 \`.dmg\` / \`.zip\`，Linux 可使用 \`.AppImage\` / \`.deb\` / \`.rpm\`（具体资产取决于发布版本）。
@@ -130,8 +130,8 @@ macOS 可使用 \`.dmg\` / \`.zip\`，Linux 可使用 \`.AppImage\` / \`.deb\` /
 要求 Node.js 22+、npm 10+、Git，以及目标生态的 CLI（Python/pip、JDK/Maven、Rust/Cargo、Go、Flutter、CMake/vcpkg/Conan 等）。
 
 \`\`\`bash
-git clone https://github.com/yixunfei/npmDesktopManager.git
-cd npmDesktopManager
+git clone https://github.com/yixunfei/dependencyhub-desktop.git
+cd dependencyhub-desktop
 npm install
 npm run dev
 \`\`\`
@@ -168,7 +168,7 @@ npm run verify:release-trust
 ### 项目结构
 
 \`\`\`text
-npmDesktopManager/
+dependencyhub-desktop/
 ├─ electron/                 # 主进程、preload 与生态服务
 ├─ shared/                   # 共享管理器注册表和领域类型
 ├─ src/domain/               # 领域模型、能力与策略
@@ -194,7 +194,7 @@ npmDesktopManager/
 
 ### What it is
 
-npmDesktopManager is a cross-platform Electron workspace for project dependency management and engineering governance. It started as an npm desktop helper and now provides one context for Node.js, Python, JVM, Rust, Go, Flutter, and C/C++ projects. The app detects manifests and lockfiles, separates project/global/publish scopes, and exposes package operations, toolchain configuration, health checks, security audits, release readiness, and plugin-oriented extensions.
+DependencyHub Desktop is a cross-platform Electron workspace for project dependency management and engineering governance. It started as an npm desktop helper and now provides one context for Node.js, Python, JVM, Rust, Go, Flutter, and C/C++ projects. The app detects manifests and lockfiles, separates project/global/publish scopes, and exposes package operations, toolchain configuration, health checks, security audits, release readiness, and plugin-oriented extensions.
 
 ### Implemented today
 
@@ -220,15 +220,14 @@ The application improves workflow latency by detecting a project once, reusing m
 
 ### Quick start
 
-Download the latest installer or portable artifact from [GitHub Releases](https://github.com/yixunfei/npmDesktopManager/releases). For source development:
+Download the latest installer or portable artifact from [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases). For source development:
 
 \`\`\`bash
-git clone https://github.com/yixunfei/npmDesktopManager.git
-cd npmDesktopManager
+git clone https://github.com/yixunfei/dependencyhub-desktop.git
+cd dependencyhub-desktop
 npm install
 npm run dev
 \`\`\`
 
 Build the current platform with \`npm run dist\`. Run \`npm run build\` and the \`verify:*\` scripts before opening a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) and [LICENSE](LICENSE).
-
 

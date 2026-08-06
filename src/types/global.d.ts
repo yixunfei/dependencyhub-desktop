@@ -5443,7 +5443,7 @@ declare global {
 
   interface ReleaseSignaturePayload {
     schemaVersion: 'release-signature-v1'
-    purpose: 'npmDesktopManager.release-evidence'
+    purpose: 'DependencyHub Desktop.release-evidence'
     sourceCount: number
     includedSourceCount: number
     sources: ReleaseSignaturePayloadSource[]

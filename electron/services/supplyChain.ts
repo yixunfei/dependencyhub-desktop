@@ -384,7 +384,7 @@ export class SupplyChainService {
         timestamp: report.generatedAt,
         tools: [
           {
-            vendor: 'npmDesktopManager',
+            vendor: 'DependencyHub Desktop',
             name: 'Dependency Manager Framework',
             version: '1.0.0'
           }
@@ -420,7 +420,7 @@ export class SupplyChainService {
       documentNamespace: namespace,
       creationInfo: {
         created: report.generatedAt,
-        creators: ['Tool: npmDesktopManager-Dependency-Manager-Framework-1.0.0']
+        creators: ['Tool: DependencyHub Desktop-Dependency-Manager-Framework-1.0.0']
       },
       packages: report.components.map((component, index) => ({
         SPDXID: `SPDXRef-Package-${safeSpdxId(component.name)}-${index + 1}`,
@@ -441,7 +441,7 @@ export class SupplyChainService {
         annotations: [
           {
             annotationType: 'OTHER',
-            annotator: 'Tool: npmDesktopManager',
+            annotator: 'Tool: DependencyHub Desktop',
             annotationDate: report.generatedAt,
             comment: `manager=${component.managerId}; ecosystem=${component.ecosystem}; scope=${component.scope}; source=${component.sourceFile}`
           }

@@ -254,7 +254,7 @@ async function httpsGet(url: string): Promise<string> {
     https.get(url, {
       headers: {
         Accept: 'application/json',
-        'User-Agent': 'npmDesktopManager/1.0'
+        'User-Agent': 'DependencyHubDesktop/1.0'
       }
     }, (res) => {
       let data = ''

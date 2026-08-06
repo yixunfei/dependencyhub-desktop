@@ -48,7 +48,7 @@ export interface ReleaseSignaturePayloadSource {
 
 export interface ReleaseSignaturePayload {
   schemaVersion: 'release-signature-v1'
-  purpose: 'npmDesktopManager.release-evidence'
+  purpose: 'DependencyHub Desktop.release-evidence'
   sourceCount: number
   includedSourceCount: number
   sources: ReleaseSignaturePayloadSource[]
@@ -301,7 +301,7 @@ function buildPayload(sources: ReleaseSignatureSource[]): ReleaseSignaturePayloa
     .sort((left, right) => left.id.localeCompare(right.id))
   const canonicalValue = {
     schemaVersion: 'release-signature-v1',
-    purpose: 'npmDesktopManager.release-evidence',
+    purpose: 'DependencyHub Desktop.release-evidence',
     sourceCount: sources.length,
     includedSourceCount: payloadSources.length,
     sources: payloadSources
@@ -310,7 +310,7 @@ function buildPayload(sources: ReleaseSignatureSource[]): ReleaseSignaturePayloa
   return {
     ...canonicalValue,
     schemaVersion: 'release-signature-v1',
-    purpose: 'npmDesktopManager.release-evidence',
+    purpose: 'DependencyHub Desktop.release-evidence',
     canonicalJson,
     sha256: createHash('sha256').update(canonicalJson).digest('hex')
   }

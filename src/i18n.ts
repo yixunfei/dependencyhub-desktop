@@ -31,7 +31,7 @@ const dictionaries = {
     'settings.preferences': 'Preferences',
     'settings.savedHint': 'Settings are saved automatically',
     'startup.languageTitle': 'Choose Your Language',
-    'startup.languageSubtitle': 'Select the interface language for npmDesktopManager. You can change it later in Settings.',
+    'startup.languageSubtitle': 'Select the interface language for DependencyHub Desktop. You can change it later in Settings.',
     'startup.languageEnglishDescription': 'Use English for menus, dialogs, package workflows, and system messages.',
     'startup.languageChineseDescription': 'Use Simplified Chinese for menus, dialogs, package workflows, and system messages.'
   },
@@ -64,7 +64,7 @@ const dictionaries = {
     'settings.preferences': '偏好设置',
     'settings.savedHint': '设置已自动保存',
     'startup.languageTitle': '选择界面语言',
-    'startup.languageSubtitle': '为 npmDesktopManager 选择界面语言。之后可在设置中修改。',
+    'startup.languageSubtitle': '为 DependencyHub Desktop 选择界面语言。之后可在设置中修改。',
     'startup.languageEnglishDescription': '菜单、弹窗、包管理流程和系统消息使用英语。',
     'startup.languageChineseDescription': '菜单、弹窗、包管理流程和系统消息使用简体中文。'
   }
@@ -90,8 +90,8 @@ const EN_LITERAL_TRANSLATIONS: Record<string, string> = {
   '全屏': 'Full Screen',
   '帮助': 'Help',
   '关于': 'About',
-  '关于 npmDesktopManager': 'About npmDesktopManager',
-  '一个图形化的 npm 包管理工具\n支持项目依赖和全局包管理': 'A graphical npm package manager\nSupports project dependencies and global package management',
+  '关于 DependencyHub Desktop': 'About DependencyHub Desktop',
+  '面向多生态项目的跨平台桌面依赖管理、工具链治理、安全健康与发布管理平台': 'A cross-platform workspace for multi-ecosystem project dependencies, toolchains, security health, and release governance',
 
   '设置': 'Settings',
   '搜索': 'Search',
@@ -882,7 +882,6 @@ const EN_LITERAL_TRANSLATIONS: Record<string, string> = {
   '项，成功': 'items, succeeded',
   '项目依赖树': 'Project Dependency Tree',
   '选择最近 10 个版本或手动输入': 'Choose from the 10 most recent versions or enter one manually',
-  '一个图形化的 npm 包管理工具 支持项目依赖和全局包管理': 'A graphical npm package manager. Supports project dependencies and global package management.',
   '移动到': 'moved to',
   '已安装': 'Installed',
   '已成功安装': 'Installed successfully',

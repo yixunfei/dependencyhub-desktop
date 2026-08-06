@@ -206,7 +206,7 @@ function parseCargoSearch(output: string): CargoSearchResult[] {
 async function httpsGet(url: string): Promise<string> {
   const https = await import('https')
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'npmDesktopManager' } }, (res) => {
+    https.get(url, { headers: { 'User-Agent': 'DependencyHub Desktop' } }, (res) => {
       let data = ''
       res.on('data', (chunk) => { data += chunk })
       res.on('end', () => resolve(data))

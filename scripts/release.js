@@ -94,17 +94,17 @@ function createReleaseNotes() {
 ## Downloads
 
 ### Windows
-- \`npmDesktopManager Setup ${version}.exe\` - Installer
-- \`npmDesktopManager ${version}.exe\` - Portable
+- \`DependencyHub Desktop Setup ${version}.exe\` - Installer
+- \`DependencyHub Desktop ${version}.exe\` - Portable
 
 ### macOS
-- \`npmDesktopManager-${version}.dmg\` - DMG Installer
-- \`npmDesktopManager-${version}-mac.zip\` - ZIP Archive
+- \`DependencyHub Desktop-${version}.dmg\` - DMG Installer
+- \`DependencyHub Desktop-${version}-mac.zip\` - ZIP Archive
 
 ### Linux
-- \`npmDesktopManager-${version}.AppImage\` - AppImage (Portable)
-- \`npmDesktopManager-${version}.deb\` - Debian Package
-- \`npmDesktopManager-${version}.rpm\` - RPM Package
+- \`DependencyHub Desktop-${version}.AppImage\` - AppImage (Portable)
+- \`DependencyHub Desktop-${version}.deb\` - Debian Package
+- \`DependencyHub Desktop-${version}.rpm\` - RPM Package
 
 ## System Requirements
 
@@ -128,7 +128,7 @@ function createReleaseNotes() {
 
 function main() {
   console.log('='.repeat(50));
-  console.log(`npmDesktopManager Release Script`);
+  console.log(`DependencyHub Desktop Release Script`);
   console.log(`Version: ${version}`);
   console.log('='.repeat(50));
   

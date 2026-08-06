@@ -1,15 +1,15 @@
 {
-  "name": "npmDesktopManager",
-  "version": "1.0.1",
-  "description": "Cross-platform desktop dependency management and engineering governance for Node.js, Python, JVM, Rust, Go, Flutter, and C/C++ projects",
+  "name": "dependencyhub-desktop",
+  "version": "1.0.2",
+  "description": "Cross-platform desktop workspace for multi-ecosystem project dependency management, toolchains, security health, and release governance",
   "author": "yixunfei",
-  "homepage": "https://github.com/yixunfei/npmDesktopManager#readme",
+  "homepage": "https://github.com/yixunfei/dependencyhub-desktop#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yixunfei/npmDesktopManager.git"
+    "url": "https://github.com/yixunfei/dependencyhub-desktop.git"
   },
   "bugs": {
-    "url": "https://github.com/yixunfei/npmDesktopManager/issues"
+    "url": "https://github.com/yixunfei/dependencyhub-desktop/issues"
   },
   "main": "dist-electron/main.js",
   "scripts": {
@@ -68,8 +68,8 @@
     "vite-plugin-electron": "^0.29.1"
   },
   "build": {
-    "appId": "com.npm.desktop.manager",
-    "productName": "npmDesktopManager",
+    "appId": "com.dependencyhub.desktop",
+    "productName": "DependencyHub Desktop",
     "asar": true,
     "compression": "maximum",
     "beforeBuild": "./scripts/electron-builder-before-build.js",

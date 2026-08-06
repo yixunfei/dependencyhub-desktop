@@ -91,8 +91,8 @@ const menuLabels: Record<AppLanguage, Record<string, string>> = {
     fullscreen: 'Full Screen',
     help: 'Help',
     about: 'About',
-    aboutTitle: 'About npmDesktopManager',
-    aboutDetail: 'A graphical npm package manager\nSupports project dependencies and global package management'
+    aboutTitle: 'About DependencyHub Desktop',
+    aboutDetail: 'A cross-platform workspace for multi-ecosystem project dependencies, toolchains, security health, and release governance'
   },
   'zh-CN': {
     file: '文件',
@@ -112,8 +112,8 @@ const menuLabels: Record<AppLanguage, Record<string, string>> = {
     fullscreen: '全屏',
     help: '帮助',
     about: '关于',
-    aboutTitle: '关于 npmDesktopManager',
-    aboutDetail: '一个图形化的 npm 包管理工具\n支持项目依赖和全局包管理'
+    aboutTitle: '关于 DependencyHub Desktop',
+    aboutDetail: '面向多生态项目的跨平台桌面依赖管理、工具链治理、安全健康与发布管理平台'
   }
 }
 
@@ -1924,7 +1924,7 @@ function setupApplicationMenu(language: AppLanguage) {
             const options = {
               type: 'info' as const,
               title: labels.aboutTitle,
-              message: 'npmDesktopManager v1.0.0',
+              message: 'DependencyHub Desktop v1.0.2',
               detail: labels.aboutDetail
             }
             const target = mainWindow && !mainWindow.isDestroyed()

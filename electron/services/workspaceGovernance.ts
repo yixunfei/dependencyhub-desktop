@@ -2953,7 +2953,7 @@ function renderWorkspaceCycloneDx(report: SupplyChainReport, node: WorkspaceGove
       timestamp: report.generatedAt,
       tools: [
         {
-          vendor: 'npmDesktopManager',
+          vendor: 'DependencyHub Desktop',
           name: 'Dependency Manager Framework',
           version: '1.0.0'
         }
@@ -2992,7 +2992,7 @@ function renderWorkspaceSpdx(report: SupplyChainReport, node: WorkspaceGovernanc
     documentNamespace: `https://npm-desktop-manager.local/spdx/workspace/${encodeURIComponent(node.workspace.id)}/${randomUUID()}`,
     creationInfo: {
       created: report.generatedAt,
-      creators: ['Tool: npmDesktopManager-Dependency-Manager-Framework-1.0.0'],
+      creators: ['Tool: DependencyHub Desktop-Dependency-Manager-Framework-1.0.0'],
       comment: `workspace=${node.workspace.relativePath}; status=${node.status}; managers=${node.workspace.managerIds.join(',') || '-'}`
     },
     packages: report.components.map((component, index) => ({
@@ -3014,7 +3014,7 @@ function renderWorkspaceSpdx(report: SupplyChainReport, node: WorkspaceGovernanc
       annotations: [
         {
           annotationType: 'OTHER',
-          annotator: 'Tool: npmDesktopManager',
+          annotator: 'Tool: DependencyHub Desktop',
           annotationDate: report.generatedAt,
           comment: `workspace=${node.workspace.relativePath}; manager=${component.managerId}; ecosystem=${component.ecosystem}; scope=${component.scope}; source=${component.sourceFile}`
         }

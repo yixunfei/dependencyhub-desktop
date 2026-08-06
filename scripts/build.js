@@ -80,7 +80,7 @@ function clean() {
 
 function main() {
   console.log('='.repeat(50));
-  console.log(`npmDesktopManager Build Script`);
+  console.log(`DependencyHub Desktop Build Script`);
   console.log(`Version: ${version}`);
   console.log(`Platform: ${platform}`);
   console.log(`Type: ${type}`);
