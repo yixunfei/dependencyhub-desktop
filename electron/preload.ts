@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getDefaultPath: () => ipcRenderer.invoke('get-default-path'),
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
+  selectFile: (options?: FileSelectOptions) => ipcRenderer.invoke('select-file', options),
   
   onCommandLog: (callback: (data: any) => void) => {
     ipcRenderer.on('command-log', (_, data) => callback(data))
@@ -110,6 +111,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setLocalRepository: (repositoryPath: string) => ipcRenderer.invoke('maven:set-local-repository', repositoryPath),
     setMirror: (id: string, url: string, mirrorOf?: string) => ipcRenderer.invoke('maven:set-mirror', id, url, mirrorOf),
     setServer: (id: string, username: string, password: string) => ipcRenderer.invoke('maven:set-server', id, username, password),
+    setSecureServer: (id: string, username: string, password: string) => ipcRenderer.invoke('maven:set-secure-server', id, username, password),
     deploy: (args: MavenDeployArgs) => ipcRenderer.invoke('maven:deploy', args),
     securityAudit: (cwd: string) => ipcRenderer.invoke('maven:security-audit', cwd),
     goOffline: (cwd: string) => ipcRenderer.invoke('maven:go-offline', cwd),
@@ -198,6 +200,288 @@ contextBridge.exposeInMainWorld('electronAPI', {
     build: (cwd: string, buildDir?: string) => ipcRenderer.invoke('native:build', cwd, buildDir)
   },
 
+  extended: {
+    detected: (cwd: string) => ipcRenderer.invoke('extended:detected', cwd),
+    list: (cwd: string, managerId: DependencyManagerId) => ipcRenderer.invoke('extended:list', cwd, managerId),
+    plan: (cwd: string, managerId: DependencyManagerId, request: ExtendedManagerOperationRequest) => ipcRenderer.invoke('extended:plan', cwd, managerId, request),
+    run: (cwd: string, managerId: DependencyManagerId, commandLine: string) => ipcRenderer.invoke('extended:run', cwd, managerId, commandLine),
+    restoreBackup: (cwd: string, backupPath: string) => ipcRenderer.invoke('extended:restore-backup', cwd, backupPath)
+  },
+
+  supplyChain: {
+    report: (cwd: string) => ipcRenderer.invoke('supply-chain:report', cwd),
+    exportCycloneDx: (cwd: string) => ipcRenderer.invoke('supply-chain:export-cyclonedx', cwd),
+    exportSpdx: (cwd: string) => ipcRenderer.invoke('supply-chain:export-spdx', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('supply-chain:export-markdown', cwd),
+    licenseReport: (cwd: string) => ipcRenderer.invoke('supply-chain:license-report', cwd),
+    exportLicenseMarkdown: (cwd: string) => ipcRenderer.invoke('supply-chain:export-license-markdown', cwd),
+    exportLicenseJson: (cwd: string) => ipcRenderer.invoke('supply-chain:export-license-json', cwd),
+    createSnapshot: (cwd: string) => ipcRenderer.invoke('supply-chain:create-snapshot', cwd),
+    listSnapshots: (cwd: string) => ipcRenderer.invoke('supply-chain:list-snapshots', cwd),
+    diffLatestSnapshot: (cwd: string) => ipcRenderer.invoke('supply-chain:diff-latest-snapshot', cwd),
+    dependencyDiffLatestSnapshot: (cwd: string) => ipcRenderer.invoke('supply-chain:dependency-diff-latest-snapshot', cwd),
+    exportDependencyDiffMarkdown: (cwd: string) => ipcRenderer.invoke('supply-chain:export-dependency-diff-markdown', cwd),
+    restoreLatestSnapshot: (cwd: string) => ipcRenderer.invoke('supply-chain:restore-latest-snapshot', cwd),
+    restoreSnapshot: (cwd: string, snapshotIdOrPath: string) => ipcRenderer.invoke('supply-chain:restore-snapshot', cwd, snapshotIdOrPath),
+    ensurePolicy: (cwd: string) => ipcRenderer.invoke('supply-chain:ensure-policy', cwd),
+    getPolicy: (cwd: string) => ipcRenderer.invoke('supply-chain:get-policy', cwd),
+    savePolicy: (cwd: string, policy: DependencyPolicy) => ipcRenderer.invoke('supply-chain:save-policy', cwd, policy),
+    evaluatePolicy: (cwd: string) => ipcRenderer.invoke('supply-chain:evaluate-policy', cwd)
+  },
+
+  thirdPartyNotices: {
+    report: (cwd: string) => ipcRenderer.invoke('third-party-notices:report', cwd),
+    exportText: (cwd: string) => ipcRenderer.invoke('third-party-notices:export-text', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('third-party-notices:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('third-party-notices:export-json', cwd)
+  },
+
+  operationHistory: {
+    list: (cwd: string, limit?: number) => ipcRenderer.invoke('operation-history:list', cwd, limit),
+    exportReport: (cwd: string, format?: 'json' | 'markdown') => ipcRenderer.invoke('operation-history:export', cwd, format)
+  },
+
+  ciEvidence: {
+    list: (cwd: string, limit?: number) => ipcRenderer.invoke('ci-evidence:list', cwd, limit),
+    record: (cwd: string, input: CiEvidenceInput) => ipcRenderer.invoke('ci-evidence:record', cwd, input),
+    importFromFile: (cwd: string, filePath: string, overrides?: Partial<CiEvidenceInput>) => ipcRenderer.invoke('ci-evidence:import-file', cwd, filePath, overrides),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('ci-evidence:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('ci-evidence:export-json', cwd)
+  },
+
+  auditEvidence: {
+    report: (cwd: string) => ipcRenderer.invoke('audit-evidence:report', cwd),
+    importFromFile: (cwd: string, filePath: string, options?: AuditEvidenceImportOptions) => ipcRenderer.invoke('audit-evidence:import-file', cwd, filePath, options),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('audit-evidence:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('audit-evidence:export-json', cwd),
+    exportHtml: (cwd: string) => ipcRenderer.invoke('audit-evidence:export-html', cwd)
+  },
+
+  vulnerabilityRemediationPlan: {
+    plan: (cwd: string) => ipcRenderer.invoke('vulnerability-remediation-plan:plan', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('vulnerability-remediation-plan:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('vulnerability-remediation-plan:export-json', cwd)
+  },
+
+  releaseApproval: {
+    list: (cwd: string, limit?: number) => ipcRenderer.invoke('release-approval:list', cwd, limit),
+    record: (cwd: string, input: ReleaseApprovalInput) => ipcRenderer.invoke('release-approval:record', cwd, input),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('release-approval:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('release-approval:export-json', cwd)
+  },
+
+  releaseException: {
+    list: (cwd: string, limit?: number) => ipcRenderer.invoke('release-exception:list', cwd, limit),
+    record: (cwd: string, input: ReleaseExceptionInput) => ipcRenderer.invoke('release-exception:record', cwd, input),
+    revoke: (cwd: string, id: string, input?: Partial<Pick<ReleaseExceptionInput, 'reviewer' | 'reason' | 'annotations'>>) => ipcRenderer.invoke('release-exception:revoke', cwd, id, input),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('release-exception:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('release-exception:export-json', cwd)
+  },
+
+  registryReachability: {
+    discover: (cwd: string) => ipcRenderer.invoke('registry-reachability:discover', cwd),
+    check: (cwd: string, options?: RegistryReachabilityOptions) => ipcRenderer.invoke('registry-reachability:check', cwd, options),
+    exportMarkdown: (cwd: string, options?: RegistryReachabilityOptions) => ipcRenderer.invoke('registry-reachability:export-markdown', cwd, options),
+    exportJson: (cwd: string, options?: RegistryReachabilityOptions) => ipcRenderer.invoke('registry-reachability:export-json', cwd, options)
+  },
+
+  credentialUsage: {
+    report: (cwd: string) => ipcRenderer.invoke('credential-usage:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('credential-usage:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('credential-usage:export-json', cwd)
+  },
+
+  lockfileDrift: {
+    report: (cwd: string) => ipcRenderer.invoke('lockfile-drift:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('lockfile-drift:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('lockfile-drift:export-json', cwd)
+  },
+
+  runtimePinning: {
+    report: (cwd: string) => ipcRenderer.invoke('runtime-pinning:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('runtime-pinning:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('runtime-pinning:export-json', cwd)
+  },
+
+  offlineCacheReadiness: {
+    report: (cwd: string) => ipcRenderer.invoke('offline-cache-readiness:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('offline-cache-readiness:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('offline-cache-readiness:export-json', cwd)
+  },
+
+  releaseRiskProfile: {
+    report: (cwd: string) => ipcRenderer.invoke('release-risk-profile:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('release-risk-profile:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('release-risk-profile:export-json', cwd)
+  },
+
+  ciIntegrationPlan: {
+    plan: (cwd: string) => ipcRenderer.invoke('ci-integration-plan:plan', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('ci-integration-plan:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('ci-integration-plan:export-json', cwd),
+    exportGithubActions: (cwd: string) => ipcRenderer.invoke('ci-integration-plan:export-github-actions', cwd)
+  },
+
+  dependencyAutomationPlan: {
+    plan: (cwd: string) => ipcRenderer.invoke('dependency-automation-plan:plan', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('dependency-automation-plan:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('dependency-automation-plan:export-json', cwd),
+    exportDependabot: (cwd: string) => ipcRenderer.invoke('dependency-automation-plan:export-dependabot', cwd),
+    exportRenovate: (cwd: string) => ipcRenderer.invoke('dependency-automation-plan:export-renovate', cwd)
+  },
+
+  credentialRotationPlan: {
+    plan: (cwd: string) => ipcRenderer.invoke('credential-rotation-plan:plan', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('credential-rotation-plan:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('credential-rotation-plan:export-json', cwd)
+  },
+
+  automationSafetyPlan: {
+    plan: (cwd: string) => ipcRenderer.invoke('automation-safety-plan:plan', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('automation-safety-plan:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('automation-safety-plan:export-json', cwd)
+  },
+
+  dependencyOwnershipPlan: {
+    plan: (cwd: string) => ipcRenderer.invoke('dependency-ownership-plan:plan', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('dependency-ownership-plan:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('dependency-ownership-plan:export-json', cwd),
+    exportCodeowners: (cwd: string) => ipcRenderer.invoke('dependency-ownership-plan:export-codeowners', cwd)
+  },
+
+  dependencyUpgradePlaybook: {
+    report: (cwd: string) => ipcRenderer.invoke('dependency-upgrade-playbook:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('dependency-upgrade-playbook:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('dependency-upgrade-playbook:export-json', cwd)
+  },
+
+  dependencyRollbackPlan: {
+    report: (cwd: string) => ipcRenderer.invoke('dependency-rollback-plan:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('dependency-rollback-plan:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('dependency-rollback-plan:export-json', cwd)
+  },
+
+  dependencyImpactAnalysis: {
+    report: (cwd: string) => ipcRenderer.invoke('dependency-impact-analysis:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('dependency-impact-analysis:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('dependency-impact-analysis:export-json', cwd)
+  },
+
+  dependencyChangeApprovalPacket: {
+    report: (cwd: string) => ipcRenderer.invoke('dependency-change-approval-packet:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('dependency-change-approval-packet:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('dependency-change-approval-packet:export-json', cwd)
+  },
+
+  dependencyChangeCalendar: {
+    report: (cwd: string) => ipcRenderer.invoke('dependency-change-calendar:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('dependency-change-calendar:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('dependency-change-calendar:export-json', cwd),
+    exportIcs: (cwd: string) => ipcRenderer.invoke('dependency-change-calendar:export-ics', cwd),
+    exportFreezeGate: (cwd: string) => ipcRenderer.invoke('dependency-change-calendar:export-freeze-gate', cwd),
+    exportTicketTemplate: (cwd: string) => ipcRenderer.invoke('dependency-change-calendar:export-ticket-template', cwd)
+  },
+
+  dependencyChangeExecutionRecord: {
+    report: (cwd: string) => ipcRenderer.invoke('dependency-change-execution-record:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('dependency-change-execution-record:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('dependency-change-execution-record:export-json', cwd)
+  },
+
+  policyAsCodePack: {
+    report: (cwd: string) => ipcRenderer.invoke('policy-as-code-pack:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('policy-as-code-pack:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('policy-as-code-pack:export-json', cwd),
+    exportPolicyJson: (cwd: string) => ipcRenderer.invoke('policy-as-code-pack:export-policy-json', cwd),
+    exportGithubActions: (cwd: string) => ipcRenderer.invoke('policy-as-code-pack:export-github-actions', cwd)
+  },
+
+  workspaceDiscovery: {
+    report: (cwd: string) => ipcRenderer.invoke('workspace-discovery:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('workspace-discovery:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('workspace-discovery:export-json', cwd)
+  },
+
+  workspaceGovernance: {
+    report: (cwd: string) => ipcRenderer.invoke('workspace-governance:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-json', cwd),
+    exportEvidenceMarkdown: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-evidence-markdown', cwd),
+    exportEvidenceJson: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-evidence-json', cwd),
+    remediationPlan: (cwd: string) => ipcRenderer.invoke('workspace-governance:remediation-plan', cwd),
+    exportRemediationMarkdown: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-remediation-markdown', cwd),
+    exportRemediationJson: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-remediation-json', cwd),
+    updatePlan: (cwd: string) => ipcRenderer.invoke('workspace-governance:update-plan', cwd),
+    exportUpdatePlanMarkdown: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-update-plan-markdown', cwd),
+    exportUpdatePlanJson: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-update-plan-json', cwd),
+    exportWorkspaceSboms: (cwd: string, format: WorkspaceSbomExportFormat) => ipcRenderer.invoke('workspace-governance:export-workspace-sboms', cwd, format),
+    exportReleaseBundle: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-release-bundle', cwd),
+    exportReleaseDashboard: (cwd: string) => ipcRenderer.invoke('workspace-governance:export-release-dashboard', cwd)
+  },
+
+  dependencyHealthDashboard: {
+    exportHtml: (cwd: string) => ipcRenderer.invoke('dependency-health-dashboard:export-html', cwd)
+  },
+
+  reportArtifacts: {
+    report: (cwd: string) => ipcRenderer.invoke('report-artifacts:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('report-artifacts:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('report-artifacts:export-json', cwd)
+  },
+
+  releaseEvidenceCompleteness: {
+    report: (cwd: string) => ipcRenderer.invoke('release-evidence-completeness:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('release-evidence-completeness:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('release-evidence-completeness:export-json', cwd)
+  },
+
+  releaseProvenanceAttestation: {
+    report: (cwd: string) => ipcRenderer.invoke('release-provenance-attestation:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('release-provenance-attestation:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('release-provenance-attestation:export-json', cwd)
+  },
+
+  releaseIntegrityVerification: {
+    report: (cwd: string) => ipcRenderer.invoke('release-integrity-verification:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('release-integrity-verification:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('release-integrity-verification:export-json', cwd)
+  },
+
+  releaseSignature: {
+    report: (cwd: string) => ipcRenderer.invoke('release-signature:report', cwd),
+    verify: (cwd: string) => ipcRenderer.invoke('release-signature:verify', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('release-signature:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('release-signature:export-json', cwd)
+  },
+
+  releaseTrustPolicy: {
+    report: (cwd: string) => ipcRenderer.invoke('release-trust-policy:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('release-trust-policy:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('release-trust-policy:export-json', cwd)
+  },
+
+  frameworkCoverage: {
+    report: (cwd?: string) => ipcRenderer.invoke('framework-coverage:report', cwd),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('framework-coverage:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('framework-coverage:export-json', cwd)
+  },
+
+  readiness: {
+    report: (cwd: string) => ipcRenderer.invoke('readiness:report', cwd),
+    ensurePolicy: (cwd: string) => ipcRenderer.invoke('readiness:ensure-policy', cwd),
+    getPolicy: (cwd: string) => ipcRenderer.invoke('readiness:get-policy', cwd),
+    savePolicy: (cwd: string, policy: ReadinessPolicy) => ipcRenderer.invoke('readiness:save-policy', cwd, policy),
+    exportMarkdown: (cwd: string) => ipcRenderer.invoke('readiness:export-markdown', cwd),
+    exportJson: (cwd: string) => ipcRenderer.invoke('readiness:export-json', cwd)
+  },
+
+  credentials: {
+    status: () => ipcRenderer.invoke('credentials:status'),
+    list: (filter?: CredentialFilter) => ipcRenderer.invoke('credentials:list', filter),
+    save: (input: CredentialInput) => ipcRenderer.invoke('credentials:save', input),
+    delete: (id: string) => ipcRenderer.invoke('credentials:delete', id)
+  },
+
   dependencyHealth: {
     scan: (manager: DependencyHealthManager, cwd: string) => ipcRenderer.invoke('dependency-health:scan', manager, cwd),
     fix: (cwd: string, action: DependencyHealthAction) => ipcRenderer.invoke('dependency-health:fix', cwd, action)
@@ -223,6 +507,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   project: {
     detect: (projectPath: string) => ipcRenderer.invoke('project:detect', projectPath),
     readPackage: (projectPath: string) => ipcRenderer.invoke('project:read-package', projectPath),
+    inventory: (projectPath: string) => ipcRenderer.invoke('project:inventory', projectPath),
+    exportInventory: (projectPath: string) => ipcRenderer.invoke('project:export-inventory', projectPath),
     writePackage: (projectPath: string, content: any) => ipcRenderer.invoke('project:write-package', projectPath, content),
     getPackagePath: (projectPath: string) => ipcRenderer.invoke('project:get-package-path', projectPath),
     getNodeModulesPath: (projectPath: string, packageName: string) => ipcRenderer.invoke('project:get-node-modules-path', projectPath, packageName),
@@ -283,6 +569,9 @@ export interface PublishArgs {
   tag?: string
   access?: 'public' | 'restricted'
   registry?: string
+  credentialId?: string
+  token?: string
+  overrideReadinessGate?: boolean
 }
 
 export interface MoveDepArgs {
@@ -331,12 +620,57 @@ export interface PipPublishArgs {
   repositoryUrl?: string
   username?: string
   password?: string
+  credentialId?: string
   buildBefore?: boolean
+  overrideReadinessGate?: boolean
 }
 
 export type PipConfigScope = 'user' | 'global' | 'site'
 
-export type ToolName = 'npm' | 'pip' | 'maven' | 'cargo' | 'gradle' | 'go' | 'flutter' | 'cmake' | 'vcpkg' | 'conan'
+export type ToolName =
+  | 'npm'
+  | 'pnpm'
+  | 'yarn'
+  | 'bun'
+  | 'deno'
+  | 'pip'
+  | 'uv'
+  | 'poetry'
+  | 'pipenv'
+  | 'conda'
+  | 'maven'
+  | 'gradle'
+  | 'cargo'
+  | 'go'
+  | 'flutter'
+  | 'dotnet'
+  | 'composer'
+  | 'ruby'
+  | 'bundle'
+  | 'swift'
+  | 'pod'
+  | 'helm'
+  | 'docker'
+  | 'kustomize'
+  | 'helmfile'
+  | 'skaffold'
+  | 'argocd'
+  | 'flux'
+  | 'brew'
+  | 'choco'
+  | 'scoop'
+  | 'winget'
+  | 'asdf'
+  | 'mise'
+  | 'sdk'
+  | 'apt-get'
+  | 'dnf'
+  | 'apk'
+  | 'pacman'
+  | 'nix'
+  | 'cmake'
+  | 'vcpkg'
+  | 'conan'
 export type AppLanguage = 'zh-CN' | 'en-US'
 
 export interface MavenDependencyArgs {
@@ -353,6 +687,27 @@ export interface MavenDeployArgs {
   repositoryUrl?: string
   skipTests?: boolean
   goals?: string
+  overrideReadinessGate?: boolean
+}
+
+export type CredentialKind = 'token' | 'password' | 'username-password' | 'api-key' | 'other'
+export type CredentialStorage = 'electron-safe-storage' | 'base64-fallback' | 'test-adapter'
+
+export interface CredentialInput {
+  id?: string
+  managerId: DependencyManagerId
+  service: string
+  account?: string
+  label?: string
+  kind?: CredentialKind
+  secret: string
+  url?: string
+  notes?: string
+}
+
+export interface CredentialFilter {
+  managerId?: DependencyManagerId
+  service?: string
 }
 
 export type MavenSearchMode = 'startsWith' | 'contains' | 'exact' | 'keyword'
@@ -369,6 +724,62 @@ export interface MavenSearchOptions {
 }
 
 export type PackageManagerId = 'npm' | 'pip' | 'maven' | 'cargo' | 'gradle' | 'go' | 'flutter' | 'native'
+export type FuturePackageManagerId =
+  | 'pnpm'
+  | 'yarn'
+  | 'bun'
+  | 'deno'
+  | 'uv'
+  | 'poetry'
+  | 'pipenv'
+  | 'conda'
+  | 'renv'
+  | 'julia'
+  | 'nuget'
+  | 'composer'
+  | 'bundler'
+  | 'sbt'
+  | 'leiningen'
+  | 'mix'
+  | 'rebar3'
+  | 'cabal'
+  | 'stack'
+  | 'swiftpm'
+  | 'cocoapods'
+  | 'helm'
+  | 'docker'
+  | 'kustomize'
+  | 'helmfile'
+  | 'skaffold'
+  | 'argocd'
+  | 'flux'
+  | 'terraform'
+  | 'opentofu'
+  | 'ansible'
+  | 'github-actions'
+  | 'gitlab-ci'
+  | 'pre-commit'
+  | 'bazel'
+  | 'pants'
+  | 'buck'
+  | 'opam'
+  | 'cpan'
+  | 'luarocks'
+  | 'shards'
+  | 'zig'
+  | 'homebrew'
+  | 'chocolatey'
+  | 'scoop'
+  | 'winget'
+  | 'asdf'
+  | 'mise'
+  | 'sdkman'
+  | 'apt'
+  | 'dnf'
+  | 'apk'
+  | 'pacman'
+  | 'nix'
+export type DependencyManagerId = PackageManagerId | FuturePackageManagerId
 export type DependencyHealthManager = PackageManagerId
 export type DependencyHealthSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 export type DependencyHealthIssueType =
@@ -488,6 +899,7 @@ export interface FlutterPublishArgs {
   dryRun?: boolean
   force?: boolean
   server?: string
+  overrideReadinessGate?: boolean
 }
 
 export interface NativeInstallArgs {

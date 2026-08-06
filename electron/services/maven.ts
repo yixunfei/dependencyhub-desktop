@@ -45,6 +45,7 @@ export interface MavenDeployArgs {
   repositoryUrl?: string
   skipTests?: boolean
   goals?: string
+  overrideReadinessGate?: boolean
 }
 
 export type MavenSearchMode = 'startsWith' | 'contains' | 'exact' | 'keyword'
@@ -151,11 +152,12 @@ function parseMavenListOutput(output: string): MavenDependency[] {
 }
 
 export class MavenService {
-  private async executeMaven(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
+  private async executeMaven(args: string[], cwd?: string, env?: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
     try {
       return await runLoggedCommand(await resolveToolBin('maven', cwd), args, {
         cwd,
         maxBuffer: 1024 * 1024 * 20,
+        env: env ? { ...process.env, ...env } : undefined,
         displayBin: 'mvn'
       })
     } catch (error: any) {
@@ -395,7 +397,7 @@ export class MavenService {
     await writeFile(settingsPath, nextContent, 'utf-8')
   }
 
-  async deploy(args: MavenDeployArgs): Promise<string> {
+  async deploy(args: MavenDeployArgs, env?: NodeJS.ProcessEnv): Promise<string> {
     const goals = (args.goals || 'deploy')
       .split(/\s+/)
       .map((part) => part.trim())
@@ -411,7 +413,7 @@ export class MavenService {
       command.push(`-DaltDeploymentRepository=${args.repositoryId}::default::${args.repositoryUrl}`)
     }
 
-    const { stdout, stderr } = await this.executeMaven(command, args.cwd)
+    const { stdout, stderr } = await this.executeMaven(command, args.cwd, env)
     return stdout || stderr
   }
 

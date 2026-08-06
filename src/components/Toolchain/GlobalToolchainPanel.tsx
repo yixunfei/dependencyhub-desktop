@@ -1,38 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Input, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { DeleteOutlined, DownloadOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
+import { TOOL_LABELS, TOOL_ORDER, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
 
 const { Text } = Typography
 
-const toolLabels: Record<ToolName, string> = {
-  npm: 'npm / Node.js',
-  pip: 'pip / Python',
-  maven: 'Maven',
-  cargo: 'Cargo / Rust',
-  gradle: 'Gradle',
-  go: 'Go',
-  flutter: 'Flutter',
-  cmake: 'CMake',
-  vcpkg: 'vcpkg',
-  conan: 'Conan'
-}
-
-const placeholders: Partial<Record<ToolName, string>> = {
-  npm: '例如: C:\\Program Files\\nodejs 或 npm.cmd',
-  pip: '例如: D:\\env\\python3 或 python.exe',
-  maven: '例如: C:\\apache-maven-3.8.8 或 mvn.cmd',
-  cargo: '例如: C:\\Users\\you\\.cargo\\bin 或 cargo.exe',
-  gradle: '例如: C:\\gradle-8.7 或 gradle.bat',
-  go: '例如: C:\\Program Files\\Go 或 go.exe'
-}
-
-placeholders.cmake = 'Example: C:\\Program Files\\CMake\\bin or cmake.exe'
-placeholders.flutter = 'Example: C:\\src\\flutter\\bin or flutter.bat'
-placeholders.vcpkg = 'Example: C:\\vcpkg or vcpkg.exe'
-placeholders.conan = 'Example: C:\\Python\\Scripts or conan.exe'
-
-const tools: ToolName[] = ['npm', 'pip', 'maven', 'cargo', 'gradle', 'go', 'flutter', 'cmake', 'vcpkg', 'conan']
-const emptyPaths = Object.fromEntries(tools.map((tool) => [tool, ''])) as Record<ToolName, string>
+const emptyPaths = Object.fromEntries(TOOL_ORDER.map((tool) => [tool, ''])) as Record<ToolName, string>
 
 function pathsFromStatuses(statuses: ToolStatus[]): Record<ToolName, string> {
   return {
@@ -89,10 +62,10 @@ const GlobalToolchainPanel: React.FC = () => {
         type="info"
         showIcon
         title="全局工具版本"
-        description="这里配置全局默认 npm / pip / Maven / Cargo / Gradle / Go。项目页中的项目工具版本会优先覆盖这里的配置。"
+        description="这里配置跨生态全局默认工具链。项目页中的项目工具版本会优先覆盖这里的配置，避免把 npm 全局包管理和其他语言环境配置混在同一个入口。"
       />
       <Table
-        dataSource={tools.map((tool) => ({ tool }))}
+        dataSource={TOOL_ORDER.map((tool) => ({ tool }))}
         rowKey="tool"
         size="small"
         pagination={false}
@@ -103,7 +76,7 @@ const GlobalToolchainPanel: React.FC = () => {
             dataIndex: 'tool',
             key: 'tool',
             width: 140,
-            render: (tool: ToolName) => toolLabels[tool]
+            render: (tool: ToolName) => TOOL_LABELS[tool]
           },
           {
             title: '全局默认路径',
@@ -113,7 +86,7 @@ const GlobalToolchainPanel: React.FC = () => {
               <Input
                 value={paths[record.tool]}
                 onChange={(event) => setPaths((prev) => ({ ...prev, [record.tool]: event.target.value }))}
-                placeholder={placeholders[record.tool]}
+                placeholder={TOOL_PLACEHOLDERS[record.tool]}
               />
             )
           },

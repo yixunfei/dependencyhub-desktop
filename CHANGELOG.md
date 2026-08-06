@@ -7,17 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-06
+
 ### Added
-- Initial project setup
-- Package search functionality
-- Project dependency management
-- Global dependency management
-- Publish management
-- Security audit
-- Dependency tree analysis
-- Theme switching (light/dark)
-- npm configuration management
-- Multi-language support (Chinese)
+- Unified project workspace with manifest and lockfile discovery.
+- Built-in dependency managers for npm, pip, Maven, Gradle, Cargo, Go Modules,
+  Flutter pub, and C/C++ projects using CMake, vcpkg, or Conan.
+- Cross-ecosystem search, dependency health dashboards, lockfile drift checks,
+  registry reachability, workspace governance, and extended ecosystem discovery.
+- Supply-chain policy evaluation, audit evidence, CI evidence, release approvals,
+  release exceptions, rollback planning, integrity verification, signatures,
+  provenance attestations, and production readiness gates.
+- Project/global toolchain overrides, plugin catalog improvements, operation
+  history, and safer credential storage and usage tracking.
+- Framework, release-integrity, release-signature, and release-trust verification
+  scripts.
+
+### Changed
+- Reorganized the renderer around domain and feature modules with lazy-loaded
+  manager routes.
+- Expanded the product positioning from an npm-only desktop utility to a
+  multi-ecosystem project dependency management platform.
+- Rewrote the bilingual README with release downloads, screenshots, workflow
+  comparisons, reproducible performance checks, and troubleshooting guidance.
+- Updated the desktop stack to Electron 42, React 19, TypeScript 6, Ant Design 6,
+  Vite 8, and Zustand 5.
+
+### Security
+- Added release readiness checks and explicit handling for credentials,
+  dependency policies, registry failures, CI evidence, approvals, and release
+  artifact trust.
 
 ## [1.0.0] - 2024-01-XX
 

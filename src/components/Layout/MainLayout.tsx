@@ -3,22 +3,22 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu, Segmented, Tooltip } from 'antd'
 import {
   SearchOutlined,
-  GlobalOutlined,
-  CodeOutlined,
-  ApartmentOutlined,
   SettingOutlined,
   DesktopOutlined,
   BulbOutlined,
   BulbFilled,
-  AppstoreOutlined,
+  DashboardOutlined,
   ToolOutlined,
   DeploymentUnitOutlined,
-  BranchesOutlined,
-  ApiOutlined
+  ExperimentOutlined,
+  SafetyCertificateOutlined
 } from '@ant-design/icons'
 import { ThemeMode, useThemeStore } from '../../stores/themeStore'
 import { useResolvedTheme } from '../../hooks/useResolvedTheme'
 import { useT } from '../../i18n'
+import { getImplementedManagerDefinitions } from '../../domain/managers/registry'
+import { managerIcon } from '../../domain/managers/presentation'
+import { MANAGER_WORKSPACE_GROUPS, findWorkspaceGroupByPath } from '../../domain/managers/workspaces'
 import styles from './MainLayout.module.css'
 
 const { Sider, Content, Footer } = Layout
@@ -36,8 +36,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   
   const isDark = resolvedMode === 'dark'
   const activeMenuKey = (() => {
-    if (location.pathname === '/' || location.pathname === '/hub' || location.pathname === '/multi-manager') return '/npm'
-    if (location.pathname === '/project' || location.pathname === '/publish') return '/npm'
+    if (location.pathname === '/' || location.pathname === '/hub' || location.pathname === '/workspace') return '/workspace'
+    const workspaceGroup = findWorkspaceGroupByPath(location.pathname)
+    if (workspaceGroup) return workspaceGroup.route
+    if (location.pathname === '/tool-versions' || location.pathname === '/environment') return '/environment'
     return location.pathname
   })()
   
@@ -45,66 +47,56 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     document.documentElement.setAttribute('data-theme', resolvedMode)
   }, [resolvedMode])
   
+  const groupedManagerIds = new Set(MANAGER_WORKSPACE_GROUPS.flatMap((group) => group.managerIds))
+  const managerItems = [
+    ...MANAGER_WORKSPACE_GROUPS.map((group) => ({
+      key: group.route,
+      icon: managerIcon(group.iconManagerId),
+      label: group.shortLabel
+    })),
+    ...getImplementedManagerDefinitions().filter((manager) => !groupedManagerIds.has(manager.id)).map((manager) => ({
+      key: manager.route || `/${manager.id}`,
+      icon: managerIcon(manager.id),
+      label: manager.shortName
+    }))
+  ]
+
   const menuItems = [
     {
-      key: '/npm',
-      icon: <AppstoreOutlined />,
-      label: t('layout.npmManagement')
+      key: '/workspace',
+      icon: <DashboardOutlined />,
+      label: '工作区'
     },
     {
-      key: '/pip',
-      icon: <CodeOutlined />,
-      label: t('layout.pipManagement')
+      key: 'managers',
+      label: '生态管理',
+      type: 'group' as const,
+      children: managerItems
     },
     {
-      key: '/maven',
-      icon: <ApartmentOutlined />,
-      label: t('layout.mavenManagement')
-    },
-    {
-      key: '/cargo',
-      icon: <BranchesOutlined />,
-      label: t('layout.cargoManagement')
-    },
-    {
-      key: '/gradle',
-      icon: <ApartmentOutlined />,
-      label: t('layout.gradleManagement')
-    },
-    {
-      key: '/go',
-      icon: <CodeOutlined />,
-      label: t('layout.goManagement')
-    },
-    {
-      key: '/flutter',
-      icon: <CodeOutlined />,
-      label: t('layout.flutterManagement')
-    },
-    {
-      key: '/native',
-      icon: <ApiOutlined />,
-      label: t('layout.nativeManagement')
-    },
-    {
-      key: '/global',
-      icon: <GlobalOutlined />,
-      label: t('layout.globalManagement')
-    },
-    {
-      key: '/tool-versions',
+      key: '/environment',
       icon: <ToolOutlined />,
-      label: t('layout.toolVersions')
+      label: '环境与工具链'
     },
     {
-      key: '/plugins',
-      icon: <DeploymentUnitOutlined />,
-      label: t('layout.plugins')
+      key: '/health',
+      icon: <SafetyCertificateOutlined />,
+      label: '健康与安全'
+    },
+    {
+      key: '/extended',
+      icon: <ExperimentOutlined />,
+      label: '扩展生态'
     },
     {
       key: '/search',
       icon: <SearchOutlined />,
       label: t('layout.search')
+    },
+    {
+      key: '/plugins',
+      icon: <DeploymentUnitOutlined />,
+      label: t('layout.plugins')
     },
     {
       key: '/settings',
@@ -142,7 +134,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             }}
           />
           <div className={styles.logoText} style={{ color: isDark ? '#ccc' : '#333' }}>
-            npmDesktopManager
+            Dependency Hub
           </div>
         </div>
           <Menu
@@ -186,7 +178,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             borderColor: 'var(--border-color)'
           }}
         >
-          npmDesktopManager v1.0.0
+          Dependency Manager Framework v1.0.0
         </Footer>
       </Layout>
     </Layout>

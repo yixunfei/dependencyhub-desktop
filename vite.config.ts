@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
-import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 
 export default defineConfig({
@@ -37,12 +36,12 @@ export default defineConfig({
           }
         }
       }
-    ]),
-    renderer()
+    ])
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '@shared': path.resolve(__dirname, './shared')
     }
   },
   base: './',
@@ -52,6 +51,7 @@ export default defineConfig({
     minify: 'esbuild',
     cssCodeSplit: true,
     reportCompressedSize: false,
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {
         manualChunks(id) {

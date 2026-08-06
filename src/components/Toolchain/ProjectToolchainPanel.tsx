@@ -1,43 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, Input, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { DeleteOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
+import { TOOL_LABELS, TOOL_ORDER, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
 
 const { Text } = Typography
 
-const toolLabels: Record<ToolName, string> = {
-  npm: 'npm',
-  pip: 'pip / Python',
-  maven: 'Maven',
-  cargo: 'Cargo / Rust',
-  gradle: 'Gradle',
-  go: 'Go',
-  flutter: 'Flutter',
-  cmake: 'CMake',
-  vcpkg: 'vcpkg',
-  conan: 'Conan'
-}
-
-const toolPlaceholders: Partial<Record<ToolName, string>> = {
-  npm: '例如: C:\\Program Files\\nodejs 或 npm.cmd',
-  pip: '例如: D:\\env\\python3 或 python.exe',
-  maven: '例如: C:\\apache-maven-3.8.8 或 mvn.cmd',
-  cargo: '例如: C:\\Users\\you\\.cargo\\bin 或 cargo.exe',
-  gradle: '例如: C:\\gradle-8.7 或 gradle.bat',
-  go: '例如: C:\\Program Files\\Go 或 go.exe'
-}
-
-toolPlaceholders.cmake = 'Example: C:\\Program Files\\CMake\\bin or cmake.exe'
-toolPlaceholders.flutter = 'Example: C:\\src\\flutter\\bin or flutter.bat'
-toolPlaceholders.vcpkg = 'Example: C:\\vcpkg or vcpkg.exe'
-toolPlaceholders.conan = 'Example: C:\\Python\\Scripts or conan.exe'
-
-const tools: ToolName[] = ['npm', 'pip', 'maven', 'cargo', 'gradle', 'go', 'flutter', 'cmake', 'vcpkg', 'conan']
-const emptyPaths = Object.fromEntries(tools.map((tool) => [tool, ''])) as Record<ToolName, string>
+const emptyPaths = Object.fromEntries(TOOL_ORDER.map((tool) => [tool, ''])) as Record<ToolName, string>
 
 function pathsFromConfig(config: ToolchainConfig): Record<ToolName, string> {
   return {
     ...emptyPaths,
-    ...Object.fromEntries(tools.map((tool) => [tool, config[tool] || '']))
+    ...Object.fromEntries(TOOL_ORDER.map((tool) => [tool, config[tool] || '']))
   } as Record<ToolName, string>
 }
 
@@ -110,7 +83,7 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
       <Alert
         type="info"
         showIcon
-        title="选择项目目录后可为该项目单独绑定 npm / pip / Maven 版本"
+        title="选择项目目录后可为该项目单独绑定跨语言工具链版本"
       />
     )
   }
@@ -127,7 +100,7 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
       </Text>
       <Table
         style={{ marginTop: 12 }}
-        dataSource={tools.map((tool) => ({ tool }))}
+        dataSource={TOOL_ORDER.map((tool) => ({ tool }))}
         rowKey="tool"
         size="small"
         pagination={false}
@@ -138,7 +111,7 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
             dataIndex: 'tool',
             key: 'tool',
             width: 130,
-            render: (tool: ToolName) => toolLabels[tool]
+            render: (tool: ToolName) => TOOL_LABELS[tool]
           },
           {
             title: '项目绑定路径',
@@ -148,7 +121,7 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
               <Input
                 value={paths[record.tool]}
                 onChange={(event) => setPaths((prev) => ({ ...prev, [record.tool]: event.target.value }))}
-                placeholder={toolPlaceholders[record.tool]}
+                placeholder={TOOL_PLACEHOLDERS[record.tool]}
               />
             )
           },

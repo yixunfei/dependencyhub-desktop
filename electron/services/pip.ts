@@ -79,6 +79,7 @@ export interface PipPublishArgs {
   username?: string
   password?: string
   buildBefore?: boolean
+  overrideReadinessGate?: boolean
 }
 
 function parseJson<T>(stdout: string, fallback: T): T {

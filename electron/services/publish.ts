@@ -69,7 +69,7 @@ export class PublishService {
     return result
   }
 
-  async publish(args: any): Promise<string> {
+  async publish(args: any, options: { env?: NodeJS.ProcessEnv } = {}): Promise<string> {
     const { cwd, tag, access, registry } = args
     const command = ['publish']
     
@@ -80,6 +80,7 @@ export class PublishService {
     const { stdout, stderr } = await runLoggedCommand(await resolveToolBin('npm', cwd), command, {
       cwd,
       maxBuffer: 1024 * 1024 * 10,
+      env: { ...process.env, ...options.env },
       displayBin: 'npm'
     })
     return stdout || stderr

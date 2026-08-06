@@ -6,6 +6,8 @@ dist/
 dist-electron/
 release/
 release-test/
+.npmDesktopManager/
+docs/
 npmDesktopManager/
 *.local
 *.log

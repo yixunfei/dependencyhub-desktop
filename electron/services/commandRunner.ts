@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import { createLogId, formatCommand, sendCommandLog } from './commandLogger'
 import { CommandOutputDecoder, commandEnv } from './encoding'
+import { recordOperationHistory } from './operationHistory'
 
 export interface LoggedCommandResult {
   stdout: string
@@ -45,6 +46,7 @@ export function runLoggedCommand(
   } = options
   const logId = createLogId()
   const command = formatCommand(displayBin, args)
+  const startedAt = new Date()
   const stdoutDecoder = new CommandOutputDecoder()
   const stderrDecoder = new CommandOutputDecoder()
   let stdout = ''
@@ -76,6 +78,23 @@ export function runLoggedCommand(
 
   emit('running')
 
+  const recordHistory = async (status: 'success' | 'error', error?: string, code?: number | string | null) => {
+    if (!cwd) return
+    const finishedAt = new Date()
+    await recordOperationHistory({
+      id: logId,
+      command,
+      cwd,
+      status,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+      stdout,
+      stderr,
+      error: error || (code === undefined || code === 0 || code === null ? undefined : `Command exited with code ${code}`)
+    })
+  }
+
   return new Promise((resolve, reject) => {
     const spawnCommand = resolveShellFreeCommand(bin, args)
     const child = spawn(spawnCommand.bin, spawnCommand.args, {
@@ -92,6 +111,7 @@ export function runLoggedCommand(
       error.stdout = stdout
       error.stderr = stderr
       emit('error')
+      void recordHistory('error', error.message, error.code)
       reject(error)
     }
 
@@ -126,6 +146,7 @@ export function runLoggedCommand(
 
       if (code === 0) {
         emit('success')
+        void recordHistory('success')
         resolve({ stdout, stderr })
         return
       }
@@ -139,6 +160,7 @@ export function runLoggedCommand(
       error.stderr = stderr
       error.code = code
       emit('error')
+      void recordHistory('error', error.message, code)
       reject(error)
     })
   })

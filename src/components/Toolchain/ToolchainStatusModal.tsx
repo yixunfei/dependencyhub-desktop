@@ -1,21 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Input, Modal, Space, Table, Tag, Tooltip } from 'antd'
 import { DownloadOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons'
-
-const toolLabels: Record<ToolName, string> = {
-  npm: 'npm / Node.js',
-  pip: 'pip / Python',
-  maven: 'Maven',
-  cargo: 'Cargo / Rust',
-  gradle: 'Gradle',
-  go: 'Go',
-  flutter: 'Flutter',
-  cmake: 'CMake',
-  vcpkg: 'vcpkg',
-  conan: 'Conan'
-}
-
-const startupRequiredTools: ToolName[] = ['npm', 'pip', 'maven']
+import { STARTUP_REQUIRED_TOOLS, TOOL_LABELS, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
 
 const ToolchainStatusModal: React.FC = () => {
   const [statuses, setStatuses] = useState<ToolStatus[]>([])
@@ -28,7 +14,7 @@ const ToolchainStatusModal: React.FC = () => {
   }, [])
 
   const unavailable = useMemo(
-    () => statuses.filter((item) => startupRequiredTools.includes(item.tool) && !item.available),
+    () => statuses.filter((item) => STARTUP_REQUIRED_TOOLS.includes(item.tool) && !item.available),
     [statuses]
   )
 
@@ -39,7 +25,7 @@ const ToolchainStatusModal: React.FC = () => {
       const result = await window.electronAPI.system.checkTools()
       setStatuses(result)
       setPaths(Object.fromEntries(result.map((item) => [item.tool, item.configuredPath || ''])))
-      setVisible(result.some((item) => startupRequiredTools.includes(item.tool) && !item.available))
+      setVisible(result.some((item) => STARTUP_REQUIRED_TOOLS.includes(item.tool) && !item.available))
     } finally {
       setLoading(false)
     }
@@ -50,7 +36,7 @@ const ToolchainStatusModal: React.FC = () => {
     try {
       const result = await window.electronAPI.system.setToolPath(tool, paths[tool] || '')
       setStatuses(result)
-      setVisible(result.some((item) => startupRequiredTools.includes(item.tool) && !item.available))
+      setVisible(result.some((item) => STARTUP_REQUIRED_TOOLS.includes(item.tool) && !item.available))
     } finally {
       setLoading(false)
     }
@@ -64,7 +50,7 @@ const ToolchainStatusModal: React.FC = () => {
     try {
       const result = await window.electronAPI.system.setToolPath(tool, directory)
       setStatuses(result)
-      setVisible(result.some((item) => startupRequiredTools.includes(item.tool) && !item.available))
+      setVisible(result.some((item) => STARTUP_REQUIRED_TOOLS.includes(item.tool) && !item.available))
     } finally {
       setLoading(false)
     }
@@ -93,7 +79,7 @@ const ToolchainStatusModal: React.FC = () => {
       <Alert
         type="warning"
         showIcon
-        title={`检测到 ${unavailable.map((item) => toolLabels[item.tool]).join('、')} 不可用`}
+        title={`检测到 ${unavailable.map((item) => TOOL_LABELS[item.tool]).join('、')} 不可用`}
         description="请选择命令所在目录，系统会自动查找对应可执行文件；也可以打开官方下载页面安装后重新检测。"
         style={{ marginBottom: 16 }}
       />
@@ -108,7 +94,7 @@ const ToolchainStatusModal: React.FC = () => {
             dataIndex: 'tool',
             key: 'tool',
             width: 130,
-            render: (tool: ToolName) => toolLabels[tool]
+            render: (tool: ToolName) => TOOL_LABELS[tool]
           },
           {
             title: '状态',
@@ -127,7 +113,7 @@ const ToolchainStatusModal: React.FC = () => {
               <Input
                 value={paths[record.tool] || ''}
                 onChange={(event) => setPaths((prev) => ({ ...prev, [record.tool]: event.target.value }))}
-                placeholder={record.tool === 'maven' ? '例如: C:\\apache-maven\\bin' : '例如: C:\\Program Files\\nodejs'}
+                placeholder={TOOL_PLACEHOLDERS[record.tool] || 'Example: executable directory or binary path'}
               />
             )
           },

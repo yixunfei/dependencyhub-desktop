@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist-electron",
-    "rootDir": "electron"
+    "rootDir": "."
   },
-  "include": ["electron/**/*"]
+  "include": ["electron/**/*", "shared/**/*"]
 }

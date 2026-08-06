@@ -66,6 +66,7 @@ export interface FlutterPublishArgs {
   dryRun?: boolean
   force?: boolean
   server?: string
+  overrideReadinessGate?: boolean
 }
 
 export interface FlutterPublishCheckResult {

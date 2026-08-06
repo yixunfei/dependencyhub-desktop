@@ -1,0 +1,135 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.title {
+  margin: 0;
+  color: var(--text-color, #cccccc);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.subtitle {
+  max-width: 760px;
+  margin-top: 6px;
+  color: var(--text-secondary, #999);
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.metric {
+  padding: 12px;
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 8px;
+}
+
+.metricLabel {
+  display: block;
+  color: var(--text-secondary, #999);
+  font-size: 12px;
+}
+
+.metricValue {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-color, #cccccc);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.workspace {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.sidebar,
+.content {
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 8px;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.scopeButton {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  color: var(--text-color, #cccccc);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.scopeButton:hover,
+.active {
+  background: var(--bg-tertiary, #242424);
+  border-color: var(--primary-color, #1890ff);
+}
+
+.scopeTitle {
+  font-weight: 600;
+}
+
+.scopeDescription {
+  color: var(--text-secondary, #999);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.content {
+  min-width: 0;
+  padding: 16px;
+  overflow: auto;
+}
+
+@media (max-width: 1100px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .actions {
+    justify-content: flex-start;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}

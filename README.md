@@ -2,382 +2,233 @@
 
 <div align="center">
 
-A cross-platform desktop dependency and plugin management system for npm, pip, Maven, Cargo, Gradle, and Go.
+**面向多生态项目的桌面依赖管理与工程治理平台**
 
+把项目依赖、工具链、搜索、健康检查、安全审计、发布准备和扩展管理放在一个跨平台 Electron 工作区中。
+
+[![Latest release](https://img.shields.io/github/v/release/yixunfei/npmDesktopManager?display_name=tag&sort=semver)](https://github.com/yixunfei/npmDesktopManager/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Electron](https://img.shields.io/badge/Electron-42+-47848f.svg)](https://www.electronjs.org/)
-[![React](https://img.shields.io/badge/React-19+-61DAFB.svg)](https://react.dev/)
-[![Ant Design](https://img.shields.io/badge/Ant%20Design-6+-1677ff.svg)](https://ant.design/)
-[![Vite](https://img.shields.io/badge/Vite-8+-646cff.svg)](https://vite.dev/)
+[![Electron](https://img.shields.io/badge/Electron-42-47848f.svg)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6.svg)](https://www.typescriptlang.org/)
 
-[English](#english) | [中文](#中文)
+[English](#english) · [简体中文](#简体中文)
 
 </div>
+
+> 当前版本：**1.0.1**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/npmDesktopManager/releases) 下载）。
+
+## 简体中文
+
+### 项目定位
+
+npmDesktopManager 已从最初的 npm 依赖小工具升级为**项目依赖管理平台**。它以项目目录为上下文，检测项目使用的清单和锁文件，再通过统一工作区呈现不同生态的依赖、工具链、注册表和发布动作。你可以在同一界面中处理 Node.js、Python、JVM、Rust、Go、Flutter 与 C/C++ 项目，也可以使用扩展管理器查看后续生态的覆盖路线。
+
+平台强调三个原则：
+
+1. **上下文一致**：项目级依赖、环境级工具链和发布级凭据分层管理，减少在多个终端间切换时的误操作。
+2. **证据可追溯**：命令输出、审计结果、变更记录、锁文件漂移和发布检查都可以在工作区中留痕。
+3. **能力可扩展**：管理器定义、检测规则和插件组件通过共享注册表组织，新增生态时不需要复制整套页面逻辑。
+
+### 已实现能力
+
+#### 依赖与项目工作区
+
+- 自动检测 \`package.json\`、\`requirements.txt\`、\`pyproject.toml\`、\`pom.xml\`、\`Cargo.toml\`、\`go.mod\`、\`pubspec.yaml\`、\`CMakeLists.txt\` 等项目入口。
+- 项目依赖和全局依赖分开管理；切换项目目录后自动刷新清单、锁文件和命令上下文。
+- 安装、卸载、升级、批量升级、版本切换，并在执行前显示版本变更预览。
+- 依赖列表、依赖树、依赖数量和包体积可视化；支持过滤、分页和详情弹窗。
+- 项目脚本/任务运行、集成终端、命令历史和可展开的命令日志。
+
+#### 已支持的管理器
+
+| 生态 | 管理器 | 典型清单/锁文件 | 重点能力 |
+| --- | --- | --- | --- |
+| Node.js | npm | \`package.json\` / \`package-lock.json\` | 搜索、依赖管理、脚本、\`npm audit\`、发布 |
+| Python | pip | \`requirements.txt\` / \`pyproject.toml\` | 环境包管理、\`pip check\`、\`pip-audit\`、发布 |
+| JVM | Maven | \`pom.xml\` / \`settings.xml\` | 依赖树、版本切换、离线准备、OWASP 检查、部署 |
+| JVM / Android | Gradle | \`build.gradle(.kts)\` / \`gradle.lockfile\` | task、dependency insight、锁文件审查 |
+| Rust | Cargo | \`Cargo.toml\` / \`Cargo.lock\` | crates.io 搜索、依赖树、\`cargo audit\` |
+| Go | Go Modules | \`go.mod\` / \`go.sum\` | 模块增删改、\`go mod tidy\`、\`govulncheck\` |
+| Dart | Flutter pub | \`pubspec.yaml\` / \`pubspec.lock\` | \`pub outdated\`、依赖树、OSV 审计、发布前检查 |
+| C / C++ | CMake / vcpkg / Conan | \`CMakeLists.txt\`、\`vcpkg.json\`、\`conanfile.*\` | 原生库搜索、构建任务、工具链与锁文件 |
+
+#### 搜索、发布与供应链
+
+- 聚合 npm、PyPI、Maven Central、crates.io、Go/GitHub 模块和 pub.dev 元数据，展示版本、README/变更日志、下载量、依赖者和包大小。
+- 发布管理器提供清单校验、发布标签、访问权限、Registry 选择和 readiness gate；发布凭据通过安全桥接层传递，不写入 README、日志或 Release 资产。
+- 健康中心统一呈现依赖健康、锁文件漂移、过期包、Registry 可达性和工具链状态。
+- 适配 \`npm audit\`、\`pip-audit\`、\`cargo audit\`、\`govulncheck\`、OWASP dependency-check 与 OSV 查询。
+- 供应链策略包含许可证、包/管理器黑名单、版本固定、浮动 CI/容器引用、SBOM/报告索引，以及 CI 记录、审批、异常、回滚快照、完整性/签名/来源证明。
+
+#### 工具链与体验
+
+- 全局与项目级 Node、Python、Maven、Cargo、Gradle、Go、Flutter、CMake/vcpkg/Conan 路径配置。
+- Windows、macOS、Linux 菜单和界面本地化；简体中文/English 切换；深色/浅色主题。
+- Electron 主进程负责文件、进程和凭据边界，React 渲染层只通过 preload 暴露的最小 API 访问系统能力。
+
+### 扩展路线（规划中）
+
+共享管理器注册表已预留 pnpm、Yarn、Bun、Deno、uv、Poetry、Conda、NuGet、Composer、Docker、Helm、Terraform、Ansible、GitHub Actions、Bazel、Homebrew、Scoop、winget 等入口。路线图中的 “planned” 仅表示检测模型和页面骨架已预留，不代表这些管理器在当前版本已经具备完整读写能力。
+
+### 界面演示
+
+以下截图来自项目实际运行界面，分别展示项目依赖、依赖树、发布检查和 Registry 配置；本地路径和凭据字段已脱敏。
+
+![项目依赖列表](image-1.png)
+
+*项目依赖列表：批量安装、更新、审计和依赖树入口集中在同一工作区。*
+
+![依赖树](image.png)
+
+*依赖树：同时查看直接依赖与完整传递依赖，并支持搜索和展开/折叠。*
+
+![发布检查](image-4.png)
+
+*发布检查：在执行发布前确认清单、版本、许可证和 Registry 配置。*
+
+![Registry 配置](image-6.png)
+
+*Registry 配置：管理镜像源、缓存目录、全局前缀和用户配置。*
+
+### 性能与工作流对比
+
+性能收益主要来自一次检测、复用上下文和按需加载页面，而不是替换底层包管理器。安装/解析速度仍由底层 CLI、网络和本地缓存决定。
+
+| 场景 | npmDesktopManager | 传统分散式 CLI 流程 |
+| --- | --- | --- |
+| 依赖盘点 | 自动检测清单/锁文件，列表和树视图共享结果 | 分别运行 \`npm ls\`、\`pip list\`、\`mvn dependency:tree\` 后手工拼接 |
+| 批量升级 | 统一选择、版本预览、执行和日志回看 | 每个生态使用不同命令或脚本，升级前后人工核对 |
+| 安全审计 | 健康中心聚合审计、漂移、Registry 和许可证信号 | 各生态分别执行审计工具，再整理报告 |
+| 工具链切换 | 全局/项目路径集中管理，命令运行器复用解析结果 | 依赖 shell 配置、PATH 和项目脚本，容易环境不一致 |
+| 发布准备 | 清单校验、readiness gate、审批和证据索引集中呈现 | 发布者自行维护检查清单和终端输出 |
+
+#### 可复现的本地基准
+
+不要把跨机器不可复现的数字写成宣传结论，请在相同 Node.js、磁盘、网络和缓存条件下采集自己的基准：
+
+\`\`\`powershell
+Measure-Command { npm run build }
+Get-ChildItem dist -Recurse -File | Measure-Object -Property Length -Sum
+npm ls --all --json > $env:TEMP\npmDesktopManager-deps.json
+\`\`\`
+
+对比“CLI 命令串行执行”和“平台一次检测/批量操作”的总耗时；不要把单个包管理器的下载速度当作平台性能。构建产物和 Release 页面会提供版本、架构与 SHA-256，便于复核。
+
+### 快速开始
+
+#### 直接使用发布包
+
+1. 打开 [Releases](https://github.com/yixunfei/npmDesktopManager/releases)。
+2. Windows 选择 \`npmDesktopManager Setup <version>.exe\`（安装版）或 \`npmDesktopManager <version>.exe\`（便携版）。
+3. 首次启动后选择项目目录，平台会显示检测到的管理器。
+
+macOS 可使用 \`.dmg\` / \`.zip\`，Linux 可使用 \`.AppImage\` / \`.deb\` / \`.rpm\`（具体资产取决于发布版本）。
+
+#### 从源码运行
+
+要求 Node.js 22+、npm 10+、Git，以及目标生态的 CLI（Python/pip、JDK/Maven、Rust/Cargo、Go、Flutter、CMake/vcpkg/Conan 等）。
+
+\`\`\`bash
+git clone https://github.com/yixunfei/npmDesktopManager.git
+cd npmDesktopManager
+npm install
+npm run dev
+\`\`\`
+
+构建当前平台安装包和便携包：\`npm run dist\`。按平台构建：
+
+\`\`\`bash
+npm run build:win-installer
+npm run build:win-portable
+npm run build:mac-dmg
+npm run build:mac-zip
+npm run build:linux-appimage
+npm run build:linux-deb
+\`\`\`
+
+跨平台构建受操作系统和签名工具限制；构建输出位于 \`release/\`，该目录默认被 \`.gitignore\` 排除，不会混入源代码提交。
+
+### 验证与故障排查
+
+\`\`\`bash
+npm run build
+npm run verify:framework
+npm run verify:release-integrity
+npm run verify:release-signature
+npm run verify:release-trust
+\`\`\`
+
+- 工具不可用时，在“工具链/Tool Versions”中配置项目级路径。
+- 审计工具是可选依赖；缺失时界面显示安装建议，不会伪造审计结果。
+- Maven/Gradle 远程搜索速度取决于 Maven Central、镜像和本地 \`.m2\` 规模。
+- Windows 终端乱码时，优先将相关 CLI 和终端编码设置为 UTF-8。
+- 发布失败时先查看命令日志和 readiness gate，再决定是否手动覆盖。
+
+### 项目结构
+
+\`\`\`text
+npmDesktopManager/
+├─ electron/                 # 主进程、preload 与生态服务
+├─ shared/                   # 共享管理器注册表和领域类型
+├─ src/domain/               # 领域模型、能力与策略
+├─ src/features/             # 工作区、管理器、健康中心、搜索和设置
+├─ src/components/           # 可复用 UI 组件
+├─ src/stores/               # Zustand 状态模块
+├─ scripts/                  # 构建、发布、完整性和框架验证
+├─ build/                    # electron-builder/NSIS 资源
+├─ image*.png                # README 演示截图
+├─ LICENSE                   # MIT 许可证
+└─ package.json              # 开发、构建和发布入口
+\`\`\`
+
+### 贡献与许可证
+
+欢迎提交 Issue 和 Pull Request。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并在提交前运行 \`npm run build\` 与相关验证脚本。新增管理器时，优先扩展共享注册表和独立 service，保持 UI 与底层命令解耦。
+
+本项目使用 [MIT License](LICENSE) 开源；第三方依赖仍受其各自许可证约束。
 
 ---
 
 ## English
 
-### Overview
+### What it is
 
-npmDesktopManager is evolving from a desktop npm manager into a full-stack, multi-language dependency and plugin management system. It now provides consistent workflows for JavaScript, Python, JVM, Rust, and Go projects through npm, pip, Maven, Cargo, Gradle, and Go module support.
+npmDesktopManager is a cross-platform Electron workspace for project dependency management and engineering governance. It started as an npm desktop helper and now provides one context for Node.js, Python, JVM, Rust, Go, Flutter, and C/C++ projects. The app detects manifests and lockfiles, separates project/global/publish scopes, and exposes package operations, toolchain configuration, health checks, security audits, release readiness, and plugin-oriented extensions.
 
-The app focuses on project dependency management, global toolchain configuration, package search, publishing and release workflows, security audits, dependency graphs, terminal/log visibility, and componentized plugin management.
+### Implemented today
 
-### Highlights
+- **Eight built-in managers**: npm, pip, Maven, Gradle, Cargo, Go Modules, Flutter pub, and C/C++ (CMake/vcpkg/Conan).
+- **Project workspace**: manifest/lockfile detection, dependency tables and trees, version previews, batch updates, project scripts/tasks, terminal and command history.
+- **Search**: npm, PyPI, Maven Central, crates.io, Go/GitHub modules, and pub.dev metadata.
+- **Security and health**: npm audit, pip-audit, cargo-audit, govulncheck, OWASP dependency-check, OSV, lockfile drift, registry reachability, license and supply-chain policies.
+- **Release governance**: package validation, readiness gates, CI evidence, approvals, exceptions, rollback snapshots, integrity/signature/provenance reports.
+- **Toolchains and UX**: project/global executable paths, English/Simplified Chinese localization, dark/light themes, lazy-loaded routes, and a secure Electron preload boundary.
 
-- **Six package managers**: npm, pip, Maven, Cargo, Gradle, and Go are available as first-class manager modules.
-- **Unified switching**: manager pages share the same quick switch behavior for moving between npm, pip, Maven, Cargo, Gradle, and Go.
-- **Global search**: the search page supports npm, PyPI, Maven, crates.io, Gradle/Maven Central, and Go/GitHub module discovery.
-- **Project and global scopes**: manage project dependencies and global toolchain paths without mixing concerns.
-- **Toolchain management**: configure global and project-specific executable paths for npm, pip/Python, Maven, Cargo, Gradle, and Go.
-- **Plugin components**: plugin catalog and componentized manager extensions provide a foundation for broader ecosystem support.
-- **Terminal and command logs**: integrated terminal, command history, clickable log entries, expandable details, and automatic terminal hiding when terminal and logs are both collapsed.
-- **Localization**: English and Simplified Chinese UI text, Ant Design locale support, Electron menu localization, and first-run language selection.
-- **Ant Design 6 compatibility**: updated UI props for current Ant Design APIs.
-
-### Manager Capabilities
-
-#### npm
-
-- Search npm packages and inspect metadata, versions, README/changelog links, dependents, and package size.
-- Manage project dependencies and global packages.
-- Install, uninstall, update, batch update, and move dependencies between production and development scopes.
-- Run project scripts and open project terminals.
-- View project/global dependency trees.
-- Run `npm audit` and audit fixes.
-- Manage registry, cache, login, npm config, and published package metadata.
-
-#### pip
-
-- List, install, uninstall, update, and batch update packages in the current Python environment or user scope.
-- Search PyPI packages with dynamic suggestions.
-- Read, install, and export `requirements.txt`.
-- Run `pip check`, dependency self-repair, `pip-audit`, and `pipdeptree`.
-- Manage pip config scopes, cache, mirrors, custom index URLs, trusted hosts, and publishing credentials.
-- Publish Python packages after optional build steps.
-
-#### Maven
-
-- Detect `pom.xml`, list dependencies, and show structured dependency trees.
-- Add/remove dependencies with groupId/artifactId suggestions from the current project, local `.m2`, and Maven Central.
-- Load available versions and switch dependency versions.
-- Run common or custom Maven goals.
-- Manage local repository location, mirrors, `settings.xml` backups, server credentials, and deploy repositories.
-- Prepare offline dependencies, purge local repository cache, and run OWASP dependency-check audits.
-
-#### Cargo
-
-- Detect Rust projects through `Cargo.toml`.
-- List runtime and development crates.
-- Search crates.io and add/update/remove crate dependencies.
-- Load crate versions and switch dependency versions.
-- Run Cargo commands, show dependency trees, and run security audit workflows when available.
-
-#### Gradle
-
-- Detect Gradle build files and list dependencies by configuration.
-- Search Maven Central compatible dependencies for Gradle usage.
-- Add/update/remove Gradle dependencies and switch versions.
-- Run Gradle tasks and custom arguments.
-- Show dependency trees and dependency insight output.
-
-#### Go
-
-- Detect Go modules through `go.mod`.
-- List direct and indirect modules.
-- Search Go/GitHub modules, add/update/remove modules, and switch module versions.
-- Run `go mod tidy`, custom Go commands, and module graph workflows.
-- Run vulnerability checks when `govulncheck` is available.
-
-#### Plugin Components
-
-- Manage componentized manager extensions from a plugin catalog.
-- Provide a shared surface for install, command execution, status, output, and manager-specific actions.
-- Prepare the app for additional ecosystems beyond the built-in managers.
+The registry also contains planned entries for pnpm, Yarn, Bun, Deno, uv, Poetry, Conda, NuGet, Composer, Docker, Helm, Terraform, Ansible, CI managers, Bazel, Homebrew, Scoop, winget, and more. Planned entries are roadmap metadata, not a claim of full read/write support in this release.
 
 ### Screenshots
 
-The repository includes historical screenshots that can be updated as the UI evolves:
+![Project dependencies](image-1.png)
+![Dependency tree](image.png)
+![Release checks](image-4.png)
+![Registry configuration](image-6.png)
 
-![Package management](image-1.png)
-![Dependency analysis](image.png)
-![Publishing](image-4.png)
-![Settings](image-6.png)
+### Performance notes
 
-### Tech Stack
+The application improves workflow latency by detecting a project once, reusing manager context, and lazy-loading feature pages. Package resolution and download speed still come from the underlying ecosystem tool, network, and cache. Use the reproducible commands above to collect build, artifact-size, and dependency-count baselines; the table is a workflow comparison, not a synthetic claim that every ecosystem is faster.
 
-- **Desktop**: Electron 42
-- **Frontend**: React 19 + TypeScript 6
-- **UI**: Ant Design 6 + CSS Modules
-- **State**: Zustand 5
-- **Build**: Vite 8 + vite-plugin-electron
-- **Packaging**: electron-builder 26
+### Quick start
 
-### Installation & Development
+Download the latest installer or portable artifact from [GitHub Releases](https://github.com/yixunfei/npmDesktopManager/releases). For source development:
 
-```bash
+\`\`\`bash
 git clone https://github.com/yixunfei/npmDesktopManager.git
 cd npmDesktopManager
 npm install
 npm run dev
-```
+\`\`\`
 
-Optional icon generation:
+Build the current platform with \`npm run dist\`. Run \`npm run build\` and the \`verify:*\` scripts before opening a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) and [LICENSE](LICENSE).
 
-```bash
-npm run build:icons
-```
 
-### Build
-
-```bash
-# Production build and package for the current platform
-npm run dist
-
-# Windows
-npm run build:win
-npm run build:win-installer
-npm run build:win-portable
-
-# macOS
-npm run build:mac
-npm run build:mac-dmg
-npm run build:mac-zip
-
-# Linux
-npm run build:linux
-npm run build:linux-appimage
-npm run build:linux-deb
-
-# All configured platforms
-npm run build:all
-```
-
-### Project Structure
-
-```text
-npmDesktopManager/
-├─ build/                 # electron-builder resources and NSIS customization
-├─ electron/              # Electron main process and backend services
-│  ├─ main.ts             # Main process entry, IPC, window, menu, language bootstrap
-│  ├─ preload.ts          # Secure renderer bridge
-│  └─ services/           # npm, pip, Maven, Cargo, Gradle, Go, plugin, system, terminal, publish, toolchain services
-├─ src/                   # React renderer
-│  ├─ components/         # Layout, localization, package, manager switch, project path, toolchain UI
-│  ├─ pages/              # Manager pages, search, plugins, global, publish, settings, tool versions
-│  ├─ stores/             # Zustand state
-│  ├─ styles/             # Global styles
-│  ├─ types/              # Renderer global types
-│  └─ i18n.ts             # UI dictionaries and runtime text localization
-├─ scripts/               # Build, release, and icon scripts
-├─ dist/                  # Renderer build output
-├─ dist-electron/         # Electron build output
-└─ release/               # Packaged application output
-```
-
-### Troubleshooting
-
-- **Tool version unavailable**: check the global or project tool path in Tool Versions.
-- **Windows command output is garbled**: command output is decoded with UTF-8/GB18030 scoring. Configure terminals and package managers to UTF-8 when possible.
-- **pip audit tools are missing**: use the pip manager's audit/self-repair actions to install or repair `pip-audit` and `pipdeptree`.
-- **Cargo audit is unavailable**: install `cargo-audit` in the Rust toolchain and retry the audit action.
-- **Go vulnerability checking is unavailable**: install `govulncheck` and ensure it is available on PATH or in the configured Go environment.
-- **Maven/Gradle search is slow**: local repository scanning depends on repository size. Remote results are merged with local and project dependencies.
-
-### Contributing
-
-Issues and pull requests are welcome.
-
-1. Fork this repository.
-2. Create a feature branch.
-3. Run `npm run build` before submitting.
-4. Open a pull request with a clear summary and verification notes.
-
-### License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
-
----
-
-## 中文
-
-### 简介
-
-npmDesktopManager 正在从桌面 npm 管理器扩展为面向全栈、多语言、多场景的依赖与插件管理系统。当前已支持 npm、pip、Maven、Cargo、Gradle、Go 六类生态，覆盖 JavaScript、Python、JVM、Rust 与 Go 项目的常见依赖管理工作流。
-
-应用重点提供项目依赖管理、全局工具链配置、包搜索、发布与发布前准备、安全审计、依赖树/模块图、终端与日志管理，以及组件化插件管理能力。
-
-### 核心特性
-
-- **六类管理器**：npm、pip、Maven、Cargo、Gradle、Go 均作为一级管理模块提供。
-- **统一快速切换**：各管理页使用一致的页签切换行为，可在 npm、pip、Maven、Cargo、Gradle、Go 之间快速跳转。
-- **全局搜索扩展**：搜索页支持 npm、PyPI、Maven、crates.io、Gradle/Maven Central、Go/GitHub 模块搜索。
-- **项目与全局分层**：项目依赖、全局环境、工具链路径分开管理，减少不同项目之间互相影响。
-- **工具链管理**：支持为 npm、pip/Python、Maven、Cargo、Gradle、Go 配置全局路径与项目级覆盖。
-- **插件组件化**：插件目录与组件化管理页为更多生态扩展提供基础。
-- **终端与日志体验**：集成交互式终端、命令历史、可点击日志条目、自动展开详情，以及终端和日志都折叠时自动隐藏面板。
-- **多语言文本**：支持英文与简体中文界面、Ant Design 组件语言、Electron 菜单本地化和首次启动语言选择。
-- **Ant Design 6 兼容**：已更新为当前 Ant Design 6 推荐 API。
-
-### 管理能力
-
-#### npm
-
-- 搜索 npm 包并查看详情、版本、README/变更入口、被依赖数量和包体积。
-- 管理项目依赖与全局包。
-- 安装、卸载、更新、批量更新，以及在生产依赖和开发依赖之间移动。
-- 运行项目脚本并打开项目终端。
-- 查看项目/全局依赖树。
-- 执行 `npm audit` 和自动修复。
-- 管理 registry、缓存、登录、npm config 和已发布包信息。
-
-#### pip
-
-- 在当前 Python 环境或用户范围列出、安装、卸载、升级和批量升级包。
-- 搜索 PyPI 包并显示动态建议。
-- 读取、安装和导出 `requirements.txt`。
-- 执行 `pip check`、依赖自修复、`pip-audit` 和 `pipdeptree`。
-- 管理 pip 配置作用域、缓存、镜像源、自定义 index URL、trusted host 和发布凭据。
-- 支持构建后发布 Python 包。
-
-#### Maven
-
-- 识别 `pom.xml`，列出依赖并结构化展示依赖树。
-- 基于当前项目、本地 `.m2` 仓库和 Maven Central 提供 groupId/artifactId 建议。
-- 获取可用版本并切换依赖版本。
-- 执行常用或自定义 Maven goal。
-- 管理本地仓库、镜像、`settings.xml` 备份、server 凭据和 deploy 仓库。
-- 支持离线依赖准备、本地仓库缓存清理和 OWASP dependency-check 安全审计。
-
-#### Cargo
-
-- 通过 `Cargo.toml` 识别 Rust 项目。
-- 列出运行时与开发 crates。
-- 搜索 crates.io，添加、更新、移除 crate 依赖。
-- 加载 crate 版本并切换依赖版本。
-- 运行 Cargo 命令、查看依赖树，并在工具可用时执行安全审计。
-
-#### Gradle
-
-- 识别 Gradle 构建文件，并按 configuration 列出依赖。
-- 搜索 Maven Central 兼容依赖，用于 Gradle 项目。
-- 添加、更新、移除 Gradle 依赖并切换版本。
-- 运行 Gradle task 或自定义参数。
-- 查看依赖树与 dependency insight 输出。
-
-#### Go
-
-- 通过 `go.mod` 识别 Go module。
-- 列出直接与间接模块。
-- 搜索 Go/GitHub 模块，添加、更新、移除模块并切换版本。
-- 运行 `go mod tidy`、自定义 Go 命令和模块图工作流。
-- 在 `govulncheck` 可用时执行漏洞检查。
-
-#### 插件组件
-
-- 基于插件目录管理组件化管理器扩展。
-- 提供安装、命令执行、状态、输出和管理器专属动作的统一界面。
-- 为内置管理器之外的更多生态扩展预留能力。
-
-### 截图
-
-仓库中保留了历史截图，可随着 UI 演进继续更新：
-
-![包管理](image-1.png)
-![依赖分析](image.png)
-![发布](image-4.png)
-![设置](image-6.png)
-
-### 技术栈
-
-- **桌面**：Electron 42
-- **前端**：React 19 + TypeScript 6
-- **UI**：Ant Design 6 + CSS Modules
-- **状态管理**：Zustand 5
-- **构建**：Vite 8 + vite-plugin-electron
-- **打包**：electron-builder 26
-
-### 安装与开发
-
-```bash
-git clone https://github.com/yixunfei/npmDesktopManager.git
-cd npmDesktopManager
-npm install
-npm run dev
-```
-
-可选图标生成：
-
-```bash
-npm run build:icons
-```
-
-### 构建
-
-```bash
-# 当前平台生产构建并打包
-npm run dist
-
-# Windows
-npm run build:win
-npm run build:win-installer
-npm run build:win-portable
-
-# macOS
-npm run build:mac
-npm run build:mac-dmg
-npm run build:mac-zip
-
-# Linux
-npm run build:linux
-npm run build:linux-appimage
-npm run build:linux-deb
-
-# 所有配置平台
-npm run build:all
-```
-
-### 项目结构
-
-```text
-npmDesktopManager/
-├─ build/                 # electron-builder 资源与 NSIS 自定义脚本
-├─ electron/              # Electron 主进程与后端服务
-│  ├─ main.ts             # 主进程入口、IPC、窗口、菜单和语言初始化
-│  ├─ preload.ts          # 安全的渲染进程桥接
-│  └─ services/           # npm、pip、Maven、Cargo、Gradle、Go、插件、系统、终端、发布、工具链服务
-├─ src/                   # React 渲染进程
-│  ├─ components/         # 布局、本地化、包管理、管理器切换、项目路径、工具链组件
-│  ├─ pages/              # 管理页、搜索、插件、全局、发布、设置、工具版本页面
-│  ├─ stores/             # Zustand 状态
-│  ├─ styles/             # 全局样式
-│  ├─ types/              # 渲染进程类型
-│  └─ i18n.ts             # 词典和运行时文本本地化
-├─ scripts/               # 构建、发布和图标脚本
-├─ dist/                  # 渲染进程构建产物
-├─ dist-electron/         # Electron 构建产物
-└─ release/               # 应用打包输出
-```
-
-### 常见问题
-
-- **工具版本不可用**：检查“工具版本”中的全局路径或项目级路径。
-- **Windows 命令输出乱码**：程序会识别 UTF-8/GB18030 输出。建议终端和包管理器尽量配置为 UTF-8。
-- **pip 审计工具缺失**：使用 pip 管理中的审计或自修复功能安装/修复 `pip-audit` 和 `pipdeptree`。
-- **Cargo 审计不可用**：安装 `cargo-audit` 后重试安全审计。
-- **Go 漏洞检查不可用**：安装 `govulncheck`，并确保它在 PATH 或配置的 Go 环境中可用。
-- **Maven/Gradle 搜索较慢**：本地仓库扫描速度取决于仓库体积；远程结果会与本地和项目依赖合并。
-
-### 贡献
-
-欢迎提交 Issue 和 Pull Request。
-
-1. Fork 本仓库。
-2. 创建功能分支。
-3. 提交前运行 `npm run build`。
-4. 在 Pull Request 中说明变更内容和验证方式。
-
-### 许可证
-
-本项目使用 MIT 许可证，详见 [LICENSE](LICENSE)。

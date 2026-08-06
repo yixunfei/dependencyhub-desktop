@@ -1,0 +1,124 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px !important;
+  color: var(--text-color, #cccccc) !important;
+}
+
+.subtitle {
+  max-width: 860px;
+  margin-bottom: 0 !important;
+  color: var(--text-secondary, #999);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.metric,
+.panel {
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 8px;
+}
+
+.metric {
+  min-height: 86px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+}
+
+.workspace {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  gap: 16px;
+}
+
+.panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+}
+
+.managerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.planGrid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(160px, 1fr);
+  gap: 8px 12px;
+}
+
+.planResult,
+.quickCommands {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.commandPreview,
+.output {
+  overflow: auto;
+  padding: 10px 12px;
+  margin: 0;
+  color: var(--text-color, #cccccc);
+  background: var(--bg-primary, #1f1f1f);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+.output {
+  max-height: 280px;
+}
+
+@media (max-width: 1120px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .planGrid {
+    grid-template-columns: 1fr;
+  }
+}

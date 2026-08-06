@@ -1,0 +1,194 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.title {
+  margin: 0;
+  color: var(--text-color, #cccccc);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.subtitle {
+  max-width: 760px;
+  margin-top: 6px;
+  color: var(--text-secondary, #999);
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.metric,
+.surface {
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 8px;
+}
+
+.metric {
+  min-width: 0;
+  padding: 12px;
+}
+
+.metricLabel {
+  display: block;
+  color: var(--text-secondary, #999);
+  font-size: 12px;
+}
+
+.metricValue {
+  display: block;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--text-color, #cccccc);
+  font-size: 18px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: 16px;
+}
+
+.surface {
+  min-width: 0;
+  padding: 16px;
+  overflow: auto;
+}
+
+.sideStack {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.scopeRow,
+.surfaceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.scopeRow {
+  margin-bottom: 12px;
+}
+
+.surfaceHeader {
+  margin-bottom: 12px;
+}
+
+.inlineTools {
+  justify-content: flex-end;
+}
+
+.metaText {
+  max-width: 520px;
+  overflow: hidden;
+  color: var(--text-secondary, #999);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.scopeSelect {
+  width: 96px;
+}
+
+.linkButton {
+  padding: 0;
+}
+
+.warningIcon {
+  color: #faad14;
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+.output {
+  max-height: 520px;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--bg-tertiary, #1e1e1e);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.requirements {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.requirementTag {
+  margin-bottom: 8px;
+}
+
+.versions {
+  display: flex;
+  max-height: 360px;
+  gap: 8px;
+  flex-wrap: wrap;
+  overflow: auto;
+}
+
+.versionTag {
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+@media (max-width: 1180px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .actions {
+    justify-content: flex-start;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}

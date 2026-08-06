@@ -1,0 +1,257 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.title {
+  margin-bottom: 8px !important;
+  color: var(--text-color, #cccccc) !important;
+}
+
+.subtitle {
+  color: var(--text-secondary, #999);
+  margin-bottom: 0 !important;
+}
+
+.pathInfo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 520px;
+}
+
+.pathLabel {
+  color: var(--text-secondary, #999);
+  white-space: nowrap;
+}
+
+.pathValue {
+  max-width: 360px;
+  overflow: hidden;
+  color: var(--primary-color, #1890ff);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.metricCard {
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 8px;
+}
+
+.metricCard h3 {
+  margin: 8px 0 0 !important;
+}
+
+.toolbar {
+  display: grid;
+  align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.toolGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 8px;
+}
+
+.toolGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  color: var(--text-secondary, #999);
+}
+
+.toolGroupTitle {
+  color: var(--text-secondary, #999);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.toolGroupActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toolGroupActions :global(.ant-btn) {
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+  white-space: normal;
+}
+
+.sectionNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 8px;
+}
+
+.sectionNavTitle {
+  color: var(--text-secondary, #999);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sectionNavLinks {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sectionNavLinks a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 8px;
+  color: var(--text-color, #cccccc);
+  line-height: 20px;
+  text-decoration: none;
+  background: var(--bg-primary, #1f1f1f);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 6px;
+}
+
+.sectionNavLinks a:hover {
+  color: var(--primary-color, #1890ff);
+  border-color: var(--primary-color, #1890ff);
+}
+
+.workflowSection {
+  scroll-margin-top: 16px;
+}
+
+.workflowSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-left: 3px solid var(--primary-color, #1890ff);
+  border-radius: 8px;
+}
+
+.workflowSectionTitle {
+  color: var(--text-color, #cccccc);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.workflowSectionMeta {
+  min-width: 0;
+  text-align: right;
+}
+
+.policyPanel,
+.readinessPanel,
+.riskPanel,
+.snapshotPanel,
+.historyPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3c3c3c);
+  border-radius: 8px;
+}
+
+.policyHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.historyControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.historyCommand {
+  max-width: 100%;
+}
+
+.readinessSummary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--text-secondary, #999);
+}
+
+@media (max-width: 980px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .policyHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sectionNav,
+  .workflowSectionHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sectionNavLinks {
+    justify-content: flex-start;
+  }
+
+  .workflowSectionMeta {
+    text-align: left;
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

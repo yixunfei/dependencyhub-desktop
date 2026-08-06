@@ -19,8 +19,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm 9+
+- Node.js 22+
+- npm 10+
 - Git
 - ImageMagick (for icon generation, optional)
 
