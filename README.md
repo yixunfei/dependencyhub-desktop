@@ -75,6 +75,10 @@ DependencyHub Desktop 已从最初的 npm 依赖小工具升级为**项目依赖
 
 以下截图来自项目实际运行界面，分别展示项目依赖、依赖树、发布检查和 Registry 配置；本地路径和凭据字段已脱敏。
 
+![DependencyHub Desktop 首次启动与统一工作区](dependencyhub-desktop.png)
+
+*DependencyHub Desktop 1.0.2：首次启动语言选择与多生态统一工作区。*
+
 ![项目依赖列表](image-1.png)
 
 *项目依赖列表：批量安装、更新、审计和依赖树入口集中在同一工作区。*
