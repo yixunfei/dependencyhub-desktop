@@ -20,12 +20,14 @@ const config: ExtendedManagerWorkspaceConfig = {
   ],
   quickCommands: {
     pnpm: ['install', 'outdated', 'audit', 'list --depth 0'],
-    yarn: ['install', 'outdated', 'npm audit', 'list'],
+    yarn: ['install', '--version'],
     bun: ['install', 'outdated', 'pm ls', 'audit']
   },
   packagePlaceholder: 'react, vite, @scope/pkg',
   versionPlaceholder: 'latest, 1.2.3, ^2.0.0',
-  commandPlaceholder: (managerId) => `${managerId} install --frozen-lockfile`,
+  commandPlaceholder: (managerId) => managerId === 'yarn'
+    ? 'yarn install --immutable'
+    : `${managerId} install --frozen-lockfile`,
   riskDescription: 'Review the dependency risk diff before running mutating package-manager commands or publishing this workspace.',
   restoreSuccessMessage: 'Node manager backup restored',
   overviewErrorMessage: 'Failed to load Node manager overview',

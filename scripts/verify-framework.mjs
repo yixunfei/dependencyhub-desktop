@@ -1037,7 +1037,7 @@ async function main() {
   assert(['opam', 'cpan', 'luarocks', 'shards', 'zig'].every((id) => systemsWorkspaceSource.includes(id)), 'Systems manager workspace covers OCaml/opam, Perl/CPAN, LuaRocks, Crystal Shards, and Zig')
   assert(['homebrew', 'chocolatey', 'scoop', 'winget', 'asdf', 'mise', 'sdkman', 'apt', 'dnf', 'apk', 'pacman', 'nix'].every((id) => runtimeWorkspaceSource.includes(id)), 'Runtime manager workspace covers Homebrew, Chocolatey, Scoop, winget, asdf, mise, SDKMAN, Linux package managers, and Nix')
   assert([nodeWorkspaceSource, pythonWorkspaceSource, backendWorkspaceSource, cloudWorkspaceSource, platformWorkspaceSource, polyglotWorkspaceSource, dataWorkspaceSource, infraWorkspaceSource, automationWorkspaceSource, buildWorkspaceSource, systemsWorkspaceSource, runtimeWorkspaceSource].every((source) => source.includes('ExtendedManagerWorkspace') && source.includes('config')), 'extended ecosystem pages are config wrappers around the shared workspace component')
-  assert(extendedWorkspaceSource.includes('ExtendedManagerWorkspaceConfig') && extendedWorkspaceSource.includes('window.electronAPI.extended.plan') && extendedWorkspaceSource.includes('restoreBackup'), 'shared extended workspace owns operation planning, execution, and backup restore UI')
+  assert(extendedWorkspaceSource.includes('ExtendedManagerWorkspaceConfig') && extendedWorkspaceSource.includes('window.electronAPI.managers.plan') && extendedWorkspaceSource.includes('window.electronAPI.managers.execute') && extendedWorkspaceSource.includes('restoreBackup'), 'shared extended workspace owns structured operation planning, execution, and backup restore UI')
   assert(mainProcessSource.includes('WorkspaceDiscoveryService') && preloadSource.includes('workspaceDiscovery'), 'Electron IPC exposes workspace discovery reports and exports')
   assert(mainProcessSource.includes('WorkspaceGovernanceService') && preloadSource.includes('workspaceGovernance'), 'Electron IPC exposes workspace governance reports and exports')
   assert(mainProcessSource.includes('export-evidence-markdown') && preloadSource.includes('exportEvidenceMarkdown'), 'Electron IPC exposes workspace release evidence exports')
@@ -1676,6 +1676,13 @@ async function main() {
     assert(Boolean(webSpdxArtifact), 'workspace batch SPDX export includes child workspace artifacts')
     const webSpdx = JSON.parse(await readFile(webSpdxArtifact.path, 'utf-8'))
     assert(webSpdx.spdxVersion === 'SPDX-2.3' && webSpdx.packages.some((pkg) => pkg.name === 'react'), 'workspace batch SPDX artifact contains workspace dependency packages')
+    const recursiveRootPolicyEvaluation = await governancePolicy.evaluatePolicy(cwd)
+    assert(recursiveRootPolicyEvaluation.violations.some((violation) => violation.title === 'Package is blocked' && violation.packageName === 'antd'), 'root dependency policy evaluates packages declared by nested Node workspaces')
+    const { policy: dependencyPolicyBeforeCiException } = await governancePolicy.getPolicy(cwd)
+    await governancePolicy.savePolicy(cwd, {
+      ...dependencyPolicyBeforeCiException,
+      blockedPackages: []
+    })
     await governanceCiEvidence.record(cwd, {
       source: 'manual',
       provider: 'release-ci',
@@ -1699,7 +1706,16 @@ async function main() {
       ticket: 'RISK-123'
     })
     const exceptionedRootReadiness = await governanceReadiness.report(cwd)
-    assert(exceptionedRootReadiness.status !== 'blocked' && exceptionedRootReadiness.summary.activeReleaseExceptionCount >= 1 && exceptionedRootReadiness.summary.exceptionedCheckCount === 1, 'active release exceptions can unblock reviewed readiness findings without using publish override')
+    const exceptionedBlockedChecks = exceptionedRootReadiness.checks
+      .filter((check) => check.status === 'blocked')
+      .map((check) => check.id)
+    assert(
+      exceptionedRootReadiness.status !== 'blocked' && exceptionedRootReadiness.summary.activeReleaseExceptionCount >= 1 && exceptionedRootReadiness.summary.exceptionedCheckCount === 1,
+      'active release exceptions can unblock reviewed readiness findings without using publish override (blocked: '
+        + (exceptionedBlockedChecks.join(', ') || 'none')
+        + '; active exceptions: ' + exceptionedRootReadiness.summary.activeReleaseExceptionCount
+        + '; exceptioned checks: ' + exceptionedRootReadiness.summary.exceptionedCheckCount + ')'
+    )
     assert(exceptionedRootReadiness.checks.some((check) => check.id === 'ci-evidence' && check.status === 'info' && check.summary.includes('Release exception accepted')), 'readiness gate annotates exceptioned checks with original evidence')
     const exportedReleaseExceptions = await governanceReleaseExceptions.exportMarkdown(cwd)
     const releaseExceptionMarkdown = await readFile(exportedReleaseExceptions.path, 'utf-8')
@@ -1929,7 +1945,7 @@ async function main() {
     assert(nugetDeps.some((dep) => dep.name === 'Newtonsoft.Json' && dep.version === '13.0.3'), 'extended nuget parser reads project package references')
 
     const bundlerDeps = await extended.list(cwd, 'bundler')
-    assert(bundlerDeps.some((dep) => dep.name === 'rack' && dep.version === '~> 3.0'), 'extended bundler parser reads Gemfile dependencies')
+    assert(bundlerDeps.some((dep) => dep.name === 'rack' && dep.version === '3.0.8' && dep.requestedVersion === '~> 3.0'), 'extended Bundler inventory merges Gemfile constraints with lockfile resolutions')
 
     const dockerDeps = await extended.list(cwd, 'docker')
     assert(dockerDeps.some((dep) => dep.name === 'node' && dep.version === '22-alpine'), 'extended docker parser reads Dockerfile base images')
@@ -2799,6 +2815,9 @@ try {
     format: 'esm',
     target: 'node20',
     logLevel: 'silent',
+    banner: {
+      js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
+    },
     plugins: [
       {
         name: 'framework-verifier-stubs',

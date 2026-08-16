@@ -1,3 +1,17 @@
+import type {
+  ManagerCommandResult,
+  ManagerDependency,
+  ManagerDescriptor,
+  ManagerDetection,
+  ManagerExecuteOptions,
+  ManagerHealthReport,
+  ManagerOperationPlan,
+  ManagerOperationRequest,
+  ManagerRestoreResult,
+  ManagerSearchQuery,
+  ManagerSearchResult
+} from '../../shared/managerWorkspace'
+
 declare global {
   interface Window {
     electronAPI: {
@@ -182,12 +196,16 @@ declare global {
         build: (cwd: string, buildDir?: string) => Promise<string>
       }
 
-      extended: {
-        detected: (cwd: string) => Promise<ExtendedManagerDetection[]>
-        list: (cwd: string, managerId: DependencyManagerId) => Promise<ExtendedDependencyInfo[]>
-        plan: (cwd: string, managerId: DependencyManagerId, request: ExtendedManagerOperationRequest) => Promise<ExtendedManagerOperationPlan>
-        run: (cwd: string, managerId: DependencyManagerId, commandLine: string) => Promise<ExtendedManagerCommandResult>
-        restoreBackup: (cwd: string, backupPath: string) => Promise<ExtendedManagerRestoreResult>
+      managers: {
+        descriptors: () => Promise<ManagerDescriptor[]>
+        detected: (cwd: string) => Promise<ManagerDetection[]>
+        inventory: (cwd: string, managerId: DependencyManagerId) => Promise<ManagerDependency[]>
+        plan: (cwd: string, managerId: DependencyManagerId, request: ManagerOperationRequest) => Promise<ManagerOperationPlan>
+        execute: (cwd: string, managerId: DependencyManagerId, request: ManagerOperationRequest, options?: ManagerExecuteOptions) => Promise<ManagerCommandResult>
+        runCustom: (cwd: string, managerId: DependencyManagerId, commandLine: string) => Promise<ManagerCommandResult>
+        search: (cwd: string | undefined, managerId: DependencyManagerId, query: ManagerSearchQuery) => Promise<ManagerSearchResult[]>
+        health: (cwd: string, managerId: DependencyManagerId) => Promise<ManagerHealthReport>
+        restoreBackup: (cwd: string, backupPath: string) => Promise<ManagerRestoreResult>
       }
 
       supplyChain: {
@@ -1357,90 +1375,6 @@ declare global {
     cwd: string
     tool: 'cmake' | 'vcpkg' | 'conan'
     commandLine: string
-  }
-
-  interface ExtendedManagerDetection {
-    id: DependencyManagerId
-    name: string
-    language: string
-    packageManager: string
-    implemented: boolean
-    detected: boolean
-    files: string[]
-    tools: readonly string[]
-    route?: string
-  }
-
-  interface ExtendedDependencyInfo {
-    managerId: DependencyManagerId
-    name: string
-    version?: string
-    type: string
-    source?: string
-    file: string
-  }
-
-  type ExtendedManagerOperation =
-    | 'sync'
-    | 'install'
-    | 'remove'
-    | 'update'
-    | 'outdated'
-    | 'audit'
-    | 'tree'
-    | 'list'
-    | 'lock'
-
-  interface ExtendedManagerOperationRequest {
-    operation: ExtendedManagerOperation
-    packageName?: string
-    version?: string
-    dev?: boolean
-  }
-
-  interface ExtendedManagerOperationPlan {
-    managerId: DependencyManagerId
-    managerName: string
-    operation: ExtendedManagerOperation
-    tool: ToolName
-    command: string
-    args: string[]
-    mutating: boolean
-    dryRunSupported: boolean
-    dryRunCommand?: string
-    backupFiles: ExtendedManagerBackupFile[]
-    warnings: string[]
-    requirements: string[]
-    generatedAt: string
-  }
-
-  interface ExtendedManagerCommandResult {
-    command: string
-    stdout: string
-    stderr: string
-    backup?: ExtendedManagerBackup
-  }
-
-  interface ExtendedManagerBackupFile {
-    file: string
-    hash: string
-    size: number
-  }
-
-  interface ExtendedManagerBackup {
-    id: string
-    managerId: DependencyManagerId
-    projectPath: string
-    createdAt: string
-    mutating: boolean
-    path: string
-    files: ExtendedManagerBackupFile[]
-  }
-
-  interface ExtendedManagerRestoreResult {
-    backupPath: string
-    restoredCount: number
-    restoredFiles: string[]
   }
 
   interface SupplyChainComponent {

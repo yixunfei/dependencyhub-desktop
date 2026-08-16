@@ -325,12 +325,28 @@ const FLOATING_VERSION_LABELS = new Set([
   'stable'
 ])
 
+const SPECIALIZED_INVENTORY_MANAGER_IDS = new Set<DependencyManagerId>([
+  'pnpm',
+  'yarn',
+  'bun',
+  'uv',
+  'poetry',
+  'pipenv',
+  'conda',
+  'nuget',
+  'composer',
+  'bundler'
+])
+
 export class SupplyChainService {
   private extendedManager = new ExtendedManagerService()
 
   async report(cwd: string): Promise<SupplyChainReport> {
-    const managerReports = await Promise.all(MANAGER_DEFINITIONS.map(async (manager) => {
-      const files = await existingPatternMatches(cwd, getManagerDetectionFiles(manager))
+    const detectedFiles = await Promise.all(MANAGER_DEFINITIONS.map((manager) => (
+      existingPatternMatches(cwd, getManagerDetectionFiles(manager))
+    )))
+    const managerReports = await Promise.all(MANAGER_DEFINITIONS.map(async (manager, index) => {
+      const files = detectedFiles[index]
       const manifestComponents = manager.implemented
         ? await this.parseImplementedManager(cwd, manager.id)
         : await this.extendedManager.list(cwd, manager.id)
@@ -345,7 +361,9 @@ export class SupplyChainService {
               license: undefined
             } satisfies SupplyChainComponent)))
             .catch(() => [])
-      const lockComponents = await parseLockfileComponents(cwd, manager.id, manager.ecosystem)
+      const lockComponents = SPECIALIZED_INVENTORY_MANAGER_IDS.has(manager.id)
+        ? []
+        : await parseLockfileComponents(cwd, manager.id, manager.ecosystem)
       const components = uniqueComponents([...manifestComponents, ...lockComponents])
 
       return {

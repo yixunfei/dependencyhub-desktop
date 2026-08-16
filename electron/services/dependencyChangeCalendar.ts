@@ -340,7 +340,8 @@ function buildWindows(
   generatedAt: string,
   packet: DependencyChangeApprovalPacketReport | undefined
 ): DependencyChangeCalendarWindow[] {
-  return (packet?.scope || []).map((scope, index) => {
+  if (!packet) return []
+  return packet.scope.map((scope, index) => {
     const kind = windowKind(scope)
     const status = windowStatus(scope, packet)
     const startAt = status === 'blocked' || status === 'frozen'

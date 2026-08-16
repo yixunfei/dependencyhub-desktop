@@ -12,7 +12,7 @@ import { GradleService } from './services/gradle'
 import { GoService } from './services/go'
 import { FlutterService } from './services/flutter'
 import { NativeService } from './services/native'
-import { ExtendedManagerService } from './services/extendedManager'
+import { ManagerWorkspaceService } from './services/managerWorkspace'
 import { SupplyChainService } from './services/supplyChain'
 import { ThirdPartyNoticesService } from './services/thirdPartyNotices'
 import { ReadinessGateService } from './services/readinessGate'
@@ -56,6 +56,12 @@ import { credentialVaultService, type CredentialInput } from './services/credent
 import { TerminalService, setTerminalWindow } from './services/terminal'
 import { checkTools, openToolDownload, setToolPath, clearToolPath, getProjectToolchainConfig, checkTool, TOOL_NAMES } from './services/toolchain'
 import { fileWatcher } from './services/watcher'
+import type { DependencyManagerId } from '../shared/managerRegistry'
+import type {
+  ManagerExecuteOptions,
+  ManagerOperationRequest,
+  ManagerSearchQuery
+} from '../shared/managerWorkspace'
 
 const mainDir = __dirname
 type AppLanguage = 'zh-CN' | 'en-US'
@@ -129,7 +135,7 @@ const gradleService = new GradleService()
 const goService = new GoService()
 const flutterService = new FlutterService()
 const nativeService = new NativeService()
-const extendedManagerService = new ExtendedManagerService()
+const managerWorkspaceService = new ManagerWorkspaceService()
 const supplyChainService = new SupplyChainService()
 const thirdPartyNoticesService = new ThirdPartyNoticesService({
   supplyChainService
@@ -1217,24 +1223,67 @@ function setupIpcHandlers() {
     return await withProjectSnapshot(cwd, 'native build', () => nativeService.build(cwd, buildDir))
   })
 
-  ipcMain.handle('extended:detected', async (_, cwd: string) => {
-    return await extendedManagerService.detected(cwd)
+  ipcMain.handle('manager:descriptors', () => {
+    return managerWorkspaceService.descriptors()
   })
 
-  ipcMain.handle('extended:list', async (_, cwd: string, managerId: any) => {
-    return await extendedManagerService.list(cwd, managerId)
+  ipcMain.handle('manager:detected', async (_, cwd: string) => {
+    return await managerWorkspaceService.detected(cwd)
   })
 
-  ipcMain.handle('extended:plan', async (_, cwd: string, managerId: any, request: any) => {
-    return await extendedManagerService.plan(cwd, managerId, request)
+  ipcMain.handle('manager:inventory', async (_, cwd: string, managerId: DependencyManagerId) => {
+    return await managerWorkspaceService.inventory(cwd, managerId)
   })
 
-  ipcMain.handle('extended:run', async (_, cwd: string, managerId: any, commandLine: string) => {
-    return await extendedManagerService.run(cwd, managerId, commandLine)
+  ipcMain.handle('manager:plan', async (
+    _,
+    cwd: string,
+    managerId: DependencyManagerId,
+    request: ManagerOperationRequest
+  ) => {
+    return await managerWorkspaceService.plan(cwd, managerId, request)
   })
 
-  ipcMain.handle('extended:restore-backup', async (_, cwd: string, backupPath: string) => {
-    return await extendedManagerService.restoreBackup(cwd, backupPath)
+  ipcMain.handle('manager:execute', async (
+    _,
+    cwd: string,
+    managerId: DependencyManagerId,
+    request: ManagerOperationRequest,
+    options?: ManagerExecuteOptions
+  ) => {
+    const execute = () => managerWorkspaceService.execute(cwd, managerId, request, options)
+    if (options?.dryRun) return await execute()
+    return await withProjectSnapshot(cwd, `${managerId} ${request.operation}`, execute)
+  })
+
+  ipcMain.handle('manager:run-custom', async (
+    _,
+    cwd: string,
+    managerId: DependencyManagerId,
+    commandLine: string
+  ) => {
+    return await withProjectSnapshot(
+      cwd,
+      `${managerId} custom command`,
+      () => managerWorkspaceService.runCustom(cwd, managerId, commandLine)
+    )
+  })
+
+  ipcMain.handle('manager:search', async (
+    _,
+    cwd: string | undefined,
+    managerId: DependencyManagerId,
+    query: ManagerSearchQuery
+  ) => {
+    return await managerWorkspaceService.search(cwd, managerId, query)
+  })
+
+  ipcMain.handle('manager:health', async (_, cwd: string, managerId: DependencyManagerId) => {
+    return await managerWorkspaceService.health(cwd, managerId)
+  })
+
+  ipcMain.handle('manager:restore-backup', async (_, cwd: string, backupPath: string) => {
+    return await managerWorkspaceService.restoreBackup(cwd, backupPath)
   })
 
   ipcMain.handle('supply-chain:report', async (_, cwd: string) => {

@@ -73,7 +73,7 @@ export class ReleaseApprovalService {
     try {
       const content = await readFile(approvalPath(cwd), 'utf-8')
       const parsed = JSON.parse(content)
-      const records = Array.isArray(parsed?.records) ? parsed.records : Array.isArray(parsed) ? parsed : []
+      const records: unknown[] = Array.isArray(parsed?.records) ? parsed.records : Array.isArray(parsed) ? parsed : []
       return records
         .map((record) => normalizeRecord(record))
         .filter((record): record is ReleaseApprovalRecord => Boolean(record))

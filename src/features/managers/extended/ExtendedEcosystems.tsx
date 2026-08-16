@@ -5,18 +5,25 @@ import ProjectPathBar from '../../../components/ProjectPathBar/ProjectPathBar'
 import { useAppStore } from '../../../stores/appStore'
 import { getManagerDefinition, getPlannedManagerDefinitions, type DependencyManagerId } from '../../../domain/managers/registry'
 import { implementationStatusText, managerColor, managerIcon } from '../../../domain/managers/presentation'
+import type {
+  ManagerBackup,
+  ManagerDependency,
+  ManagerDetection,
+  ManagerOperation,
+  ManagerOperationPlan
+} from '@shared/managerWorkspace'
 import styles from './ExtendedEcosystems.module.css'
 
 const { Paragraph, Text, Title } = Typography
 
 type OperationFormValues = {
-  operation: ExtendedManagerOperation
+  operation: ManagerOperation
   packageName?: string
   version?: string
   dev?: boolean
 }
 
-const OPERATION_OPTIONS: Array<{ value: ExtendedManagerOperation; label: string }> = [
+const OPERATION_OPTIONS: Array<{ value: ManagerOperation; label: string }> = [
   { value: 'sync', label: '同步/安装现有清单' },
   { value: 'install', label: '添加依赖' },
   { value: 'remove', label: '移除依赖' },
@@ -51,16 +58,16 @@ const ExtendedEcosystemsPage: React.FC = () => {
   const setCurrentPath = useAppStore((state) => state.setCurrentPath)
   const addNotification = useAppStore((state) => state.addNotification)
   const managers = useMemo(() => getPlannedManagerDefinitions(), [])
-  const [detections, setDetections] = useState<ExtendedManagerDetection[]>([])
+  const [detections, setDetections] = useState<ManagerDetection[]>([])
   const [activeManager, setActiveManager] = useState<DependencyManagerId>(managers[0]?.id || 'pnpm')
-  const [dependencies, setDependencies] = useState<ExtendedDependencyInfo[]>([])
+  const [dependencies, setDependencies] = useState<ManagerDependency[]>([])
   const [loading, setLoading] = useState(false)
   const [running, setRunning] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [commandOutput, setCommandOutput] = useState('')
-  const [lastBackup, setLastBackup] = useState<ExtendedManagerBackup | null>(null)
-  const [operationPlan, setOperationPlan] = useState<ExtendedManagerOperationPlan | null>(null)
+  const [lastBackup, setLastBackup] = useState<ManagerBackup | null>(null)
+  const [operationPlan, setOperationPlan] = useState<ManagerOperationPlan | null>(null)
   const [commandForm] = Form.useForm<{ commandLine: string }>()
   const [operationForm] = Form.useForm<OperationFormValues>()
 
@@ -99,7 +106,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
 
     setLoading(true)
     try {
-      const result = await window.electronAPI.extended.detected(currentPath)
+      const result = await window.electronAPI.managers.detected(currentPath)
       setDetections(result)
       const firstDetected = result.find((item) => item.detected)
       if (firstDetected) {
@@ -120,7 +127,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
     if (!currentPath) return
     setLoading(true)
     try {
-      setDependencies(await window.electronAPI.extended.list(currentPath, managerId))
+      setDependencies(await window.electronAPI.managers.inventory(currentPath, managerId))
     } catch (error: any) {
       addNotification({
         type: 'error',
@@ -138,7 +145,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
     setRunning(true)
     setCommandOutput('Running...')
     try {
-      const result = await window.electronAPI.extended.run(currentPath, activeManager, commandLine)
+      const result = await window.electronAPI.managers.runCustom(currentPath, activeManager, commandLine)
       if (result.backup) {
         setLastBackup(result.backup)
       }
@@ -169,7 +176,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
     const values = operationForm.getFieldsValue()
     setPlanning(true)
     try {
-      const plan = await window.electronAPI.extended.plan(currentPath, activeManager, {
+      const plan = await window.electronAPI.managers.plan(currentPath, activeManager, {
         operation: values.operation || 'sync',
         packageName: values.packageName,
         version: values.version,
@@ -205,8 +212,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
       return
     }
 
-    const commandLine = dryRun ? operationPlan.dryRunCommand : operationPlan.command
-    if (!commandLine) {
+    if (dryRun && !operationPlan.dryRunSupported) {
       addNotification({
         type: 'warning',
         message: '该操作没有可用 dry-run 命令',
@@ -215,14 +221,37 @@ const ExtendedEcosystemsPage: React.FC = () => {
       return
     }
 
-    await executeCommand(commandLine)
+    if (!currentPath) return
+    setRunning(true)
+    setCommandOutput('Running...')
+    try {
+      const result = await window.electronAPI.managers.execute(
+        currentPath,
+        activeManager,
+        operationPlan.request,
+        { dryRun }
+      )
+      if (result.backup) setLastBackup(result.backup)
+      const backupOutput = result.backup
+        ? `\n\n[backup] ${result.backup.files.length} files saved to ${result.backup.path}`
+        : ''
+      const dryRunOutput = result.dryRun ? '\n\n[dry-run] no project changes were requested' : ''
+      setCommandOutput(`$ ${result.command}\n\n${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}${dryRunOutput}${backupOutput}`)
+      addNotification({ type: 'success', message: result.dryRun ? 'dry-run 完成' : '命令执行完成', description: result.command })
+      await loadDependencies(activeManager)
+    } catch (error: any) {
+      setCommandOutput(error.message || String(error))
+      addNotification({ type: 'error', message: '命令执行失败', description: error.message })
+    } finally {
+      setRunning(false)
+    }
   }
 
   const restoreLastBackup = async () => {
     if (!currentPath || !lastBackup) return
     setRestoring(true)
     try {
-      const result = await window.electronAPI.extended.restoreBackup(currentPath, lastBackup.path)
+      const result = await window.electronAPI.managers.restoreBackup(currentPath, lastBackup.path)
       addNotification({
         type: 'success',
         message: '扩展生态备份已恢复',

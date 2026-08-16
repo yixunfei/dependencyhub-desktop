@@ -67,9 +67,9 @@ DependencyHub Desktop 已从最初的 npm 依赖小工具升级为**项目依赖
 - Windows、macOS、Linux 菜单和界面本地化；简体中文/English 切换；深色/浅色主题。
 - Electron 主进程负责文件、进程和凭据边界，React 渲染层只通过 preload 暴露的最小 API 访问系统能力。
 
-### 扩展路线（规划中）
+### 预览能力与扩展路线
 
-共享管理器注册表已预留 pnpm、Yarn、Bun、Deno、uv、Poetry、Conda、NuGet、Composer、Docker、Helm、Terraform、Ansible、GitHub Actions、Bazel、Homebrew、Scoop、winget 等入口。路线图中的 “planned” 仅表示检测模型和页面骨架已预留，不代表这些管理器在当前版本已经具备完整读写能力。
+pnpm、Yarn、Bun、uv、Poetry、Pipenv、Conda、NuGet、Composer 与 Bundler 已进入 `preview`。Node 组提供工作区/锁文件库存与 npm Registry 搜索；Python 和后端组提供结构化清单及传递依赖解析、PyPI/Anaconda/NuGet/Packagist/RubyGems 搜索、专项健康检查、操作计划、可用时的原生命令 dry-run，以及变更前备份和恢复。共享注册表仍预留 Deno、Docker、Helm、Terraform、Ansible、GitHub Actions、Bazel、Homebrew、Scoop、winget 等入口；`planned` 仅表示检测模型和页面骨架已预留，不代表完整读写能力。
 
 ### 界面演示
 
@@ -209,7 +209,7 @@ DependencyHub Desktop is a cross-platform Electron workspace for project depende
 - **Release governance**: package validation, readiness gates, CI evidence, approvals, exceptions, rollback snapshots, integrity/signature/provenance reports.
 - **Toolchains and UX**: project/global executable paths, English/Simplified Chinese localization, dark/light themes, lazy-loaded routes, and a secure Electron preload boundary.
 
-The registry also contains planned entries for pnpm, Yarn, Bun, Deno, uv, Poetry, Conda, NuGet, Composer, Docker, Helm, Terraform, Ansible, CI managers, Bazel, Homebrew, Scoop, winget, and more. Planned entries are roadmap metadata, not a claim of full read/write support in this release.
+pnpm, Yarn, Bun, uv, Poetry, Pipenv, Conda, NuGet, Composer, and Bundler are available as preview adapters. Node managers provide workspace/lockfile inventory and npm Registry search. Python and backend managers add structured manifest and transitive lock parsing, PyPI/Anaconda/NuGet/Packagist/RubyGems search, manager-specific health diagnostics, operation plans, native dry-runs where supported, and manifest backup/restore. Deno, Docker, Helm, Terraform, Ansible, CI managers, Bazel, Homebrew, Scoop, winget, and other entries remain planned roadmap metadata rather than a claim of full read/write support.
 
 ### Screenshots
 

@@ -1,120 +1,18 @@
-export type ImplementedPackageManagerId =
-  | 'npm'
-  | 'pip'
-  | 'maven'
-  | 'cargo'
-  | 'gradle'
-  | 'go'
-  | 'flutter'
-  | 'native'
+import type {
+  DependencyManagerDefinition,
+  DependencyManagerId,
+  ImplementedPackageManagerId
+} from './managerRegistryTypes'
 
-export type FuturePackageManagerId =
-  | 'pnpm'
-  | 'yarn'
-  | 'bun'
-  | 'deno'
-  | 'uv'
-  | 'poetry'
-  | 'pipenv'
-  | 'conda'
-  | 'renv'
-  | 'julia'
-  | 'nuget'
-  | 'composer'
-  | 'bundler'
-  | 'sbt'
-  | 'leiningen'
-  | 'mix'
-  | 'rebar3'
-  | 'cabal'
-  | 'stack'
-  | 'swiftpm'
-  | 'cocoapods'
-  | 'helm'
-  | 'docker'
-  | 'kustomize'
-  | 'helmfile'
-  | 'skaffold'
-  | 'argocd'
-  | 'flux'
-  | 'terraform'
-  | 'opentofu'
-  | 'ansible'
-  | 'github-actions'
-  | 'gitlab-ci'
-  | 'pre-commit'
-  | 'bazel'
-  | 'pants'
-  | 'buck'
-  | 'opam'
-  | 'cpan'
-  | 'luarocks'
-  | 'shards'
-  | 'zig'
-  | 'homebrew'
-  | 'chocolatey'
-  | 'scoop'
-  | 'winget'
-  | 'asdf'
-  | 'mise'
-  | 'sdkman'
-  | 'apt'
-  | 'dnf'
-  | 'apk'
-  | 'pacman'
-  | 'nix'
-
-export type DependencyManagerId = ImplementedPackageManagerId | FuturePackageManagerId
-
-export type ManagerImplementationStatus = 'stable' | 'preview' | 'planned'
-export type ManagerScope = 'project' | 'environment' | 'global' | 'repository' | 'publish'
-export type ManagerCapability =
-  | 'search'
-  | 'install'
-  | 'uninstall'
-  | 'update'
-  | 'batch-update'
-  | 'version-switch'
-  | 'dependency-tree'
-  | 'health'
-  | 'audit'
-  | 'publish'
-  | 'scripts'
-  | 'tasks'
-  | 'toolchain'
-  | 'registry-config'
-  | 'cache'
-  | 'lockfile'
-  | 'assets'
-  | 'build'
-  | 'sbom'
-  | 'license-policy'
-  | 'container-scan'
-
-export interface DependencyManagerDefinition {
-  id: DependencyManagerId
-  name: string
-  shortName: string
-  language: string
-  ecosystem: string
-  packageManager: string
-  category: string
-  tools: readonly string[]
-  manifestFiles: readonly string[]
-  lockFiles: readonly string[]
-  configFiles?: readonly string[]
-  detectionFiles?: readonly string[]
-  capabilities: readonly ManagerCapability[]
-  scopes: readonly ManagerScope[]
-  scenarios: readonly string[]
-  productionTools: readonly string[]
-  route?: string
-  builtIn: boolean
-  implemented: boolean
-  status: ManagerImplementationStatus
-  searchable: boolean
-  healthSupported: boolean
-}
+export type {
+  DependencyManagerDefinition,
+  DependencyManagerId,
+  FuturePackageManagerId,
+  ImplementedPackageManagerId,
+  ManagerCapability,
+  ManagerImplementationStatus,
+  ManagerScope
+} from './managerRegistryTypes'
 
 export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
   {
@@ -310,16 +208,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     lockFiles: ['pnpm-lock.yaml'],
     detectionFiles: ['pnpm-lock.yaml', 'pnpm-workspace.yaml'],
     configFiles: ['.npmrc'],
-    capabilities: ['install', 'uninstall', 'update', 'batch-update', 'dependency-tree', 'audit', 'scripts', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'batch-update', 'dependency-tree', 'health', 'audit', 'scripts', 'toolchain', 'lockfile'],
     scopes: ['project', 'global', 'repository'],
     scenarios: ['Node.js monorepos', 'workspace-first front-end apps'],
     productionTools: ['workspace catalog review', 'lockfile diff', 'pnpm audit'],
     route: '/node',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'yarn',
@@ -334,16 +232,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     lockFiles: ['yarn.lock'],
     detectionFiles: ['yarn.lock'],
     configFiles: ['.yarnrc', '.yarnrc.yml'],
-    capabilities: ['install', 'uninstall', 'update', 'batch-update', 'dependency-tree', 'audit', 'scripts', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'batch-update', 'dependency-tree', 'health', 'audit', 'scripts', 'toolchain', 'lockfile'],
     scopes: ['project', 'global', 'repository'],
     scenarios: ['front-end apps', 'monorepos', 'Plug and Play workspaces'],
     productionTools: ['Yarn constraints', 'lockfile diff', 'workspace review'],
     route: '/node',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'bun',
@@ -357,16 +255,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     manifestFiles: ['package.json'],
     lockFiles: ['bun.lock', 'bun.lockb'],
     detectionFiles: ['bun.lock', 'bun.lockb'],
-    capabilities: ['install', 'uninstall', 'update', 'scripts', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'dependency-tree', 'health', 'audit', 'scripts', 'toolchain', 'lockfile'],
     scopes: ['project', 'global'],
     scenarios: ['Bun applications', 'fast JavaScript tooling'],
     productionTools: ['lockfile review', 'script runner'],
     route: '/node',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'deno',
@@ -402,16 +300,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     manifestFiles: ['pyproject.toml'],
     lockFiles: ['uv.lock'],
     detectionFiles: ['uv.lock'],
-    capabilities: ['install', 'uninstall', 'update', 'batch-update', 'version-switch', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'batch-update', 'version-switch', 'dependency-tree', 'health', 'audit', 'toolchain', 'lockfile'],
     scopes: ['project', 'environment'],
     scenarios: ['fast Python environments', 'workspace Python projects'],
     productionTools: ['lockfile diff', 'environment sync', 'Python version pinning'],
     route: '/python',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'poetry',
@@ -425,16 +323,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     manifestFiles: ['pyproject.toml'],
     lockFiles: ['poetry.lock'],
     detectionFiles: ['poetry.lock'],
-    capabilities: ['install', 'uninstall', 'update', 'batch-update', 'audit', 'publish', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'batch-update', 'dependency-tree', 'health', 'audit', 'publish', 'toolchain', 'lockfile'],
     scopes: ['project', 'environment', 'publish'],
     scenarios: ['Python libraries', 'Python services'],
     productionTools: ['lockfile diff', 'publish checks', 'virtualenv management'],
     route: '/python',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'pipenv',
@@ -447,16 +345,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     tools: ['pipenv'],
     manifestFiles: ['Pipfile'],
     lockFiles: ['Pipfile.lock'],
-    capabilities: ['install', 'uninstall', 'update', 'audit', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'dependency-tree', 'health', 'audit', 'toolchain', 'lockfile'],
     scopes: ['project', 'environment'],
     scenarios: ['legacy Python applications', 'virtualenv-based projects'],
     productionTools: ['lockfile diff', 'pipenv check'],
     route: '/python',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'conda',
@@ -469,16 +367,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     tools: ['conda'],
     manifestFiles: ['environment.yml', 'environment.yaml'],
     lockFiles: ['conda-lock.yml', 'conda-lock.yaml'],
-    capabilities: ['install', 'uninstall', 'update', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'health', 'toolchain', 'lockfile'],
     scopes: ['environment', 'global'],
     scenarios: ['data science', 'AI and ML', 'reproducible environments'],
     productionTools: ['environment export', 'environment diff', 'channel policy'],
     route: '/python',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'renv',
@@ -537,16 +435,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     tools: ['dotnet'],
     manifestFiles: ['*.csproj', '*.fsproj', 'Directory.Packages.props', 'packages.config'],
     lockFiles: ['packages.lock.json'],
-    capabilities: ['search', 'install', 'uninstall', 'update', 'audit', 'publish', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'dependency-tree', 'health', 'audit', 'publish', 'toolchain', 'lockfile'],
     scopes: ['project', 'repository', 'publish'],
     scenarios: ['ASP.NET services', 'desktop apps', 'libraries'],
     productionTools: ['dotnet list package', 'vulnerability audit', 'central package management'],
     route: '/backend',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'composer',
@@ -559,16 +457,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     tools: ['composer'],
     manifestFiles: ['composer.json'],
     lockFiles: ['composer.lock'],
-    capabilities: ['search', 'install', 'uninstall', 'update', 'audit', 'publish', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'dependency-tree', 'health', 'audit', 'publish', 'toolchain', 'lockfile'],
     scopes: ['project', 'global', 'repository', 'publish'],
     scenarios: ['PHP services', 'Laravel apps', 'WordPress tooling'],
     productionTools: ['composer audit', 'lockfile diff', 'platform requirement check'],
     route: '/backend',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'bundler',
@@ -581,16 +479,16 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     tools: ['ruby', 'bundle'],
     manifestFiles: ['Gemfile', '*.gemspec'],
     lockFiles: ['Gemfile.lock'],
-    capabilities: ['search', 'install', 'uninstall', 'update', 'audit', 'publish', 'toolchain', 'lockfile'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'dependency-tree', 'health', 'audit', 'publish', 'toolchain', 'lockfile'],
     scopes: ['project', 'global', 'publish'],
     scenarios: ['Rails apps', 'Ruby libraries', 'automation scripts'],
     productionTools: ['bundle audit', 'lockfile diff', 'Ruby version pinning'],
     route: '/backend',
     builtIn: false,
     implemented: false,
-    status: 'planned',
-    searchable: false,
-    healthSupported: false
+    status: 'preview',
+    searchable: true,
+    healthSupported: true
   },
   {
     id: 'sbt',
@@ -1535,7 +1433,11 @@ export function getImplementedManagerDefinitions(): Array<DependencyManagerDefin
 }
 
 export function getPlannedManagerDefinitions(): DependencyManagerDefinition[] {
-  return MANAGER_DEFINITIONS.filter((manager) => !manager.implemented)
+  return MANAGER_DEFINITIONS.filter((manager) => manager.status === 'planned')
+}
+
+export function getPreviewManagerDefinitions(): DependencyManagerDefinition[] {
+  return MANAGER_DEFINITIONS.filter((manager) => manager.status === 'preview')
 }
 
 export function getManagerRoute(id: DependencyManagerId): string {

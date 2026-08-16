@@ -14,8 +14,14 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "verify:framework": "node scripts/verify-framework.mjs",
+    "typecheck:renderer": "tsc --noEmit --pretty false",
+    "typecheck:electron": "tsc -p tsconfig.electron.json --noEmit --pretty false",
+    "typecheck": "npm run typecheck:renderer && npm run typecheck:electron",
+    "build": "npm run typecheck && vite build",
+    "verify:framework": "node scripts/verify-framework-runner.mjs",
+    "verify:node-managers": "node scripts/verify-node-managers.mjs",
+    "verify:python-managers": "node scripts/verify-python-managers.mjs",
+    "verify:backend-managers": "node scripts/verify-backend-managers.mjs",
     "verify:release-integrity": "node scripts/verify-release-integrity.mjs",
     "verify:release-signature": "node scripts/verify-release-signature.mjs",
     "verify:release-trust": "node scripts/verify-release-trust.mjs",
@@ -48,10 +54,13 @@
   "dependencies": {
     "@ant-design/icons": "^6.2.3",
     "antd": "^6.4.2",
+    "fast-xml-parser": "^5.11.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.15.1",
     "semver": "^7.8.0",
+    "smol-toml": "^1.8.0",
+    "yaml": "^2.9.0",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

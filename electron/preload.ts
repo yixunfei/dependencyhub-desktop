@@ -1,4 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { DependencyManagerId as RegistryDependencyManagerId } from '../shared/managerRegistry'
+import type {
+  ManagerExecuteOptions,
+  ManagerOperationRequest,
+  ManagerSearchQuery
+} from '../shared/managerWorkspace'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   app: {
@@ -200,12 +206,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     build: (cwd: string, buildDir?: string) => ipcRenderer.invoke('native:build', cwd, buildDir)
   },
 
-  extended: {
-    detected: (cwd: string) => ipcRenderer.invoke('extended:detected', cwd),
-    list: (cwd: string, managerId: DependencyManagerId) => ipcRenderer.invoke('extended:list', cwd, managerId),
-    plan: (cwd: string, managerId: DependencyManagerId, request: ExtendedManagerOperationRequest) => ipcRenderer.invoke('extended:plan', cwd, managerId, request),
-    run: (cwd: string, managerId: DependencyManagerId, commandLine: string) => ipcRenderer.invoke('extended:run', cwd, managerId, commandLine),
-    restoreBackup: (cwd: string, backupPath: string) => ipcRenderer.invoke('extended:restore-backup', cwd, backupPath)
+  managers: {
+    descriptors: () => ipcRenderer.invoke('manager:descriptors'),
+    detected: (cwd: string) => ipcRenderer.invoke('manager:detected', cwd),
+    inventory: (cwd: string, managerId: RegistryDependencyManagerId) => ipcRenderer.invoke('manager:inventory', cwd, managerId),
+    plan: (cwd: string, managerId: RegistryDependencyManagerId, request: ManagerOperationRequest) => ipcRenderer.invoke('manager:plan', cwd, managerId, request),
+    execute: (cwd: string, managerId: RegistryDependencyManagerId, request: ManagerOperationRequest, options?: ManagerExecuteOptions) => ipcRenderer.invoke('manager:execute', cwd, managerId, request, options),
+    runCustom: (cwd: string, managerId: RegistryDependencyManagerId, commandLine: string) => ipcRenderer.invoke('manager:run-custom', cwd, managerId, commandLine),
+    search: (cwd: string | undefined, managerId: RegistryDependencyManagerId, query: ManagerSearchQuery) => ipcRenderer.invoke('manager:search', cwd, managerId, query),
+    health: (cwd: string, managerId: RegistryDependencyManagerId) => ipcRenderer.invoke('manager:health', cwd, managerId),
+    restoreBackup: (cwd: string, backupPath: string) => ipcRenderer.invoke('manager:restore-backup', cwd, backupPath)
   },
 
   supplyChain: {

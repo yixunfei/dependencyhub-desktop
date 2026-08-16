@@ -14,12 +14,21 @@ import ProjectPathBar from '../../../components/ProjectPathBar/ProjectPathBar'
 import { useAppStore } from '../../../stores/appStore'
 import { getManagerDefinition, type DependencyManagerId } from '../../../domain/managers/registry'
 import { managerColor, managerIcon } from '../../../domain/managers/presentation'
+import type {
+  ManagerBackup,
+  ManagerCommandResult,
+  ManagerDependency,
+  ManagerDetection,
+  ManagerOperation,
+  ManagerOperationPlan
+} from '@shared/managerWorkspace'
+import ManagerDiagnosticsPanel from './ManagerDiagnosticsPanel'
 import styles from './ExtendedManagerWorkspace.module.css'
 
 const { Paragraph, Text, Title } = Typography
 
 type OperationFormValues = {
-  operation: ExtendedManagerOperation
+  operation: ManagerOperation
   packageName?: string
   version?: string
   dev?: boolean
@@ -33,7 +42,7 @@ export interface ExtendedManagerWorkspaceConfig {
   subtitle: string
   noDetectionMessage: string
   detectionHint: string
-  operationOptions: Array<{ value: ExtendedManagerOperation; label: string }>
+  operationOptions: Array<{ value: ManagerOperation; label: string }>
   quickCommands: Partial<Record<DependencyManagerId, string[]>>
   packageLabel?: string
   packagePlaceholder?: string
@@ -64,11 +73,11 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
   const addNotification = useAppStore((state) => state.addNotification)
 
   const [activeManager, setActiveManager] = useState<DependencyManagerId>(config.defaultManagerId)
-  const [detections, setDetections] = useState<ExtendedManagerDetection[]>([])
-  const [dependencies, setDependencies] = useState<ExtendedDependencyInfo[]>([])
+  const [detections, setDetections] = useState<ManagerDetection[]>([])
+  const [dependencies, setDependencies] = useState<ManagerDependency[]>([])
   const [toolStatuses, setToolStatuses] = useState<ToolStatus[]>([])
-  const [operationPlan, setOperationPlan] = useState<ExtendedManagerOperationPlan | null>(null)
-  const [lastBackup, setLastBackup] = useState<ExtendedManagerBackup | null>(null)
+  const [operationPlan, setOperationPlan] = useState<ManagerOperationPlan | null>(null)
+  const [lastBackup, setLastBackup] = useState<ManagerBackup | null>(null)
   const [commandOutput, setCommandOutput] = useState('')
   const [readinessReport, setReadinessReport] = useState<ReadinessGateReport | null>(null)
   const [dependencyDiff, setDependencyDiff] = useState<DependencyComponentDiff | null>(null)
@@ -91,6 +100,8 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
   const detectedFileLimit = config.detectedFileLimit ?? 3
   const maxMetricTools = config.maxMetricTools ?? 1
   const showDevOption = config.showDevOption ?? true
+  const searchSupported = activeDetection?.capabilities.search ?? activeDefinition?.searchable ?? false
+  const healthSupported = activeDetection?.capabilities.health ?? activeDefinition?.healthSupported ?? false
 
   useEffect(() => {
     void loadOverview()
@@ -128,7 +139,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
       }
 
       const [detected, tools, readiness, diff] = await Promise.all([
-        window.electronAPI.extended.detected(currentPath),
+        window.electronAPI.managers.detected(currentPath),
         window.electronAPI.project.toolchain.check(currentPath),
         window.electronAPI.readiness.report(currentPath).catch(() => null),
         window.electronAPI.supplyChain.dependencyDiffLatestSnapshot(currentPath).catch(() => null)
@@ -150,7 +161,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
     if (!currentPath) return
     setLoading(true)
     try {
-      setDependencies(await window.electronAPI.extended.list(currentPath, managerId))
+      setDependencies(await window.electronAPI.managers.inventory(currentPath, managerId))
     } catch (error: any) {
       setDependencies([])
       addNotification({ type: 'error', message: `Failed to read ${managerId} dependencies`, description: error.message })
@@ -168,7 +179,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
     const values = operationForm.getFieldsValue()
     setPlanning(true)
     try {
-      const plan = await window.electronAPI.extended.plan(currentPath, activeManager, {
+      const plan = await window.electronAPI.managers.plan(currentPath, activeManager, {
         operation: values.operation || 'sync',
         packageName: values.packageName,
         version: values.version,
@@ -186,28 +197,22 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
     }
   }
 
-  const executeCommand = async (commandLine?: string) => {
-    if (!currentPath) {
-      addNotification({ type: 'warning', message: 'Select a project directory first' })
-      return
-    }
-
-    const command = (commandLine || commandForm.getFieldValue('commandLine') || '').trim()
-    if (!command) return
-
+  const executeAndRefresh = async (operation: () => Promise<ManagerCommandResult>) => {
+    if (!currentPath) return
     setRunning(true)
     setCommandOutput('Running...')
     try {
-      const result = await window.electronAPI.extended.run(currentPath, activeManager, command)
+      const result = await operation()
       if (result.backup) setLastBackup(result.backup)
       setCommandOutput([
         `$ ${result.command}`,
         '',
         result.stdout,
         result.stderr,
+        result.dryRun ? '[dry-run] no project changes were requested' : '',
         result.backup ? `[backup] ${result.backup.files.length} files saved to ${result.backup.path}` : ''
       ].filter(Boolean).join('\n'))
-      addNotification({ type: 'success', message: 'Command completed', description: result.command })
+      addNotification({ type: 'success', message: result.dryRun ? 'Dry-run completed' : 'Command completed', description: result.command })
       await Promise.all([
         loadDependencies(activeManager),
         window.electronAPI.supplyChain.dependencyDiffLatestSnapshot(currentPath).then(setDependencyDiff).catch(() => null),
@@ -221,6 +226,17 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
     }
   }
 
+  const executeCommand = async (commandLine?: string) => {
+    if (!currentPath) {
+      addNotification({ type: 'warning', message: 'Select a project directory first' })
+      return
+    }
+
+    const command = (commandLine || commandForm.getFieldValue('commandLine') || '').trim()
+    if (!command) return
+    await executeAndRefresh(() => window.electronAPI.managers.runCustom(currentPath, activeManager, command))
+  }
+
   const executeOperationPlan = async (dryRun = false) => {
     if (!operationPlan) return
     if (operationPlan.requirements.length > 0) {
@@ -228,20 +244,24 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
       return
     }
 
-    const command = dryRun ? operationPlan.dryRunCommand : operationPlan.command
-    if (!command) {
+    if (dryRun && !operationPlan.dryRunSupported) {
       addNotification({ type: 'warning', message: 'No dry-run command is available for this operation' })
       return
     }
-
-    await executeCommand(command)
+    if (!currentPath) return
+    await executeAndRefresh(() => window.electronAPI.managers.execute(
+      currentPath,
+      activeManager,
+      operationPlan.request,
+      { dryRun }
+    ))
   }
 
   const restoreLastBackup = async () => {
     if (!currentPath || !lastBackup) return
     setRestoring(true)
     try {
-      const result = await window.electronAPI.extended.restoreBackup(currentPath, lastBackup.path)
+      const result = await window.electronAPI.managers.restoreBackup(currentPath, lastBackup.path)
       setCommandOutput((prev) => `${prev}\n\n[restore] ${result.restoredFiles.join(', ')}`)
       addNotification({ type: 'success', message: config.restoreSuccessMessage, description: `${result.restoredCount} files restored` })
       await loadDependencies(activeManager)
@@ -311,6 +331,9 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
                 <Text strong>{definition.shortName}</Text>
               </Space>
               <Tag color={detected?.detected ? 'green' : 'default'}>{detected?.detected ? 'detected' : 'not detected'}</Tag>
+              <Tag color={detected?.status === 'preview' || definition.status === 'preview' ? 'processing' : 'default'}>
+                {detected?.status || definition.status}
+              </Tag>
               <Space size={4} wrap>
                 {definition.tools.slice(0, maxMetricTools).map((tool) => {
                   const toolStatus = toolStatusMap.get(tool as ToolName)
@@ -343,6 +366,9 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
             />
             <Space wrap>
               <Tag color={managerColor(activeManager)}>{activeDefinition?.packageManager}</Tag>
+              <Tag color={activeDetection?.status === 'preview' || activeDefinition?.status === 'preview' ? 'processing' : 'default'}>
+                {activeDetection?.status || activeDefinition?.status}
+              </Tag>
               {activeDetection?.detected && activeDetection.files.slice(0, detectedFileLimit).map((file) => <Tag key={file}>{file}</Tag>)}
               {activeDefinition?.productionTools.slice(0, 3).map((tool) => <Tag key={tool}>{tool}</Tag>)}
             </Space>
@@ -361,6 +387,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
             dataSource={dependencies}
             rowKey={(record) => `${record.managerId}:${record.file}:${record.type}:${record.name}:${record.version || ''}`}
             size="small"
+            scroll={{ x: 780 }}
             loading={loading}
             pagination={{ pageSize: 10 }}
             locale={{ emptyText: <Empty description={currentPath ? (config.dependencyEmptyDescription || 'No dependencies parsed for this manager') : 'Select a project directory first'} /> }}
@@ -493,6 +520,12 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
           {commandOutput && <pre className={styles.output}>{commandOutput}</pre>}
         </section>
       </div>
+      <ManagerDiagnosticsPanel
+        managerId={activeManager}
+        currentPath={currentPath || undefined}
+        searchSupported={searchSupported}
+        healthSupported={healthSupported}
+      />
     </div>
   )
 }

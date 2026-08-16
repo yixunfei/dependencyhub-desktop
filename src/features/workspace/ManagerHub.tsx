@@ -6,6 +6,7 @@ import { useAppStore } from '../../stores/appStore'
 import {
   formatManagerFiles,
   getImplementedManagerDefinitions,
+  getManagerDefinition,
   getManagerRoute,
   getPlannedManagerDefinitions
 } from '../../domain/managers/registry'
@@ -111,9 +112,14 @@ const ManagerHub: React.FC = () => {
                   </div>
                   <Paragraph className={styles.workspaceDescription}>{group.description}</Paragraph>
                   <Space size={6} wrap>
-                    {group.managerIds.slice(0, 5).map((id) => (
-                      <Tag key={id} color={detectedIds.has(id) ? 'success' : undefined}>{id}</Tag>
-                    ))}
+                    {group.managerIds.slice(0, 5).map((id) => {
+                      const status = getManagerDefinition(id)?.status
+                      return (
+                        <Tag key={id} color={detectedIds.has(id) ? 'success' : status === 'preview' ? 'processing' : undefined}>
+                          {id}{status === 'preview' ? ' · preview' : ''}
+                        </Tag>
+                      )
+                    })}
                     {group.managerIds.length > 5 && <Tag>+{group.managerIds.length - 5}</Tag>}
                     {detectedCount > 0 && <Tag color="processing">{detectedCount} detected</Tag>}
                   </Space>

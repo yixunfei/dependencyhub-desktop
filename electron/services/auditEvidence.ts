@@ -465,7 +465,7 @@ function detectTool(path: string, parsed: any, content: string): AuditEvidenceTo
   return 'generic'
 }
 
-function normalizeFinding(input: AuditEvidenceFinding): AuditEvidenceFinding {
+function normalizeFinding(input: Omit<AuditEvidenceFinding, 'id'> & { id?: string }): AuditEvidenceFinding {
   const evidence = unique(input.evidence.map((item) => String(item || '').trim()).filter(Boolean)).slice(0, 20)
   const normalized: Omit<AuditEvidenceFinding, 'id'> = {
     tool: input.tool,
@@ -890,7 +890,7 @@ function osvSeverity(vuln: any): string | undefined {
 function osvFixedVersions(vuln: any): string[] {
   return unique(arrayValue(vuln?.affected).flatMap((affected: any) => arrayValue(affected?.ranges).flatMap((range: any) => arrayValue(range?.events)
     .map((event: any) => clean(event?.fixed))
-    .filter(Boolean))))
+    .filter((value): value is string => Boolean(value)))))
 }
 
 function sortFindings(findings: AuditEvidenceFinding[]): AuditEvidenceFinding[] {

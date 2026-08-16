@@ -7,7 +7,7 @@ import {
   type ManagerCapability,
   type ManagerImplementationStatus,
   type ManagerScope
-} from '@shared/managerRegistry'
+} from '../../shared/managerRegistry'
 
 export type FrameworkCoverageGapSeverity = 'info' | 'warning'
 export type FrameworkCoverageGapType =

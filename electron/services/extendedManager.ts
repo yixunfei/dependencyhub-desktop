@@ -10,6 +10,25 @@ import {
 } from '../../shared/managerRegistry'
 import { runLoggedCommand } from './commandRunner'
 import { resolveToolBin, type ToolName } from './toolchain'
+import {
+  createNodeOperationTemplate,
+  isNodeWorkspaceManager,
+  nodeDryRunTemplate
+} from '../managers/groups/node/nodeOperations'
+import { readNodeManagerInventory } from '../managers/groups/node/nodeInventory'
+import {
+  backendDryRunTemplate,
+  createBackendOperationTemplate
+} from '../managers/groups/backend/backendOperations'
+import { isBackendWorkspaceManager } from '../managers/groups/backend/backendTypes'
+import {
+  createPythonOperationTemplate,
+  pythonDryRunTemplate
+} from '../managers/groups/python/pythonOperations'
+import { isPythonWorkspaceManager } from '../managers/groups/python/pythonTypes'
+import { readPythonManagerInventory } from '../managers/groups/python/pythonInventory'
+import { readBackendManagerInventory } from '../managers/groups/backend/backendInventory'
+import { findWorkspaceFiles } from '../managers/workspaceFiles'
 
 export interface ExtendedManagerDetection {
   id: DependencyManagerId
@@ -55,6 +74,7 @@ export interface ExtendedManagerOperationRequest {
   packageName?: string
   version?: string
   dev?: boolean
+  options?: Record<string, string | number | boolean>
 }
 
 export interface ExtendedManagerOperationPlan {
@@ -116,7 +136,7 @@ const NIX_TOKEN_STOP_WORDS = new Set([
 export class ExtendedManagerService {
   async detected(cwd: string): Promise<ExtendedManagerDetection[]> {
     return await Promise.all(
-      MANAGER_DEFINITIONS.filter((manager) => !manager.implemented).map(async (manager) => {
+      MANAGER_DEFINITIONS.filter((manager) => !manager.builtIn).map(async (manager) => {
         const files = await existingPatternMatches(cwd, getManagerDetectionFiles(manager))
         return {
           id: manager.id,
@@ -138,31 +158,17 @@ export class ExtendedManagerService {
     if (!manager) {
       throw new Error(`Unknown dependency manager: ${managerId}`)
     }
+    if (isNodeWorkspaceManager(managerId)) return await readNodeManagerInventory(cwd, managerId)
+    if (isPythonWorkspaceManager(managerId)) return await readPythonManagerInventory(cwd, managerId)
+    if (isBackendWorkspaceManager(managerId)) return await readBackendManagerInventory(cwd, managerId)
 
     switch (managerId) {
-      case 'pnpm':
-      case 'yarn':
-      case 'bun':
-        return await parsePackageJsonDependencies(cwd, managerId)
       case 'deno':
         return await parseDenoDependencies(cwd)
-      case 'uv':
-      case 'poetry':
-        return await parsePyprojectDependencies(cwd, managerId)
-      case 'pipenv':
-        return await parsePipfileDependencies(cwd)
-      case 'conda':
-        return await parseCondaEnvironment(cwd)
       case 'renv':
         return await parseRenvDependencies(cwd)
       case 'julia':
         return await parseJuliaDependencies(cwd)
-      case 'nuget':
-        return await parseNugetDependencies(cwd)
-      case 'composer':
-        return await parseComposerDependencies(cwd)
-      case 'bundler':
-        return await parseBundlerDependencies(cwd)
       case 'sbt':
         return await parseSbtDependencies(cwd)
       case 'leiningen':
@@ -260,7 +266,7 @@ export class ExtendedManagerService {
     }
 
     const tool = primaryRunTool(manager)
-    const template = operationTemplate(manager.id, request)
+    const template = await operationTemplate(cwd, manager.id, request)
     const args = template.args
     const mutating = commandMutatesProjectFiles(args)
     const backupFiles = mutating
@@ -302,8 +308,45 @@ export class ExtendedManagerService {
 
     const tool = primaryRunTool(manager)
     const args = normalizeArgs(tool, splitCommandLine(commandLine))
+    return await this.runArgs(cwd, manager, tool, args, commandLine, false)
+  }
+
+  async execute(
+    cwd: string,
+    managerId: DependencyManagerId,
+    request: ExtendedManagerOperationRequest,
+    dryRun = false
+  ): Promise<ExtendedManagerCommandResult> {
+    const manager = getManagerDefinition(managerId)
+    if (!manager || manager.tools.length === 0) {
+      throw new Error(`No runnable tool is configured for ${managerId}`)
+    }
+
+    const plan = await this.plan(cwd, managerId, request)
+    if (plan.requirements.length > 0) {
+      throw new Error(plan.requirements.join('; '))
+    }
+
+    const tool = primaryRunTool(manager)
+    const args = dryRun ? dryRunTemplate(managerId, plan.args) : plan.args
+    if (!args) {
+      throw new Error(`No reliable dry-run command is available for ${managerId} ${request.operation}`)
+    }
+
+    const commandLine = [tool, ...args].join(' ')
+    return await this.runArgs(cwd, manager, tool, args, commandLine, dryRun)
+  }
+
+  private async runArgs(
+    cwd: string,
+    manager: DependencyManagerDefinition,
+    tool: ToolName,
+    args: string[],
+    commandLine: string,
+    dryRun: boolean
+  ): Promise<ExtendedManagerCommandResult> {
     const bin = await resolveToolBin(tool, cwd)
-    const backup = await createCommandBackup(cwd, manager, commandLine, args)
+    const backup = dryRun ? undefined : await createCommandBackup(cwd, manager, commandLine, args)
     const result = await runLoggedCommand(bin, args, {
       cwd,
       displayBin: tool
@@ -354,10 +397,13 @@ interface OperationTemplate {
   warnings: string[]
 }
 
-function operationTemplate(managerId: DependencyManagerId, request: ExtendedManagerOperationRequest): OperationTemplate {
+async function operationTemplate(
+  cwd: string,
+  managerId: DependencyManagerId,
+  request: ExtendedManagerOperationRequest
+): Promise<OperationTemplate> {
   const requirements: string[] = []
   const warnings: string[] = []
-  const packageSpec = dependencySpec(managerId, request.packageName, request.version)
 
   const requirePackage = () => {
     if (!request.packageName?.trim()) {
@@ -371,52 +417,18 @@ function operationTemplate(managerId: DependencyManagerId, request: ExtendedMana
     warnings: [...warnings, warning]
   })
 
+  if (isNodeWorkspaceManager(managerId)) {
+    return await createNodeOperationTemplate(cwd, managerId, request)
+  }
+  if (isPythonWorkspaceManager(managerId)) {
+    return await createPythonOperationTemplate(cwd, managerId, request)
+  }
+  if (isBackendWorkspaceManager(managerId)) {
+    return await createBackendOperationTemplate(cwd, managerId, request)
+  }
+  const packageSpec = dependencySpec(managerId, request.packageName, request.version)
+
   switch (managerId) {
-    case 'pnpm':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['add', packageSpec, ...(request.dev ? ['-D'] : [])].filter(Boolean), requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['update', ...(request.packageName ? [request.packageName] : [])], requirements, warnings }
-      if (request.operation === 'outdated') return { args: ['outdated'], requirements, warnings }
-      if (request.operation === 'audit') return { args: ['audit'], requirements, warnings }
-      if (request.operation === 'tree' || request.operation === 'list') return { args: ['list'], requirements, warnings }
-      if (request.operation === 'lock') return { args: ['install', '--lockfile-only'], requirements, warnings }
-      return { args: ['install'], requirements, warnings }
-    case 'yarn':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['add', packageSpec, ...(request.dev ? ['-D'] : [])].filter(Boolean), requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['up', ...(request.packageName ? [request.packageName] : [])], requirements, warnings }
-      if (request.operation === 'outdated') return { args: ['outdated'], requirements, warnings }
-      if (request.operation === 'audit') return { args: ['npm', 'audit'], requirements, warnings }
-      if (request.operation === 'tree' || request.operation === 'list') return { args: ['list'], requirements, warnings }
-      if (request.operation === 'lock') return { args: ['install', '--mode=update-lockfile'], requirements, warnings }
-      return { args: ['install'], requirements, warnings }
-    case 'bun':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['add', packageSpec, ...(request.dev ? ['-d'] : [])].filter(Boolean), requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['update', ...(request.packageName ? [request.packageName] : [])], requirements, warnings }
-      if (request.operation === 'outdated') return { args: ['outdated'], requirements, warnings }
-      if (request.operation === 'tree' || request.operation === 'list') return { args: ['pm', 'ls'], requirements, warnings }
-      if (request.operation === 'lock') return { args: ['install'], requirements, warnings }
-      if (request.operation === 'audit') return unsupported(['audit'], 'Bun audit support depends on the installed Bun version.')
-      return { args: ['install'], requirements, warnings }
     case 'deno':
       if (request.operation === 'install') {
         requirePackage()
@@ -430,67 +442,6 @@ function operationTemplate(managerId: DependencyManagerId, request: ExtendedMana
       if (request.operation === 'tree' || request.operation === 'list') return { args: ['info'], requirements, warnings }
       if (request.operation === 'lock') return { args: ['cache', '--lock=deno.lock'], requirements, warnings }
       return unsupported(['info'], 'Deno has limited generic package-manager operations; review imports and tasks before running.')
-    case 'uv':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['add', packageSpec, ...(request.dev ? ['--dev'] : [])].filter(Boolean), requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['lock', ...(request.packageName ? ['--upgrade-package', request.packageName] : ['--upgrade'])], requirements, warnings }
-      if (request.operation === 'tree') return { args: ['tree'], requirements, warnings }
-      if (request.operation === 'outdated') return { args: ['pip', 'list', '--outdated'], requirements, warnings }
-      if (request.operation === 'lock') return { args: ['lock'], requirements, warnings }
-      if (request.operation === 'audit') return unsupported(['pip', 'check'], 'uv does not provide a universal vulnerability audit command; use pip-audit or a supply-chain scanner when available.')
-      return { args: ['sync'], requirements, warnings }
-    case 'poetry':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['add', packageSpec, ...(request.dev ? ['--group', 'dev'] : [])].filter(Boolean), requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['update', ...(request.packageName ? [request.packageName] : [])], requirements, warnings }
-      if (request.operation === 'outdated') return { args: ['show', '--outdated'], requirements, warnings }
-      if (request.operation === 'tree') return { args: ['show', '--tree'], requirements, warnings }
-      if (request.operation === 'list') return { args: ['show'], requirements, warnings }
-      if (request.operation === 'audit') return { args: ['check'], requirements, warnings: [...warnings, 'poetry check validates project metadata; install poetry-plugin-audit or pip-audit for vulnerability scanning.'] }
-      if (request.operation === 'lock') return { args: ['lock'], requirements, warnings }
-      return { args: ['install', '--sync'], requirements, warnings }
-    case 'pipenv':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['install', packageSpec, ...(request.dev ? ['--dev'] : [])].filter(Boolean), requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['uninstall', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['update', ...(request.packageName ? [request.packageName] : [])], requirements, warnings }
-      if (request.operation === 'outdated') return { args: ['update', '--outdated'], requirements, warnings }
-      if (request.operation === 'tree') return { args: ['graph'], requirements, warnings }
-      if (request.operation === 'list') return { args: ['run', 'pip', 'list'], requirements, warnings }
-      if (request.operation === 'audit') return { args: ['check'], requirements, warnings }
-      if (request.operation === 'lock') return { args: ['lock'], requirements, warnings }
-      return { args: ['sync'], requirements, warnings }
-    case 'conda':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['install', '-y', packageSpec], requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', '-y', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['update', '-y', ...(request.packageName ? [request.packageName] : ['--all'])], requirements, warnings }
-      if (request.operation === 'list' || request.operation === 'tree') return { args: ['list'], requirements, warnings }
-      if (request.operation === 'sync') return { args: ['env', 'update', '-f', 'environment.yml'], requirements, warnings }
-      if (request.operation === 'lock') return { args: ['env', 'export'], requirements, warnings: [...warnings, 'This exports the current environment; use conda-lock for reproducible lock files.'] }
-      return unsupported(['list'], 'Conda has no built-in universal audit/outdated command in this adapter.')
     case 'renv':
       if (request.operation === 'install') {
         requirePackage()
@@ -525,50 +476,6 @@ function operationTemplate(managerId: DependencyManagerId, request: ExtendedMana
       if (request.operation === 'lock') return { args: ['--project=.', '-e', 'using Pkg; Pkg.resolve()'], requirements, warnings }
       if (request.operation === 'audit') return unsupported(['--project=.', '-e', 'using Pkg; Pkg.status()'], 'Julia Pkg has no universal vulnerability audit; import OSV or scanner JSON into audit evidence.')
       return { args: ['--project=.', '-e', 'using Pkg; Pkg.instantiate()'], requirements, warnings }
-    case 'nuget':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['add', 'package', request.packageName || '', ...(request.version ? ['--version', request.version] : [])], requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', 'package', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update' || request.operation === 'outdated') return { args: ['list', 'package', '--outdated'], requirements, warnings }
-      if (request.operation === 'audit') return { args: ['list', 'package', '--vulnerable'], requirements, warnings }
-      if (request.operation === 'lock') return { args: ['restore', '--use-lock-file'], requirements, warnings }
-      if (request.operation === 'list' || request.operation === 'tree') return { args: ['list', 'package'], requirements, warnings }
-      return { args: ['restore'], requirements, warnings }
-    case 'composer':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['require', packageSpec, ...(request.dev ? ['--dev'] : [])].filter(Boolean), requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['update', ...(request.packageName ? [request.packageName] : [])], requirements, warnings }
-      if (request.operation === 'outdated') return { args: ['outdated'], requirements, warnings }
-      if (request.operation === 'audit') return { args: ['audit'], requirements, warnings }
-      if (request.operation === 'tree') return { args: ['show', '-t'], requirements, warnings }
-      if (request.operation === 'list') return { args: ['show'], requirements, warnings }
-      if (request.operation === 'lock') return { args: ['update', '--lock'], requirements, warnings }
-      return { args: ['install'], requirements, warnings }
-    case 'bundler':
-      if (request.operation === 'install') {
-        requirePackage()
-        return { args: ['add', request.packageName || '', ...(request.version ? ['--version', request.version] : [])], requirements, warnings }
-      }
-      if (request.operation === 'remove') {
-        requirePackage()
-        return { args: ['remove', request.packageName || ''], requirements, warnings }
-      }
-      if (request.operation === 'update') return { args: ['update', ...(request.packageName ? [request.packageName] : [])], requirements, warnings }
-      if (request.operation === 'outdated') return { args: ['outdated'], requirements, warnings }
-      if (request.operation === 'list' || request.operation === 'tree') return { args: ['list'], requirements, warnings }
-      if (request.operation === 'audit') return unsupported(['exec', 'bundle-audit', 'check'], 'bundle-audit must be installed in the bundle before this audit command works.')
-      return { args: ['install'], requirements, warnings }
     case 'sbt':
       if (request.operation === 'update' || request.operation === 'sync') return { args: ['update'], requirements, warnings }
       if (request.operation === 'tree' || request.operation === 'list') return { args: ['dependencyTree'], requirements, warnings: [...warnings, 'dependencyTree requires sbt-dependency-graph or compatible built-in task support.'] }
@@ -974,11 +881,9 @@ function operationTemplate(managerId: DependencyManagerId, request: ExtendedMana
 function dryRunTemplate(managerId: DependencyManagerId, args: string[]): string[] | null {
   if (args.length === 0) return null
 
-  if (managerId === 'pnpm') return [...args, '--dry-run']
-  if (managerId === 'composer') return [...args, '--dry-run']
-  if (managerId === 'poetry' && ['add', 'remove', 'update', 'install'].includes(args[0])) return [...args, '--dry-run']
-  if (managerId === 'pipenv' && ['install', 'uninstall', 'update'].includes(args[0])) return [...args, '--dry-run']
-  if (managerId === 'conda' && ['install', 'remove', 'update'].includes(args[0])) return [...args, '--dry-run']
+  if (isNodeWorkspaceManager(managerId)) return nodeDryRunTemplate(managerId, args)
+  if (isPythonWorkspaceManager(managerId)) return pythonDryRunTemplate(managerId, args)
+  if (isBackendWorkspaceManager(managerId)) return backendDryRunTemplate(managerId, args)
   if (managerId === 'apt' && ['install', 'remove', 'upgrade'].includes(args[0])) return ['--simulate', ...args]
   if (managerId === 'dnf' && ['install', 'remove', 'upgrade'].includes(args[0])) return [...args, '--assumeno']
   if (managerId === 'pacman' && args[0] === '-S') return [...args, '--print']
@@ -993,18 +898,6 @@ function dependencySpec(managerId: DependencyManagerId, packageName?: string, ve
   if (!cleanName) return ''
   const cleanVersion = version?.trim()
   if (!cleanVersion) return cleanName
-
-  if ((managerId === 'uv' || managerId === 'pipenv') && !isFloatingVersion(cleanVersion)) {
-    return `${cleanName}${pythonVersionSpecifier(cleanVersion)}`
-  }
-
-  if (managerId === 'conda' && !isFloatingVersion(cleanVersion)) {
-    return `${cleanName}${condaVersionSpecifier(cleanVersion)}`
-  }
-
-  if (managerId === 'composer' && !isFloatingVersion(cleanVersion)) {
-    return `${cleanName}:${cleanVersion}`
-  }
 
   if (managerId === 'opam' && !isFloatingVersion(cleanVersion)) {
     return /^[0-9][A-Za-z0-9.+~-]*$/.test(cleanVersion) ? `${cleanName}.${cleanVersion}` : cleanName
@@ -1026,10 +919,6 @@ function dependencySpec(managerId: DependencyManagerId, packageName?: string, ve
     return cleanName
   }
 
-  if (isFloatingVersion(cleanVersion) && (managerId === 'uv' || managerId === 'pipenv' || managerId === 'conda' || managerId === 'composer')) {
-    return cleanName
-  }
-
   return `${cleanName}@${cleanVersion}`
 }
 
@@ -1037,21 +926,11 @@ function isFloatingVersion(version: string): boolean {
   return version === '*' || version.toLowerCase() === 'latest'
 }
 
-function pythonVersionSpecifier(version: string): string {
-  if (/^(===|==|~=|!=|<=|>=|<|>)/.test(version)) return version
-  return `==${version}`
-}
-
-function condaVersionSpecifier(version: string): string {
-  if (/^(=|<=|>=|<|>|!=)/.test(version)) return version
-  return `=${version}`
-}
-
 async function readBackupFilePreview(
   cwd: string,
   manager: DependencyManagerDefinition
 ): Promise<ExtendedManagerBackupFile[]> {
-  const files = await existingPatternMatches(cwd, [
+  const files = await backupPatternMatches(cwd, [
     ...manager.manifestFiles,
     ...manager.lockFiles,
     ...(manager.configFiles || [])
@@ -1081,7 +960,7 @@ async function createCommandBackup(
 ): Promise<ExtendedManagerBackup | undefined> {
   if (!commandMutatesProjectFiles(args)) return undefined
 
-  const files = await existingPatternMatches(cwd, [
+  const files = await backupPatternMatches(cwd, [
     ...manager.manifestFiles,
     ...manager.lockFiles,
     ...(manager.configFiles || [])
@@ -1121,6 +1000,7 @@ async function createCommandBackup(
 }
 
 function commandMutatesProjectFiles(args: string[]): boolean {
+  if (args.includes('--dry-run') || args.includes('--simulate') || args.includes('--assumeno')) return false
   const normalized = args
     .filter((arg) => !arg.startsWith('-'))
     .join(' ')
@@ -1149,23 +1029,10 @@ function isInside(base: string, target: string): boolean {
   return relation === '' || (!!relation && !relation.startsWith('..') && !isAbsolute(relation))
 }
 
-async function parsePackageJsonDependencies(cwd: string, managerId: DependencyManagerId): Promise<ExtendedDependencyInfo[]> {
-  const file = 'package.json'
-  const json = await readJson(join(cwd, file))
-  const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
-  return sections.flatMap((section) => objectEntries(json?.[section]).map(([name, version]) => ({
-    managerId,
-    name,
-    version: String(version),
-    type: section,
-    file
-  })))
-}
-
 async function parseDenoDependencies(cwd: string): Promise<ExtendedDependencyInfo[]> {
   const file = await firstExisting(cwd, ['deno.json', 'deno.jsonc'])
   if (!file) return []
-  const json = parseJson(stripJsonComments(await readText(join(cwd, file))), {})
+  const json = parseJson<Record<string, any>>(stripJsonComments(await readText(join(cwd, file))), {})
   return objectEntries(json.imports).map(([name, value]) => ({
     managerId: 'deno',
     name,
@@ -1174,49 +1041,6 @@ async function parseDenoDependencies(cwd: string): Promise<ExtendedDependencyInf
     source: String(value),
     file
   }))
-}
-
-async function parsePyprojectDependencies(cwd: string, managerId: DependencyManagerId): Promise<ExtendedDependencyInfo[]> {
-  const file = 'pyproject.toml'
-  const content = await readText(join(cwd, file))
-  if (!content) return []
-
-  const dependencies = [
-    ...parseTomlArray(content, 'dependencies').map((value) => pythonDependency(value, managerId, 'project.dependencies', file)),
-    ...parseTomlKeyValues(sectionContent(content, 'tool.poetry.dependencies'))
-      .filter(([name]) => name.toLowerCase() !== 'python')
-      .map(([name, version]) => ({ managerId, name, version, type: 'tool.poetry.dependencies', file })),
-    ...parseTomlKeyValues(sectionContent(content, 'tool.poetry.group.dev.dependencies'))
-      .map(([name, version]) => ({ managerId, name, version, type: 'tool.poetry.group.dev.dependencies', file }))
-  ]
-
-  return uniqueDependencies(dependencies)
-}
-
-async function parsePipfileDependencies(cwd: string): Promise<ExtendedDependencyInfo[]> {
-  const file = 'Pipfile'
-  const content = await readText(join(cwd, file))
-  return [
-    ...parseTomlKeyValues(sectionContent(content, 'packages')).map(([name, version]) => ({ managerId: 'pipenv' as const, name, version, type: 'packages', file })),
-    ...parseTomlKeyValues(sectionContent(content, 'dev-packages')).map(([name, version]) => ({ managerId: 'pipenv' as const, name, version, type: 'dev-packages', file }))
-  ]
-}
-
-async function parseCondaEnvironment(cwd: string): Promise<ExtendedDependencyInfo[]> {
-  const file = await firstExisting(cwd, ['environment.yml', 'environment.yaml'])
-  if (!file) return []
-  const content = await readText(join(cwd, file))
-  const dependencies = readYamlList(content, 'dependencies')
-  return dependencies.map((item) => {
-    const [name, version] = splitCondaDependency(item)
-    return {
-      managerId: 'conda' as const,
-      name,
-      version,
-      type: 'dependencies',
-      file
-    }
-  })
 }
 
 async function parseRenvDependencies(cwd: string): Promise<ExtendedDependencyInfo[]> {
@@ -1281,62 +1105,6 @@ async function parseJuliaDependencies(cwd: string): Promise<ExtendedDependencyIn
       source: values.get('uuid'),
       file: manifestFile
     })
-  }
-
-  return uniqueDependencies(deps)
-}
-
-async function parseNugetDependencies(cwd: string): Promise<ExtendedDependencyInfo[]> {
-  const rootFiles = await readdirSafe(cwd)
-  const projectFiles = rootFiles.filter((file) => /\.(csproj|fsproj|vbproj)$/i.test(file))
-  const files = [...projectFiles, ...['Directory.Packages.props', 'packages.config'].filter((file) => rootFiles.includes(file))]
-  const deps: ExtendedDependencyInfo[] = []
-
-  for (const file of files) {
-    const content = await readText(join(cwd, file))
-    deps.push(...matches(content, /<PackageReference\b([^>]*?)(?:\/>|>([\s\S]*?)<\/PackageReference>)/gi)
-      .map((match) => {
-        const name = xmlAttribute(match[1], 'Include') || xmlAttribute(match[1], 'Update')
-        const version = xmlAttribute(match[1], 'Version') || xmlElementValue(match[2], 'Version')
-        return name ? { managerId: 'nuget' as const, name, version, type: 'PackageReference', file } : null
-      })
-      .filter((dep): dep is ExtendedDependencyInfo => Boolean(dep)))
-    deps.push(...matches(content, /<PackageVersion\b([^>]*?)(?:\/>|>([\s\S]*?)<\/PackageVersion>)/gi)
-      .map((match) => {
-        const name = xmlAttribute(match[1], 'Include') || xmlAttribute(match[1], 'Update')
-        const version = xmlAttribute(match[1], 'Version') || xmlElementValue(match[2], 'Version')
-        return name ? { managerId: 'nuget' as const, name, version, type: 'CentralPackageVersion', file } : null
-      })
-      .filter((dep): dep is ExtendedDependencyInfo => Boolean(dep)))
-    deps.push(...matches(content, /<package\b([^>]*?)(?:\/>|>)/gi)
-      .map((match) => {
-        const name = xmlAttribute(match[1], 'id')
-        const version = xmlAttribute(match[1], 'version')
-        return name ? { managerId: 'nuget' as const, name, version, type: 'packages.config', file } : null
-      })
-      .filter((dep): dep is ExtendedDependencyInfo => Boolean(dep)))
-  }
-
-  return uniqueDependencies(deps)
-}
-
-async function parseComposerDependencies(cwd: string): Promise<ExtendedDependencyInfo[]> {
-  const file = 'composer.json'
-  const json = await readJson(join(cwd, file))
-  return [
-    ...objectEntries(json?.require).map(([name, version]) => ({ managerId: 'composer' as const, name, version: String(version), type: 'require', file })),
-    ...objectEntries(json?.['require-dev']).map(([name, version]) => ({ managerId: 'composer' as const, name, version: String(version), type: 'require-dev', file }))
-  ].filter((dep) => dep.name.toLowerCase() !== 'php')
-}
-
-async function parseBundlerDependencies(cwd: string): Promise<ExtendedDependencyInfo[]> {
-  const files = (await existingPatternMatches(cwd, ['Gemfile', '*.gemspec'])).filter(Boolean)
-  const deps: ExtendedDependencyInfo[] = []
-
-  for (const file of files) {
-    const content = await readText(join(cwd, file))
-    deps.push(...matches(content, /^\s*gem\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?/gm)
-      .map((match) => ({ managerId: 'bundler' as const, name: match[1], version: match[2], type: file.endsWith('.gemspec') ? 'gemspec' : 'Gemfile', file })))
   }
 
   return uniqueDependencies(deps)
@@ -1721,7 +1489,7 @@ async function parseTerraformDependencies(cwd: string, managerId: DependencyMana
         file
       })))
     deps.push(...matches(content, /module\s+"([^"]+)"\s*\{([\s\S]*?)\}/g)
-      .map((match) => {
+      .map<ExtendedDependencyInfo | null>((match) => {
         const source = match[2].match(/\bsource\s*=\s*"([^"]+)"/)?.[1]
         if (!source) return null
         return {
@@ -1887,7 +1655,7 @@ async function parseBazelDependencies(cwd: string): Promise<ExtendedDependencyIn
   for (const file of files) {
     const content = await readText(join(cwd, file))
 
-    deps.push(...matches(content, /bazel_dep\s*\(([\s\S]*?)\)/g).map((match) => {
+    deps.push(...matches(content, /bazel_dep\s*\(([\s\S]*?)\)/g).map<ExtendedDependencyInfo | null>((match) => {
       const block = match[1]
       const name = stringAttribute(block, 'name')
       if (!name) return null
@@ -1901,7 +1669,7 @@ async function parseBazelDependencies(cwd: string): Promise<ExtendedDependencyIn
       }
     }).filter((dep): dep is ExtendedDependencyInfo => Boolean(dep)))
 
-    deps.push(...matches(content, /(archive_override|git_override|single_version_override|multiple_version_override)\s*\(([\s\S]*?)\)/g).map((match) => {
+    deps.push(...matches(content, /(archive_override|git_override|single_version_override|multiple_version_override)\s*\(([\s\S]*?)\)/g).map<ExtendedDependencyInfo | null>((match) => {
       const block = match[2]
       const name = stringAttribute(block, 'module_name') || stringAttribute(block, 'name')
       if (!name) return null
@@ -1917,7 +1685,7 @@ async function parseBazelDependencies(cwd: string): Promise<ExtendedDependencyIn
 
     deps.push(...parseMavenArtifactsFromBlocks(content, /maven_install\s*\(([\s\S]*?)\)/g, 'bazel', 'maven-artifact', file))
 
-    deps.push(...matches(content, /(http_archive|git_repository|new_git_repository)\s*\(([\s\S]*?)\)/g).map((match) => {
+    deps.push(...matches(content, /(http_archive|git_repository|new_git_repository)\s*\(([\s\S]*?)\)/g).map<ExtendedDependencyInfo | null>((match) => {
       const block = match[2]
       const name = stringAttribute(block, 'name')
       if (!name) return null
@@ -2035,7 +1803,7 @@ async function parseBuckDependencies(cwd: string): Promise<ExtendedDependencyInf
   for (const file of files) {
     const content = await readText(join(cwd, file))
 
-    deps.push(...matches(content, /(maven_jar|prebuilt_jar)\s*\(([\s\S]*?)\)/g).map((match) => {
+    deps.push(...matches(content, /(maven_jar|prebuilt_jar)\s*\(([\s\S]*?)\)/g).map<ExtendedDependencyInfo | null>((match) => {
       const block = match[2]
       const coordinate = stringAttribute(block, 'id') || stringAttribute(block, 'binary_jar') || ''
       const [name, version] = splitMavenCoordinate(coordinate)
@@ -2050,7 +1818,7 @@ async function parseBuckDependencies(cwd: string): Promise<ExtendedDependencyInf
       }
     }).filter((dep): dep is ExtendedDependencyInfo => Boolean(dep)))
 
-    deps.push(...matches(content, /(http_archive|remote_file)\s*\(([\s\S]*?)\)/g).map((match) => {
+    deps.push(...matches(content, /(http_archive|remote_file)\s*\(([\s\S]*?)\)/g).map<ExtendedDependencyInfo | null>((match) => {
       const block = match[2]
       const name = stringAttribute(block, 'name')
       if (!name) return null
@@ -2550,24 +2318,6 @@ async function parseGenericManifestDependencies(cwd: string, manager: Dependency
     type: 'manifest',
     file
   }))
-}
-
-function pythonDependency(value: string, managerId: DependencyManagerId, type: string, file: string): ExtendedDependencyInfo {
-  const match = value.match(/^([A-Za-z0-9_.-]+)\s*(.*)$/)
-  return {
-    managerId,
-    name: match?.[1] || value,
-    version: match?.[2]?.trim() || undefined,
-    type,
-    file
-  }
-}
-
-function splitCondaDependency(value: string): [string, string | undefined] {
-  const pipPrefix = value.match(/^pip:\s*(.+)$/)
-  const clean = pipPrefix ? pipPrefix[1] : value
-  const parts = clean.split('=')
-  return [parts[0].trim(), parts.slice(1).join('=').trim() || undefined]
 }
 
 function splitPythonRequirement(value: string): [string, string | undefined] {
@@ -3084,6 +2834,19 @@ async function existingPatternMatches(cwd: string, patterns: readonly string[]):
     }
   }
   return [...new Set(matches)]
+}
+
+async function backupPatternMatches(cwd: string, patterns: readonly string[]): Promise<string[]> {
+  const matchers = patterns.map((pattern) => {
+    const normalized = pattern.replace(/\\/g, '/')
+    return {
+      nested: normalized.includes('/'),
+      expression: wildcardToRegExp(normalized)
+    }
+  })
+  return await findWorkspaceFiles(cwd, (fileName, relativePath) => (
+    matchers.some(({ nested, expression }) => expression.test(nested ? relativePath : fileName))
+  ), { maxDepth: 8, ignoredDirectories: ['.npmDesktopManager'] })
 }
 
 async function readdirSafe(path: string): Promise<string[]> {

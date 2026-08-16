@@ -299,7 +299,7 @@ function buildItems(input: {
   const rollbacks = rollbackMap(input.rollbackPlan)
 
   return (input.updatePlan?.items || [])
-    .map((item) => {
+    .map<DependencyImpactAnalysisItem>((item) => {
       const key = workspaceManagerKey(item.workspaceRelativePath, item.managerId)
       const ownerList = owners.get(key) || []
       const riskFindings = risks.get(key) || []

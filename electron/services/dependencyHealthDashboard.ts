@@ -466,7 +466,7 @@ function sourceStatuses(captures: DashboardCaptures): DependencyHealthDashboardS
       label: 'Credential usage',
       result: captures.credentials,
       generatedAt: (value: CredentialUsageReport) => value.generatedAt,
-      count: (value: CredentialUsageReport) => value.summary.missingCredentialEndpointCount + value.summary.weakMatchEndpointCount + value.summary.insecureCredentialStorageEndpointCount
+      count: (value: CredentialUsageReport) => value.summary.missingCredentialEndpointCount + value.summary.weakMatchEndpointCount + value.summary.insecureStorageEndpointCount
     },
     {
       id: 'registry-reachability',
@@ -863,11 +863,11 @@ function reportSnapshots(captures: DashboardCaptures): DependencyHealthDashboard
       generatedAt: captures.license.value.generatedAt,
       summary: captures.license.value.summary
     },
-    dependencyDiff: captures.dependencyDiff.value && {
+    dependencyDiff: captures.dependencyDiff.value ? {
       fromSnapshotId: captures.dependencyDiff.value.fromSnapshotId,
       comparedAt: captures.dependencyDiff.value.comparedAt,
       summary: captures.dependencyDiff.value.summary
-    },
+    } : undefined,
     policy: captures.policy.value && {
       generatedAt: captures.policy.value.generatedAt,
       componentCount: captures.policy.value.componentCount,
@@ -1379,7 +1379,7 @@ function unique<T>(items: T[]): T[] {
 }
 
 function sum(values: Array<number | undefined>): number {
-  return values.reduce((total, value) => total + (Number.isFinite(value) ? Number(value) : 0), 0)
+  return values.reduce<number>((total, value) => total + (Number.isFinite(value) ? Number(value) : 0), 0)
 }
 
 function htmlEscape(value: string): string {

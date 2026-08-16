@@ -582,11 +582,10 @@ interface CaptureResult<T> {
   error?: string
 }
 
-interface PolicyContext {
-  source: WorkspacePolicySource
-  path?: string
-  policy?: DependencyPolicy
-}
+type PolicyContext =
+  | { source: 'workspace'; path: string; policy?: DependencyPolicy }
+  | { source: 'inherited-root'; path: string; policy: DependencyPolicy }
+  | { source: 'none'; path?: undefined; policy?: undefined }
 
 interface ReadinessPolicyContext {
   source: WorkspaceReadinessPolicySource
@@ -1533,7 +1532,7 @@ export class WorkspaceGovernanceService {
     const releaseExceptionExists = await exists(join(workspace.path, RELEASE_EXCEPTION_FILE))
     const policyContext: PolicyContext = policyExists
       ? { source: 'workspace' as const, path: join(workspace.path, DEPENDENCY_POLICY_FILE) }
-      : rootPolicy && workspace.path !== root
+      : rootPolicy?.source === 'workspace' && rootPolicy.policy && workspace.path !== root
         ? {
             source: 'inherited-root' as const,
             path: rootPolicy.path,

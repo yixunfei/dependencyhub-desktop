@@ -102,7 +102,7 @@ export class CiEvidenceService {
     try {
       const content = await readFile(evidencePath(cwd), 'utf-8')
       const parsed = JSON.parse(content)
-      const records = Array.isArray(parsed?.records) ? parsed.records : Array.isArray(parsed) ? parsed : []
+      const records: unknown[] = Array.isArray(parsed?.records) ? parsed.records : Array.isArray(parsed) ? parsed : []
       return records
         .map((record) => normalizeRecord(record))
         .filter((record): record is CiEvidenceRecord => Boolean(record))
@@ -174,7 +174,7 @@ function parseEvidenceFile(path: string, content: string, overrides: Partial<CiE
   }
 
   const parsed = JSON.parse(content)
-  const inputs = Array.isArray(parsed)
+  const inputs: unknown[] = Array.isArray(parsed)
     ? parsed
     : Array.isArray(parsed?.records)
       ? parsed.records

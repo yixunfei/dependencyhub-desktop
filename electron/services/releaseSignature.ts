@@ -224,7 +224,9 @@ export class ReleaseSignatureService {
     const root = resolve(projectPath)
     await access(root)
     const generatedAt = new Date().toISOString()
-    const sources = await Promise.all(SOURCE_DEFINITIONS.map((definition) => readSource(root, definition)))
+    const sources = await Promise.all(SOURCE_DEFINITIONS.map(
+      (definition: SourceDefinition<any>) => readSource(root, definition)
+    ))
     const payload = buildPayload(sources)
     const signing = signingContext()
     const signature = buildSignature(payload, signing, generatedAt)
