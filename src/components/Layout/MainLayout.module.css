@@ -1,14 +1,26 @@
 .layout {
+  width: 100%;
   height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sider {
   border-right: 1px solid #3c3c3c;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sider :global(.ant-layout-sider-children) {
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .logo {
+  flex: 0 0 64px;
   height: 64px;
   display: flex;
   align-items: center;
@@ -16,6 +28,10 @@
   gap: 8px;
   border-bottom: 1px solid #3c3c3c;
   padding: 0 16px;
+}
+
+.siderCollapsed .logo {
+  padding: 0 12px;
 }
 
 .logoIcon {
@@ -29,14 +45,22 @@
 }
 
 .logoText {
+  min-width: 0;
+  overflow: hidden;
   font-size: 14px;
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu {
   border: none !important;
   margin-top: 8px;
-  flex: 1;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .menu :global(.ant-menu-item) {
@@ -44,9 +68,17 @@
   border-radius: 6px !important;
 }
 
-.themeSwitch {
-  padding: 16px;
+.sidebarControls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
   border-top: 1px solid #3c3c3c;
+}
+
+.themeSwitch {
   display: flex;
   justify-content: center;
 }
@@ -55,18 +87,78 @@
   min-width: 28px;
 }
 
+.siderCollapsed .sidebarControls {
+  flex-direction: column;
+  padding: 10px 8px;
+}
+
+.siderCollapsed .themeSwitch :global(.ant-segmented-item-label) {
+  min-width: 28px;
+}
+
+.collapseButton {
+  flex: 0 0 auto;
+  color: var(--text-secondary) !important;
+}
+
+.collapseButton:hover,
+.collapseButton:focus-visible {
+  color: var(--primary-color) !important;
+}
+
 .contentLayout {
+  width: 0;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
 .content {
+  min-width: 0;
+  min-height: 0;
   padding: 24px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.content :global(.ant-table-wrapper),
+.content :global(.ant-table-container) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.content :global(.ant-table-content) {
+  overflow-x: auto;
 }
 
 .footer {
+  flex: 0 0 auto;
   text-align: center;
   font-size: 12px;
   padding: 12px 24px;
   border-top: 1px solid #3c3c3c;
+}
+
+@media (max-width: 1199.98px), (max-height: 720px) {
+  .content {
+    padding: 16px;
+  }
+}
+
+@media (max-height: 700px) {
+  .logo {
+    flex-basis: 56px;
+    height: 56px;
+  }
+
+  .sidebarControls {
+    padding-block: 8px;
+  }
+
+  .footer {
+    display: none;
+  }
 }

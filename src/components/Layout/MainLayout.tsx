@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, Segmented, Tooltip } from 'antd'
+import { Button, Layout, Menu, Segmented, Tooltip } from 'antd'
 import {
   SearchOutlined,
   SettingOutlined,
@@ -11,7 +11,9 @@ import {
   ToolOutlined,
   DeploymentUnitOutlined,
   ExperimentOutlined,
-  SafetyCertificateOutlined
+  SafetyCertificateOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined
 } from '@ant-design/icons'
 import { ThemeMode, useThemeStore } from '../../stores/themeStore'
 import { useResolvedTheme } from '../../hooks/useResolvedTheme'
@@ -33,6 +35,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { mode, setMode } = useThemeStore()
   const resolvedMode = useResolvedTheme(mode)
   const t = useT()
+  const [collapsed, setCollapsed] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1199.98px)').matches
+  ))
+  const collapseLabel = collapsed ? t('layout.expandNavigation') : t('layout.collapseNavigation')
   
   const isDark = resolvedMode === 'dark'
   const activeMenuKey = (() => {
@@ -114,7 +120,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     >
       <Sider 
         width={200} 
-        className={styles.sider}
+        collapsedWidth={72}
+        breakpoint="xl"
+        collapsible
+        collapsed={collapsed}
+        trigger={null}
+        onCollapse={setCollapsed}
+        className={`${styles.sider} ${collapsed ? styles.siderCollapsed : ''}`}
         theme={isDark ? 'dark' : 'light'}
         style={{ 
           background: isDark ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
@@ -133,11 +145,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               objectFit: 'cover'
             }}
           />
-          <div className={styles.logoText} style={{ color: isDark ? '#ccc' : '#333' }}>
-            Dependency Hub
-          </div>
+          {!collapsed && (
+            <div className={styles.logoText} style={{ color: isDark ? '#ccc' : '#333' }}>
+              Dependency Hub
+            </div>
+          )}
         </div>
-          <Menu
+        <Menu
           mode="inline"
           selectedKeys={[activeMenuKey]}
           items={menuItems}
@@ -145,17 +159,30 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           className={styles.menu}
           theme={isDark ? 'dark' : 'light'}
         />
-        <div className={styles.themeSwitch}>
-          <Tooltip title={t('layout.themeTooltip')}>
-            <Segmented<ThemeMode>
-              size="small"
-              value={mode}
-              onChange={setMode}
-              options={[
-                { value: 'system', icon: <DesktopOutlined /> },
-                { value: 'light', icon: <BulbOutlined /> },
-                { value: 'dark', icon: <BulbFilled /> }
-              ]}
+        <div className={styles.sidebarControls}>
+          <div className={styles.themeSwitch}>
+            <Tooltip title={t('layout.themeTooltip')} placement={collapsed ? 'right' : 'top'}>
+              <Segmented<ThemeMode>
+                size="small"
+                vertical={collapsed}
+                value={mode}
+                onChange={setMode}
+                aria-label={t('layout.themeTooltip')}
+                options={[
+                  { value: 'system', icon: <DesktopOutlined /> },
+                  { value: 'light', icon: <BulbOutlined /> },
+                  { value: 'dark', icon: <BulbFilled /> }
+                ]}
+              />
+            </Tooltip>
+          </div>
+          <Tooltip title={collapseLabel} placement="right">
+            <Button
+              type="text"
+              className={styles.collapseButton}
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              aria-label={collapseLabel}
+              onClick={() => setCollapsed((value) => !value)}
             />
           </Tooltip>
         </div>

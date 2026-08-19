@@ -14,6 +14,7 @@
 }
 
 .compact {
+  min-width: 0;
   max-width: 560px;
 }
 
@@ -25,6 +26,7 @@
 
 .value {
   min-width: 120px;
+  max-width: 100%;
   overflow: hidden;
   color: var(--text-color, #ccc);
   font-family: 'Courier New', monospace;

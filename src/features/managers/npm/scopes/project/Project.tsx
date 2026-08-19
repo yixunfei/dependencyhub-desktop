@@ -109,8 +109,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   }
   
   const stopWatcher = () => {
-    window.electronAPI.watcher.stop()
-    window.electronAPI.watcher.removeChangeListener()
+    window.electronAPI?.watcher?.stop()
+    window.electronAPI?.watcher?.removeChangeListener()
   }
   
   useEffect(() => {

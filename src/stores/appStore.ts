@@ -46,6 +46,7 @@ export const useAppStore = create<AppState>((set) => ({
   
   initCurrentPath: async () => {
     try {
+      if (!window.electronAPI) return
       const path = await window.electronAPI.getDefaultPath()
       set({ currentPath: path })
     } catch (error) {

@@ -1,5 +1,6 @@
 .container {
-  height: 100%;
+  min-width: 0;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -10,6 +11,7 @@
 }
 
 .sectionHeader {
+  min-width: 0;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -33,7 +35,7 @@
 
 .pathValue {
   display: inline-block;
-  max-width: 520px;
+  max-width: min(520px, 100%);
   overflow: hidden;
   color: var(--primary-color, #1890ff);
   text-overflow: ellipsis;
@@ -53,6 +55,7 @@
 }
 
 .card {
+  min-width: 0;
   min-height: 220px;
   background: var(--bg-secondary, #2d2d2d);
   border: 1px solid var(--border-color, #3c3c3c);
@@ -60,6 +63,7 @@
 }
 
 .workspaceCard {
+  min-width: 0;
   min-height: 190px;
   background: var(--bg-secondary, #2d2d2d);
   border: 1px solid var(--border-color, #3c3c3c);
@@ -67,6 +71,7 @@
 }
 
 .cardBody {
+  min-width: 0;
   width: 100%;
 }
 
@@ -112,6 +117,7 @@
 }
 
 .roadmapItem {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -122,10 +128,43 @@
   border-radius: 8px;
 }
 
+.roadmapItem > :global(.ant-space),
+.roadmapItem :global(.ant-space-item) {
+  min-width: 0;
+}
+
+.roadmapItem > :global(.ant-space) {
+  flex: 1 1 auto;
+}
+
+.roadmapItem :global(.ant-tag) {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.roadmapItem > :global(.ant-typography) {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .footerLinks {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 1199.98px) {
+  .grid,
+  .workspaceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .roadmap {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 980px) {
@@ -142,5 +181,9 @@
   .sectionHeader {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .roadmapItem > :global(.ant-typography) {
+    text-align: left;
   }
 }

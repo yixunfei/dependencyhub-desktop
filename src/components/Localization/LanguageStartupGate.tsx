@@ -18,7 +18,7 @@ export const LanguageStartupGate: FC = () => {
 
   useEffect(() => {
     document.documentElement.lang = language
-    void window.electronAPI.app?.setMenuLanguage(language)
+    void window.electronAPI?.app?.setMenuLanguage(language)
   }, [language])
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export const LanguageStartupGate: FC = () => {
 
     const resolveStartupLanguage = async () => {
       try {
-        const startup = await window.electronAPI.app?.getStartupLanguage()
+        const startup = await window.electronAPI?.app?.getStartupLanguage()
         if (cancelled || useSettingsStore.getState().languageInitialized) return
 
         if (startup?.source === 'installer') {
