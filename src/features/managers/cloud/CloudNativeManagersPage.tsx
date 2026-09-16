@@ -11,18 +11,19 @@ const config: ExtendedManagerWorkspaceConfig = {
   noDetectionMessage: 'No cloud-native dependency files detected yet',
   detectionHint: 'The page can still generate plans. Add Dockerfile, compose YAML, Chart.yaml, kustomization.yaml, helmfile.yaml, skaffold.yaml, Argo CD Application YAML, or Flux manifests for stronger detection.',
   operationOptions: [
-    { value: 'sync', label: 'Validate config' },
-    { value: 'update', label: 'Update deps' },
-    { value: 'audit', label: 'Audit/lint' },
+    { value: 'sync', label: 'Refresh dependencies' },
+    { value: 'update', label: 'Update dependencies' },
+    { value: 'outdated', label: 'List dependency versions' },
+    { value: 'audit', label: 'Lint chart' },
     { value: 'tree', label: 'Dependency tree' },
-    { value: 'list', label: 'List images/deps' },
+    { value: 'list', label: 'List dependencies' },
     { value: 'lock', label: 'Build lock' }
   ],
   quickCommands: {
     docker: ['compose config', 'image ls', 'scout cves', 'build .'],
     helm: ['dependency list', 'dependency update', 'dependency build', 'lint .'],
     kustomize: ['build .', 'cfg tree .', 'edit set image app=image:tag'],
-    helmfile: ['list', 'deps', 'diff', 'template'],
+    helmfile: ['list', 'deps', 'diff', 'lint', 'template', 'sync'],
     skaffold: ['render', 'diagnose', 'build --dry-run'],
     argocd: ['app list', 'app diff app-name', 'app get app-name'],
     flux: ['check', 'get all', 'diff kustomization app']

@@ -13,6 +13,15 @@ export interface VersionAnalysis {
   }
 }
 
+export interface VersionAnalysisInput {
+  packageName: string
+  currentVersion: string
+  allVersions: string[]
+  wantedVersion?: string
+  latestVersion?: string
+  securityFixVersions?: string[]
+}
+
 export interface VersionRecommendation {
   packageName: string
   currentVersion: string
@@ -25,11 +34,12 @@ export interface VersionRecommendation {
 
 export class SmartUpdateService {
   analyzeVersions(
-    packageName: string,
+    _packageName: string,
     currentVersion: string,
     allVersions: string[],
     wantedVersion?: string,
-    latestVersion?: string
+    latestVersion?: string,
+    securityFixVersions: string[] = []
   ): VersionAnalysis {
     const result: VersionAnalysis = {
       recommended: wantedVersion || null,
@@ -40,8 +50,8 @@ export class SmartUpdateService {
       hasConflict: false
     }
 
-    const stableVersions = allVersions.filter(v => !this.isPrerelease(v))
-    
+    const stableVersions = this.normalizeStableVersions(allVersions)
+    const normalizedSecurityVersions = new Set(this.normalizeStableVersions(securityFixVersions))
     result.compatible = stableVersions.filter(v => {
       try {
         return semver.gte(v, currentVersion) && semver.satisfies(v, `^${currentVersion}`)
@@ -58,8 +68,12 @@ export class SmartUpdateService {
       result.latest = stableVersions[0]
     }
 
-    result.hasSecurityUpdate = this.checkForSecurityUpdate(packageName, currentVersion, stableVersions)
-    result.safe = result.hasSecurityUpdate ? this.findSafeVersion(stableVersions, currentVersion) : null
+    result.hasSecurityUpdate = stableVersions.some(version =>
+      normalizedSecurityVersions.has(version) && semver.gt(version, currentVersion)
+    )
+    result.safe = result.hasSecurityUpdate
+      ? this.findSafeVersion(stableVersions, currentVersion, normalizedSecurityVersions)
+      : null
 
     if (result.recommended && result.safe && result.recommended !== result.safe) {
       result.hasConflict = true
@@ -72,6 +86,26 @@ export class SmartUpdateService {
     return result
   }
 
+  analyze(input: VersionAnalysisInput): VersionAnalysis {
+    return this.analyzeVersions(
+      input.packageName,
+      input.currentVersion,
+      input.allVersions,
+      input.wantedVersion,
+      input.latestVersion,
+      input.securityFixVersions
+    )
+  }
+
+  private normalizeStableVersions(versions: string[]): string[] {
+    return [...new Set(versions.filter((version) => {
+      try {
+        return !!semver.parse(version) && !this.isPrerelease(version)
+      } catch {
+        return false
+      }
+    }))].sort(semver.rcompare)
+  }
   getUpdateType(currentVersion: string, targetVersion: string): 'patch' | 'minor' | 'major' | 'unknown' {
     try {
       const current = semver.parse(currentVersion)
@@ -131,53 +165,17 @@ export class SmartUpdateService {
     }
   }
 
-  private checkForSecurityUpdate(packageName: string, currentVersion: string, versions: string[]): boolean {
+  private findSafeVersion(versions: string[], currentVersion: string, securityVersions: Set<string>): string | null {
     try {
-      const currentMajor = semver.major(currentVersion)
-      const currentMinor = semver.minor(currentVersion)
-      
-      for (const version of versions) {
-        try {
-          const vMajor = semver.major(version)
-          const vMinor = semver.minor(version)
-          
-          if (vMajor === currentMajor && vMinor === currentMinor) {
-            if (semver.gt(version, currentVersion)) {
-              if (version.toLowerCase().includes('security') || 
-                  version.toLowerCase().includes('fix')) {
-                return true
-              }
-            }
-          }
-        } catch {
-          continue
-        }
-      }
-      
-      return false
-    } catch {
-      return false
-    }
-  }
-
-  private findSafeVersion(versions: string[], currentVersion: string): string | null {
-    try {
-      for (const version of versions) {
-        if (semver.gt(version, currentVersion)) {
-          if (version.toLowerCase().includes('security') || 
-              version.toLowerCase().includes('fix')) {
-            return version
-          }
-        }
-      }
-      
-      return versions.filter(v => semver.gt(v, currentVersion))[0] || null
+      return versions.find((version) => semver.gt(version, currentVersion) && securityVersions.has(version))
+        || versions.find((version) => semver.gt(version, currentVersion))
+        || null
     } catch {
       return null
     }
   }
 
-  private getVersionAge(version: string): number {
-    return 30
+  private getVersionAge(_version: string): number {
+    return Number.POSITIVE_INFINITY
   }
 }

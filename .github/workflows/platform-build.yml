@@ -1,0 +1,41 @@
+name: platform-build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            artifact: linux
+          - os: windows-latest
+            target: win
+            artifact: windows
+          - os: macos-latest
+            target: mac
+            artifact: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Build native artifacts
+        shell: bash
+        run: node scripts/build.js ${{ matrix.target }} all
+      - name: List release artifacts
+        shell: bash
+        run: find release -type f -maxdepth 3 -print
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependencyhub-${{ matrix.artifact }}
+          path: release
+          if-no-files-found: error

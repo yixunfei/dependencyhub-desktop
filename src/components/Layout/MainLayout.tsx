@@ -13,12 +13,14 @@ import {
   ExperimentOutlined,
   SafetyCertificateOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined
+  MenuUnfoldOutlined,
+  FolderOpenOutlined
 } from '@ant-design/icons'
 import { ThemeMode, useThemeStore } from '../../stores/themeStore'
 import { useResolvedTheme } from '../../hooks/useResolvedTheme'
 import { useT } from '../../i18n'
 import { getImplementedManagerDefinitions } from '../../domain/managers/registry'
+import { useAppStore } from '../../stores/appStore'
 import { managerIcon } from '../../domain/managers/presentation'
 import { MANAGER_WORKSPACE_GROUPS, findWorkspaceGroupByPath } from '../../domain/managers/workspaces'
 import styles from './MainLayout.module.css'
@@ -38,6 +40,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(() => (
     typeof window !== 'undefined' && window.matchMedia('(max-width: 1199.98px)').matches
   ))
+  const currentPath = useAppStore((state) => state.currentPath)
+  const projectLabel = currentPath ? currentPath.split(/[\\/]/).filter(Boolean).pop() || currentPath : t('layout.noProject')
   const collapseLabel = collapsed ? t('layout.expandNavigation') : t('layout.collapseNavigation')
   
   const isDark = resolvedMode === 'dark'
@@ -150,6 +154,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               Dependency Hub
             </div>
           )}
+        </div>
+        <div className={styles.currentProject}>
+          <Tooltip title={currentPath || t('layout.noProject')} placement="right">
+            <Button type="text" block onClick={() => navigate('/workspace')} icon={<FolderOpenOutlined />}>
+              {!collapsed && projectLabel}
+            </Button>
+          </Tooltip>
         </div>
         <Menu
           mode="inline"

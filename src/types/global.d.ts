@@ -27,6 +27,7 @@ declare global {
       npm: {
         search: (query: string, limit?: number) => Promise<any[]>
         view: (packageName: string) => Promise<any>
+        smartAnalyze: (input: SmartUpdateInput) => Promise<SmartUpdateAnalysis>
         install: (args: InstallArgs) => Promise<string>
         uninstall: (args: UninstallArgs) => Promise<string>
         update: (args: UpdateArgs) => Promise<string>
@@ -198,6 +199,7 @@ declare global {
 
       managers: {
         descriptors: () => Promise<ManagerDescriptor[]>
+        diagnostics: () => Promise<ManagerAdapterDiagnostic[]>
         detected: (cwd: string) => Promise<ManagerDetection[]>
         inventory: (cwd: string, managerId: DependencyManagerId) => Promise<ManagerDependency[]>
         plan: (cwd: string, managerId: DependencyManagerId, request: ManagerOperationRequest) => Promise<ManagerOperationPlan>
@@ -608,6 +610,36 @@ declare global {
     prerelease: NpmVersionInfo[]
     latest: string
   }
+
+  interface ManagerAdapterDiagnostic {
+    managerId: DependencyManagerId
+    registered: boolean
+    issues: string[]
+  }
+  interface SmartUpdateInput {
+    packageName: string
+    currentVersion: string
+    allVersions: string[]
+    wantedVersion?: string
+    latestVersion?: string
+    securityFixVersions?: string[]
+  }
+
+
+  interface SmartUpdateAnalysis {
+    recommended: string | null
+    latest: string | null
+    safe: string | null
+    compatible: string[]
+    hasSecurityUpdate: boolean
+    hasConflict: boolean
+    conflictInfo?: {
+      recommendedVersion: string
+      safeVersion: string
+    }
+  }
+
+
 
   interface PipPackageInfo {
     name: string

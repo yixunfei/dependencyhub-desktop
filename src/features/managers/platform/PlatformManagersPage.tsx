@@ -12,11 +12,10 @@ const config: ExtendedManagerWorkspaceConfig = {
   detectionHint: 'The page can still generate plans. Add deno.json, deno.lock, Package.swift, Package.resolved, Podfile, or Podfile.lock for stronger detection.',
   operationOptions: [
     { value: 'sync', label: 'Resolve/cache' },
-    { value: 'install', label: 'Add package' },
-    { value: 'remove', label: 'Remove package' },
+    { value: 'install', label: 'Add package declaration' },
+    { value: 'remove', label: 'Remove package declaration' },
     { value: 'update', label: 'Update package' },
-    { value: 'outdated', label: 'Check outdated' },
-    { value: 'audit', label: 'Audit/check' },
+    { value: 'outdated', label: 'Review dependency pins' },
     { value: 'tree', label: 'Dependency tree' },
     { value: 'list', label: 'List packages' },
     { value: 'lock', label: 'Refresh lock' }

@@ -76,6 +76,7 @@ export interface ManagerDependency {
   source?: string
   file: string
   direct?: boolean
+  status?: 'installed' | 'missing' | 'invalid' | 'extraneous'
   integrity?: string
   metadata?: Record<string, string | number | boolean | null>
 }
@@ -126,6 +127,7 @@ export interface ManagerOperationPlan {
 
 export interface ManagerExecuteOptions {
   dryRun?: boolean
+  plan?: ManagerOperationPlan
 }
 
 export interface ManagerCommandResult {

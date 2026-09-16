@@ -284,9 +284,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/platform',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'uv',
@@ -629,22 +629,23 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     name: 'Swift Package Manager',
     shortName: 'SwiftPM',
     language: 'Swift',
-    ecosystem: 'Swift',
+    ecosystem: 'Apple',
     packageManager: 'SwiftPM',
-    category: 'apple',
+    category: 'platform',
     tools: ['swift'],
     manifestFiles: ['Package.swift'],
     lockFiles: ['Package.resolved'],
-    capabilities: ['install', 'update', 'dependency-tree', 'toolchain', 'lockfile'],
-    scopes: ['project'],
-    scenarios: ['Swift apps', 'server-side Swift', 'Apple platform libraries'],
-    productionTools: ['Package.resolved diff', 'dependency resolution'],
+    capabilities: ['search', 'install', 'uninstall', 'update', 'toolchain', 'lockfile'],
+    scopes: ['project', 'repository'],
+    scenarios: ['iOS apps', 'macOS apps', 'legacy Apple dependency stacks'],
+    productionTools: ['Package.resolved diff', 'repo update policy'],
     route: '/platform',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
+
   },
   {
     id: 'cocoapods',
@@ -664,9 +665,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/platform',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'helm',
@@ -686,9 +687,10 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/cloud',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
+
   },
   {
     id: 'docker',
@@ -708,9 +710,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/cloud',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'kustomize',
@@ -730,9 +732,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/cloud',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'helmfile',
@@ -752,9 +754,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/cloud',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'skaffold',
@@ -774,9 +776,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/cloud',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'argocd',
@@ -796,9 +798,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/cloud',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'flux',
@@ -818,9 +820,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/cloud',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'terraform',
@@ -841,9 +843,10 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/infra',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
+
   },
   {
     id: 'opentofu',
@@ -864,9 +867,10 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/infra',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
+
   },
   {
     id: 'ansible',
@@ -887,9 +891,9 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     route: '/infra',
     builtIn: false,
     implemented: false,
-    status: 'planned',
+    status: 'preview',
     searchable: false,
-    healthSupported: false
+    healthSupported: true
   },
   {
     id: 'github-actions',

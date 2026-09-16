@@ -1,5 +1,7 @@
 import { spawn } from 'child_process'
 import https from 'https'
+import { readFile } from 'fs/promises'
+import { join } from 'path'
 import { BrowserWindow } from 'electron'
 import { resolveShellFreeCommand, runLoggedCommand } from './commandRunner'
 import { setCommandLogWindow } from './commandLogger'
@@ -54,6 +56,78 @@ async function httpsGet(url: string): Promise<string> {
       res.on('end', () => { resolve(data) })
     }).on('error', reject)
   })
+}
+
+export interface NpmDependencyStatus {
+  type: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+  status: 'installed' | 'missing' | 'invalid' | 'extraneous' | 'peer-conflict'
+  version?: string
+  problems?: string[]
+}
+
+export interface NpmListResult {
+  name?: string
+  version?: string
+  dependencies?: Record<string, any>
+  problems?: string[]
+  manifest?: Record<string, Record<string, string>>
+  statuses?: Record<string, NpmDependencyStatus>
+  error?: string
+}
+
+export function classifyNpmDependencies(
+  manifest: Record<string, Record<string, string>>,
+  installed: Record<string, any>,
+  problems: string[] = []
+): Record<string, NpmDependencyStatus> {
+  const result: Record<string, NpmDependencyStatus> = {}
+  const typeOrder = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const
+  for (const type of typeOrder) {
+    for (const [name] of Object.entries(manifest[type] || {})) {
+      const node = installed[name]
+      const matchingProblems = problems.filter((problem) => problem.toLowerCase().includes(name.toLowerCase()))
+      const peerConflict = matchingProblems.some((problem) => /peer|eresolve/i.test(problem))
+      const status = !node ? 'missing' : peerConflict ? 'peer-conflict' : node.invalid || matchingProblems.some((problem) => /invalid|missing/i.test(problem)) ? 'invalid' : 'installed'
+      if (!result[name] || type === 'optionalDependencies' || type === 'peerDependencies') {
+        result[name] = { type, status, version: node?.version, problems: matchingProblems }
+      }
+    }
+  }
+  for (const [name, node] of Object.entries(installed)) {
+    if (!result[name]) result[name] = { type: 'dependencies', status: 'extraneous', version: node?.version, problems: [`${name} is extraneous`] }
+  }
+  return result
+}
+
+function collectNpmTree(tree: any): { installed: Record<string, any>; problems: string[] } {
+  const installed: Record<string, any> = {}
+  const problems: string[] = [...(Array.isArray(tree?.problems) ? tree.problems : [])]
+  const walk = (dependencies: Record<string, any> | undefined) => {
+    for (const [name, node] of Object.entries(dependencies || {})) {
+      const value = node && typeof node === 'object' ? node as Record<string, any> : {}
+      installed[name] = value
+      if (Array.isArray(value.problems)) problems.push(...value.problems.map(String))
+      if (value.invalid) problems.push(`${name}: invalid`)
+      if (value.extraneous) problems.push(`${name}: extraneous`)
+      walk(value.dependencies)
+    }
+  }
+  walk(tree?.dependencies)
+  return { installed, problems }
+}
+
+async function readNpmManifest(cwd: string): Promise<Record<string, Record<string, string>>> {
+  try {
+    const value = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'))
+    return {
+      dependencies: value.dependencies || {},
+      devDependencies: value.devDependencies || {},
+      optionalDependencies: value.optionalDependencies || {},
+      peerDependencies: value.peerDependencies || {}
+    }
+  } catch {
+    return {}
+  }
 }
 
 export class NpmService {
@@ -141,8 +215,18 @@ export class NpmService {
   async list(cwd: string, global: boolean): Promise<any> {
     const command = ['list', '--json', '--depth=0']
     if (global) command.push('-g')
-    const { stdout } = await this.executeNpm(command, global ? undefined : cwd)
-    return parseJson(stdout, {})
+    try {
+      const { stdout } = await this.executeNpm(command, global ? undefined : cwd)
+      const parsed = parseJson(stdout, {})
+      const manifest = global ? undefined : await readNpmManifest(cwd)
+      const tree = collectNpmTree(parsed)
+      return { ...parsed, manifest, statuses: manifest ? classifyNpmDependencies(manifest, tree.installed, tree.problems) : undefined }
+    } catch (error: any) {
+      const parsed = parseJson(error.stdout || '', {})
+      const manifest = global ? undefined : await readNpmManifest(cwd)
+      const tree = collectNpmTree(parsed)
+      return { ...parsed, manifest, statuses: manifest ? classifyNpmDependencies(manifest, tree.installed, tree.problems) : undefined, error: error.message || 'npm list failed' }
+    }
   }
 
   async configList(): Promise<any> {

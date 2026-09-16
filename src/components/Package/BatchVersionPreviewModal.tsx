@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Modal, Table, Checkbox, Space, Tag, Typography, Tooltip } from 'antd'
 import { InfoCircleOutlined, SafetyCertificateOutlined, WarningOutlined } from '@ant-design/icons'
 import { PackageInfo } from '../../stores/packageStore'
-import { resolvePackageUpdateTarget, useSettingsStore } from '../../stores/settingsStore'
+import { resolvePackageUpdateTarget, resolveSmartPackageUpdateTarget, useSettingsStore } from '../../stores/settingsStore'
 import semver from 'semver'
 
 const { Text } = Typography
@@ -29,21 +29,32 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
 }) => {
   const [previewPackages, setPreviewPackages] = useState<PreviewPackage[]>([])
   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
+  const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
+  const [analysisErrors, setAnalysisErrors] = useState<string[]>([])
 
   useEffect(() => {
     if (visible && packages.length > 0) {
-      const preview = packages.map(pkg => {
-        const targetVersion = resolvePackageUpdateTarget(pkg, updateStrategy) || pkg.version
-        return {
-          ...pkg,
-          selected: true,
-          targetVersion,
-          updateType: getUpdateType(pkg.version, targetVersion)
-        }
-      })
-      setPreviewPackages(preview)
+      let cancelled = false
+      void (async () => {
+        const errors: string[] = []
+        const preview = await Promise.all(packages.map(async (pkg) => {
+          let targetVersion = resolvePackageUpdateTarget(pkg, updateStrategy) || pkg.version
+          if (updateStrategy === 'smart') {
+            try {
+              targetVersion = (await resolveSmartPackageUpdateTarget(pkg, conflictStrategy)).targetVersion
+            } catch {
+              errors.push(pkg.name)
+            }
+          }
+          return { ...pkg, selected: true, targetVersion, updateType: getUpdateType(pkg.version, targetVersion) }
+        }))
+        if (cancelled) return
+        setAnalysisErrors(errors)
+        setPreviewPackages(preview)
+      })()
+      return () => { cancelled = true }
     }
-  }, [visible, packages, updateStrategy])
+  }, [visible, packages, updateStrategy, conflictStrategy])
 
   const getUpdateType = (current: string, latest: string): 'patch' | 'minor' | 'major' | 'unknown' => {
     try {
@@ -203,6 +214,9 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
       okButtonProps={{ disabled: selectedCount === 0 }}
     >
       <div style={{ marginBottom: 16 }}>
+        {analysisErrors.length > 0 && (
+          <Text type="warning">智能分析失败：{analysisErrors.join('、')}，已回退到现有版本策略。</Text>
+        )}
         <Text type="secondary">
           请确认要更新的包，您可以取消勾选跳过特定包的更新。
           {updateStrategy === 'security' ? ' 当前为安全优先策略，可能会选择更激进的目标版本。' : ''}

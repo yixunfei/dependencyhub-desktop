@@ -13,6 +13,9 @@ export interface LoggedCommandOptions {
   env?: NodeJS.ProcessEnv
   displayBin?: string
   maxBuffer?: number
+  timeoutMs?: number
+  signal?: AbortSignal
+  operationId?: string
   log?: boolean
 }
 
@@ -42,6 +45,9 @@ export function runLoggedCommand(
     env,
     displayBin = bin,
     maxBuffer = 1024 * 1024 * 10,
+    timeoutMs,
+    signal,
+    operationId,
     log = true
   } = options
   const logId = createLogId()
@@ -103,10 +109,12 @@ export function runLoggedCommand(
       shell: false,
       windowsHide: true
     })
-
+    let timeout: NodeJS.Timeout | undefined
     const fail = (error: Error & { stdout?: string; stderr?: string; code?: number | string }) => {
       if (settled) return
       settled = true
+      if (timeout) clearTimeout(timeout)
+      if (signal) signal.removeEventListener('abort', abort)
       if (pendingEmit) clearTimeout(pendingEmit)
       error.stdout = stdout
       error.stderr = stderr
@@ -114,6 +122,12 @@ export function runLoggedCommand(
       void recordHistory('error', error.message, error.code)
       reject(error)
     }
+    const abort = () => { child.kill(); fail(new Error(`Operation ${operationId || logId} was cancelled`)) }
+    if (signal) {
+      if (signal.aborted) abort()
+      else signal.addEventListener('abort', abort, { once: true })
+    }
+    if (timeoutMs !== undefined && timeoutMs > 0) timeout = setTimeout(() => { child.kill(); fail(new Error(`Operation ${operationId || logId} timed out after ${timeoutMs} ms`)) }, timeoutMs)
 
     child.stdout?.on('data', (chunk: Buffer) => {
       stdout = stdoutDecoder.write(chunk)
@@ -142,6 +156,8 @@ export function runLoggedCommand(
     child.on('close', (code) => {
       if (settled) return
       settled = true
+      if (timeout) clearTimeout(timeout)
+      if (signal) signal.removeEventListener('abort', abort)
       if (pendingEmit) clearTimeout(pendingEmit)
 
       if (code === 0) {

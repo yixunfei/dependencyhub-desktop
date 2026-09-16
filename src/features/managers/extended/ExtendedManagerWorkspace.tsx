@@ -23,6 +23,7 @@ import type {
   ManagerOperationPlan
 } from '@shared/managerWorkspace'
 import ManagerDiagnosticsPanel from './ManagerDiagnosticsPanel'
+import { ManagerWorkspaceCoordinator } from './managerWorkspaceCoordinator'
 import styles from './ExtendedManagerWorkspace.module.css'
 
 const { Paragraph, Text, Title } = Typography
@@ -87,6 +88,12 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
   const [planning, setPlanning] = useState(false)
   const [operationForm] = Form.useForm<OperationFormValues>()
   const [commandForm] = Form.useForm<{ commandLine: string }>()
+  // Overview and inventory requests track staleness independently; sharing a single
+  // coordinator would let an inventory load discard a concurrent overview response.
+  const overviewCoordinator = React.useMemo(() => new ManagerWorkspaceCoordinator(), [])
+  const inventoryCoordinator = React.useMemo(() => new ManagerWorkspaceCoordinator(), [])
+  const currentPathRef = React.useRef(currentPath)
+  useEffect(() => { currentPathRef.current = currentPath }, [currentPath])
 
   const definitions = useMemo(() => config.managerIds.map((id) => getManagerDefinition(id)!).filter(Boolean), [config.managerIds])
   const activeDefinition = getManagerDefinition(activeManager)
@@ -109,12 +116,14 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
 
   useEffect(() => {
     if (!currentPath) {
+      inventoryCoordinator.invalidate()
       setDependencies([])
       setOperationPlan(null)
       return
     }
-    void loadDependencies(activeManager)
+    inventoryCoordinator.invalidate()
     setOperationPlan(null)
+    void loadDependencies(activeManager)
   }, [activeManager, currentPath])
 
   const chooseDirectory = async () => {
@@ -127,6 +136,8 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
   const isWorkspaceManager = (id: DependencyManagerId): boolean => config.managerIds.includes(id)
 
   const loadOverview = async () => {
+    const path = currentPath
+    const token = overviewCoordinator.begin({ projectPath: path })
     setLoading(true)
     try {
       if (!currentPath) {
@@ -144,29 +155,36 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
         window.electronAPI.readiness.report(currentPath).catch(() => null),
         window.electronAPI.supplyChain.dependencyDiffLatestSnapshot(currentPath).catch(() => null)
       ])
-      setDetections(detected.filter((item) => isWorkspaceManager(item.id)))
-      setToolStatuses(tools)
-      setReadinessReport(readiness)
-      setDependencyDiff(diff)
-      const firstDetected = detected.find((item) => isWorkspaceManager(item.id) && item.detected)
-      if (firstDetected) setActiveManager(firstDetected.id)
+      if (overviewCoordinator.accepts(token, { projectPath: path })) {
+        setDetections(detected.filter((item) => isWorkspaceManager(item.id)))
+        setToolStatuses(tools)
+        setReadinessReport(readiness)
+        setDependencyDiff(diff)
+        const firstDetected = detected.find((item) => isWorkspaceManager(item.id) && item.detected)
+        if (firstDetected) setActiveManager(firstDetected.id)
+      }
     } catch (error: any) {
-      addNotification({ type: 'error', message: config.overviewErrorMessage, description: error.message })
+      if (overviewCoordinator.accepts(token, { projectPath: path })) addNotification({ type: 'error', message: config.overviewErrorMessage, description: error.message })
     } finally {
-      setLoading(false)
+      if (overviewCoordinator.accepts(token, { projectPath: path })) setLoading(false)
     }
   }
 
   const loadDependencies = async (managerId: DependencyManagerId = activeManager) => {
     if (!currentPath) return
+    const path = currentPath
+    const token = inventoryCoordinator.begin({ projectPath: path, managerId })
     setLoading(true)
     try {
-      setDependencies(await window.electronAPI.managers.inventory(currentPath, managerId))
+      if (!inventoryCoordinator.accepts(token, { projectPath: path, managerId })) return
+      setDependencies(await window.electronAPI.managers.inventory(path, managerId))
     } catch (error: any) {
-      setDependencies([])
-      addNotification({ type: 'error', message: `Failed to read ${managerId} dependencies`, description: error.message })
+      if (inventoryCoordinator.accepts(token, { projectPath: path, managerId })) {
+        setDependencies([])
+        addNotification({ type: 'error', message: `Failed to read ${managerId} dependencies`, description: error.message })
+      }
     } finally {
-      setLoading(false)
+      if (inventoryCoordinator.accepts(token, { projectPath: path, managerId })) setLoading(false)
     }
   }
 
@@ -199,6 +217,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
 
   const executeAndRefresh = async (operation: () => Promise<ManagerCommandResult>) => {
     if (!currentPath) return
+    const operationPath = currentPath
     setRunning(true)
     setCommandOutput('Running...')
     try {
@@ -213,12 +232,18 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
         result.backup ? `[backup] ${result.backup.files.length} files saved to ${result.backup.path}` : ''
       ].filter(Boolean).join('\n'))
       addNotification({ type: 'success', message: result.dryRun ? 'Dry-run completed' : 'Command completed', description: result.command })
+      // Apply the refresh only while the project the command targeted is still active.
+      const applyIfSameProject = (apply: () => void) => {
+        if (currentPathRef.current === operationPath) apply()
+      }
       await Promise.all([
         loadDependencies(activeManager),
-        window.electronAPI.supplyChain.dependencyDiffLatestSnapshot(currentPath).then(setDependencyDiff).catch(() => null),
-        window.electronAPI.readiness.report(currentPath).then(setReadinessReport).catch(() => null)
+        window.electronAPI.supplyChain.dependencyDiffLatestSnapshot(operationPath).then((value) => applyIfSameProject(() => setDependencyDiff(value))).catch(() => null),
+        window.electronAPI.readiness.report(operationPath).then((value) => applyIfSameProject(() => setReadinessReport(value))).catch(() => null)
       ])
     } catch (error: any) {
+      const backup = error?.backup as ManagerBackup | undefined
+      if (backup) setLastBackup(backup)
       setCommandOutput(error.message || String(error))
       addNotification({ type: 'error', message: 'Command failed', description: error.message })
     } finally {
@@ -253,7 +278,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
       currentPath,
       activeManager,
       operationPlan.request,
-      { dryRun }
+      { dryRun, plan: operationPlan }
     ))
   }
 
@@ -271,6 +296,22 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
       setRestoring(false)
     }
   }
+
+  const availableOperationOptions = useMemo(() => {
+    const supported = activeDetection?.capabilities.operations
+    return supported
+      ? config.operationOptions.filter((option) => supported.includes(option.value))
+      : config.operationOptions
+  }, [activeDetection?.capabilities.operations, config.operationOptions])
+
+  useEffect(() => {
+    const first = availableOperationOptions[0]?.value
+    if (!first) return
+    const current = operationForm.getFieldValue('operation')
+    if (!availableOperationOptions.some((option) => option.value === current)) {
+      operationForm.setFieldValue('operation', first)
+    }
+  }, [availableOperationOptions, operationForm])
 
   const managerSegments = definitions.map((manager) => ({
     value: manager.id,
@@ -439,7 +480,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
           <Form form={operationForm} layout="vertical" initialValues={{ operation: 'sync', dev: false }}>
             <div className={styles.planGrid}>
               <Form.Item name="operation" label="Operation">
-                <Segmented options={config.operationOptions} />
+                <Segmented options={availableOperationOptions} />
               </Form.Item>
               <Form.Item name="packageName" label={config.packageLabel || 'Package'}>
                 <Input placeholder={config.packagePlaceholder || 'package name'} />

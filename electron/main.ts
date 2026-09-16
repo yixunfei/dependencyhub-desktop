@@ -50,6 +50,7 @@ import { ReleaseSignatureService } from './services/releaseSignature'
 import { ReleaseTrustPolicyService } from './services/releaseTrustPolicy'
 import { FrameworkCoverageService } from './services/frameworkCoverage'
 import { DependencyHealthService } from './services/dependencyHealth'
+import { SmartUpdateService } from './services/smartUpdate'
 import { PluginCatalogService } from './services/pluginCatalog'
 import { exportOperationHistory, listOperationHistory } from './services/operationHistory'
 import { credentialVaultService, type CredentialInput } from './services/credentialVault'
@@ -315,6 +316,7 @@ const dependencyChangeExecutionRecordService = new DependencyChangeExecutionReco
 })
 const frameworkCoverageService = new FrameworkCoverageService()
 const dependencyHealthService = new DependencyHealthService()
+const smartUpdateService = new SmartUpdateService()
 const pluginCatalogService = new PluginCatalogService()
 const terminalService = new TerminalService()
 
@@ -496,6 +498,23 @@ function setupIpcHandlers() {
 
   ipcMain.handle('npm:view', async (_, packageName: string) => {
     return await npmService.view(packageName)
+  })
+
+  ipcMain.handle('npm:smart-analyze', async (_, input) => {
+    if (!input || typeof input !== 'object') throw new Error('Version analysis input is required')
+    const packageName = typeof input.packageName === 'string' ? input.packageName.trim() : ''
+    const currentVersion = typeof input.currentVersion === 'string' ? input.currentVersion.trim() : ''
+    const allVersions = Array.isArray(input.allVersions) ? input.allVersions.filter((item: unknown): item is string => typeof item === 'string') : []
+    const securityFixVersions = Array.isArray(input.securityFixVersions) ? input.securityFixVersions.filter((item: unknown): item is string => typeof item === 'string') : []
+    if (!packageName || !currentVersion) throw new Error('Package name and current version are required')
+    return smartUpdateService.analyze({
+      packageName,
+      currentVersion,
+      allVersions,
+      wantedVersion: typeof input.wantedVersion === 'string' ? input.wantedVersion : undefined,
+      latestVersion: typeof input.latestVersion === 'string' ? input.latestVersion : undefined,
+      securityFixVersions
+    })
   })
 
   ipcMain.handle('npm:install', async (_, args) => {
@@ -1225,6 +1244,10 @@ function setupIpcHandlers() {
 
   ipcMain.handle('manager:descriptors', () => {
     return managerWorkspaceService.descriptors()
+  })
+
+  ipcMain.handle('manager:diagnostics', () => {
+    return managerWorkspaceService.diagnostics()
   })
 
   ipcMain.handle('manager:detected', async (_, cwd: string) => {

@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   npm: {
     search: (query: string, limit?: number) => ipcRenderer.invoke('npm:search', query, limit),
     view: (packageName: string) => ipcRenderer.invoke('npm:view', packageName),
+    smartAnalyze: (input: SmartUpdateInput) => ipcRenderer.invoke('npm:smart-analyze', input),
     install: (args: InstallArgs) => ipcRenderer.invoke('npm:install', args),
     uninstall: (args: UninstallArgs) => ipcRenderer.invoke('npm:uninstall', args),
     update: (args: UpdateArgs) => ipcRenderer.invoke('npm:update', args),
@@ -208,6 +209,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   managers: {
     descriptors: () => ipcRenderer.invoke('manager:descriptors'),
+    diagnostics: () => ipcRenderer.invoke('manager:diagnostics'),
     detected: (cwd: string) => ipcRenderer.invoke('manager:detected', cwd),
     inventory: (cwd: string, managerId: RegistryDependencyManagerId) => ipcRenderer.invoke('manager:inventory', cwd, managerId),
     plan: (cwd: string, managerId: RegistryDependencyManagerId, request: ManagerOperationRequest) => ipcRenderer.invoke('manager:plan', cwd, managerId, request),

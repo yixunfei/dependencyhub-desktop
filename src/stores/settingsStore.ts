@@ -63,10 +63,29 @@ export const useSettingsStore = create<SettingsState>()(
   )
 )
 
+export async function resolveSmartPackageUpdateTarget(
+  pkg: PackageInfo,
+  conflictStrategy: ConflictStrategy = 'prompt'
+): Promise<{ targetVersion: string; analysis: SmartUpdateAnalysis | null }> {
+  const metadata = await window.electronAPI.npm.getVersionMetadata(pkg.name)
+  const analysis = await window.electronAPI.npm.smartAnalyze({
+    packageName: pkg.name,
+    currentVersion: pkg.version,
+    allVersions: metadata.versions.map((item: NpmVersionInfo) => item.version),
+    wantedVersion: pkg.wanted,
+    latestVersion: pkg.latest || metadata.latest
+  })
+  const targetVersion = conflictStrategy === 'auto-security' && analysis.safe
+    ? analysis.safe
+    : analysis.recommended || analysis.latest || pkg.version
+  return { targetVersion, analysis }
+}
+
 export function resolvePackageUpdateTarget(pkg: PackageInfo, strategy: UpdateStrategy): string | undefined {
   if (strategy === 'latest' || strategy === 'security') {
     return pkg.latest || pkg.wanted || pkg.version
   }
 
   return pkg.wanted || pkg.latest || pkg.version
+
 }

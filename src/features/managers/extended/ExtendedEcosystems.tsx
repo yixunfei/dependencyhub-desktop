@@ -13,6 +13,7 @@ import type {
   ManagerOperationPlan
 } from '@shared/managerWorkspace'
 import styles from './ExtendedEcosystems.module.css'
+import { ManagerWorkspaceCoordinator } from './managerWorkspaceCoordinator'
 
 const { Paragraph, Text, Title } = Typography
 
@@ -70,6 +71,9 @@ const ExtendedEcosystemsPage: React.FC = () => {
   const [operationPlan, setOperationPlan] = useState<ManagerOperationPlan | null>(null)
   const [commandForm] = Form.useForm<{ commandLine: string }>()
   const [operationForm] = Form.useForm<OperationFormValues>()
+  // Detections and dependencies load concurrently and must not discard each other's responses.
+  const detectionsCoordinator = React.useMemo(() => new ManagerWorkspaceCoordinator(), [])
+  const dependenciesCoordinator = React.useMemo(() => new ManagerWorkspaceCoordinator(), [])
 
   const activeDefinition = getManagerDefinition(activeManager)
   const detectedMap = useMemo(() => new Map(detections.map((item) => [item.id, item])), [detections])
@@ -82,10 +86,12 @@ const ExtendedEcosystemsPage: React.FC = () => {
 
   useEffect(() => {
     if (!currentPath) {
+      dependenciesCoordinator.invalidate()
       setDependencies([])
       setOperationPlan(null)
       return
     }
+    dependenciesCoordinator.invalidate()
     void loadDependencies(activeManager)
     setOperationPlan(null)
   }, [activeManager, currentPath])
@@ -98,6 +104,8 @@ const ExtendedEcosystemsPage: React.FC = () => {
   }
 
   const loadDetections = async () => {
+    const path = currentPath
+    const token = detectionsCoordinator.begin({ projectPath: path })
     if (!currentPath) {
       setDetections([])
       setDependencies([])
@@ -106,37 +114,46 @@ const ExtendedEcosystemsPage: React.FC = () => {
 
     setLoading(true)
     try {
-      const result = await window.electronAPI.managers.detected(currentPath)
-      setDetections(result)
-      const firstDetected = result.find((item) => item.detected)
-      if (firstDetected) {
-        setActiveManager(firstDetected.id)
+      const result = await window.electronAPI.managers.detected(path)
+      if (detectionsCoordinator.accepts(token, { projectPath: path })) {
+        setDetections(result)
+        const firstDetected = result.find((item) => item.detected)
+        if (firstDetected) {
+          setActiveManager(firstDetected.id)
+        }
       }
     } catch (error: any) {
-      addNotification({
-        type: 'error',
-        message: '扩展生态检测失败',
-        description: error.message
-      })
+      if (detectionsCoordinator.accepts(token, { projectPath: path })) {
+        addNotification({
+          type: 'error',
+          message: '扩展生态检测失败',
+          description: error.message
+        })
+      }
     } finally {
-      setLoading(false)
+      if (detectionsCoordinator.accepts(token, { projectPath: path })) setLoading(false)
     }
   }
 
   const loadDependencies = async (managerId = activeManager) => {
     if (!currentPath) return
+    const path = currentPath
+    const token = dependenciesCoordinator.begin({ projectPath: path, managerId })
     setLoading(true)
     try {
-      setDependencies(await window.electronAPI.managers.inventory(currentPath, managerId))
+      if (!dependenciesCoordinator.accepts(token, { projectPath: path, managerId })) return
+      setDependencies(await window.electronAPI.managers.inventory(path, managerId))
     } catch (error: any) {
-      addNotification({
-        type: 'error',
-        message: '读取扩展生态依赖失败',
-        description: error.message
-      })
-      setDependencies([])
+      if (dependenciesCoordinator.accepts(token, { projectPath: path, managerId })) {
+        addNotification({
+          type: 'error',
+          message: '读取扩展生态依赖失败',
+          description: error.message
+        })
+        setDependencies([])
+      }
     } finally {
-      setLoading(false)
+      if (dependenciesCoordinator.accepts(token, { projectPath: path, managerId })) setLoading(false)
     }
   }
 

@@ -21,6 +21,11 @@ import {
 import type { ManagerAdapter } from './adapter'
 import { createManagerDescriptor } from './capabilities'
 
+export type ManagerOperationPlanner = (
+  cwd: string,
+  request: ManagerOperationRequest
+) => Promise<{ args: string[]; requirements: string[]; warnings: string[]; dryRunArgs?: string[] }>
+
 export type ManagerInventoryReader = (
   cwd: string,
   managerId: DependencyManagerId
@@ -44,6 +49,8 @@ export interface ProfiledManagerAdapterOptions {
   inventory?: ManagerInventoryReader
   search?: ManagerSearchProvider
   health?: ManagerHealthProvider
+  operationPlanner?: (cwd: string, request: ManagerOperationRequest) => Promise<{ args: string[]; requirements: string[]; warnings: string[]; tool?: string; mutating?: boolean; dryRunSupported?: boolean }>
+  operationExecutor?: (cwd: string, request: ManagerOperationRequest, options?: ManagerExecuteOptions) => Promise<ManagerCommandResult>
 }
 
 export class ProfiledManagerAdapter implements ManagerAdapter {
@@ -78,13 +85,37 @@ export class ProfiledManagerAdapter implements ManagerAdapter {
   }
 
   async plan(cwd: string, request: ManagerOperationRequest): Promise<ManagerOperationPlan> {
-    const plan = await this.service.plan(cwd, this.definition.id, toLegacyRequest(request))
+    const plan = this.options.operationPlanner
+      ? await this.options.operationPlanner(cwd, request)
+      : await this.service.plan(cwd, this.definition.id, toLegacyRequest(request))
+    const tool = String(plan.tool || this.definition.tools[0])
+    const mutating = plan.mutating ?? inferMutatingCommand(plan.args)
+    const operationPlan: ManagerOperationPlan = 'command' in plan
+      ? plan as ManagerOperationPlan
+      : {
+          managerId: this.definition.id,
+          managerName: this.definition.name,
+          operation: request.operation,
+          tool,
+          command: [tool, ...plan.args].join(' '),
+          args: plan.args,
+          mutating,
+          dryRunSupported: plan.dryRunSupported ?? false,
+          backupFiles: [],
+          warnings: plan.warnings,
+          requirements: plan.requirements,
+          generatedAt: new Date().toISOString(),
+          request: { ...request },
+          requiresConfirmation: mutating,
+          riskLevel: mutating ? 'medium' : 'low'
+        }
     return {
-      ...plan,
-      tool: String(plan.tool),
+      ...operationPlan,
+      tool,
+      mutating,
       request: { ...request },
-      requiresConfirmation: plan.mutating,
-      riskLevel: plan.mutating
+      requiresConfirmation: mutating,
+      riskLevel: mutating
         ? (this.descriptor.capabilities.requiresElevation ? 'high' : 'medium')
         : 'low'
     }
@@ -95,13 +126,17 @@ export class ProfiledManagerAdapter implements ManagerAdapter {
     request: ManagerOperationRequest,
     options?: ManagerExecuteOptions
   ): Promise<ManagerCommandResult> {
+    if (this.options.operationExecutor) return await this.options.operationExecutor(cwd, request, options)
     const dryRun = options?.dryRun === true
-    const result = await this.service.execute(
-      cwd,
-      this.definition.id,
-      toLegacyRequest(request),
-      dryRun
-    )
+    if (this.options.operationPlanner) {
+      const planned = await this.options.operationPlanner(cwd, request)
+      if (planned.requirements.length > 0) {
+        throw new Error(planned.requirements.join('; '))
+      }
+      const result = await this.service.executePlanned(cwd, this.definition.id, planned.tool || this.definition.tools[0], planned.args, dryRun)
+      return commandResult(this.definition.id, result, dryRun)
+    }
+    const result = await this.service.execute(cwd, this.definition.id, toLegacyRequest(request), dryRun)
     return commandResult(this.definition.id, result, dryRun)
   }
 
@@ -121,6 +156,15 @@ export class ProfiledManagerAdapter implements ManagerAdapter {
     }
     return await this.options.health(cwd, this.definition, await this.inventory(cwd))
   }
+}
+
+function inferMutatingCommand(args: readonly string[]): boolean {
+  if (args.length === 0) return false
+  const normalized = args.filter((arg) => !arg.startsWith('-')).join(' ').toLowerCase()
+  if (/\b(audit|check|validate|list|ls|show|info|tree|graph|outdated|search|why|diagnose|lint|providers)\b/.test(normalized) && !/\b(fix|upgrade|update)\b/.test(normalized)) {
+    return false
+  }
+  return /\b(install|add|require|remove|rm|uninstall|update|autoupdate|upgrade|sync|restore|resolve|lock|freeze|snapshot|instantiate|init|tidy|get|deps|fetch|edit|prune|clean|purge|build|apply|import|reconcile|generate-lockfiles)\b/.test(normalized)
 }
 
 function commandResult(

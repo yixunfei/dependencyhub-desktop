@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { access, mkdir, readFile, readdir, writeFile } from 'fs/promises'
+import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import {
   MANAGER_DEFINITIONS,
@@ -56,6 +56,7 @@ export interface ExtendedManagerCommandResult {
   stdout: string
   stderr: string
   backup?: ExtendedManagerBackup
+  restore?: { attempted: boolean; restored: boolean; error?: string; conflicts?: ExtendedManagerRestoreConflict[] }
 }
 
 export type ExtendedManagerOperation =
@@ -97,6 +98,7 @@ export interface ExtendedManagerBackupFile {
   file: string
   hash: string
   size: number
+  exists: boolean
 }
 
 export interface ExtendedManagerBackup {
@@ -109,10 +111,34 @@ export interface ExtendedManagerBackup {
   files: ExtendedManagerBackupFile[]
 }
 
+const projectMutationQueues = new Map<string, Promise<unknown>>()
+
+export async function withProjectMutation<T>(cwd: string, task: () => Promise<T>): Promise<T> {
+  const key = resolve(cwd)
+  const previous = projectMutationQueues.get(key) || Promise.resolve()
+  const run = previous.then(task, task)
+  const queued = run.catch(() => undefined)
+  projectMutationQueues.set(key, queued)
+  try {
+    return await run
+  } finally {
+    if (projectMutationQueues.get(key) === queued) projectMutationQueues.delete(key)
+  }
+}
+
+export interface ExtendedManagerRestoreConflict {
+  file: string
+  expectedExists: boolean
+  actualExists: boolean
+  expectedHash: string
+  actualHash: string
+}
+
 export interface ExtendedManagerRestoreResult {
   backupPath: string
   restoredCount: number
   restoredFiles: string[]
+  conflicts: ExtendedManagerRestoreConflict[]
 }
 
 interface ExtendedManagerBackupPayload extends Omit<ExtendedManagerBackup, 'files'> {
@@ -267,6 +293,9 @@ export class ExtendedManagerService {
 
     const tool = primaryRunTool(manager)
     const template = await operationTemplate(cwd, manager.id, request)
+    if (template.supported === false) {
+      throw new Error(`${manager.id} does not support ${request.operation}`)
+    }
     const args = template.args
     const mutating = commandMutatesProjectFiles(args)
     const backupFiles = mutating
@@ -311,6 +340,26 @@ export class ExtendedManagerService {
     return await this.runArgs(cwd, manager, tool, args, commandLine, false)
   }
 
+  async executePlanned(
+    cwd: string,
+    managerId: DependencyManagerId,
+    tool: string,
+    args: string[],
+    dryRun = false
+  ): Promise<ExtendedManagerCommandResult> {
+    const manager = getManagerDefinition(managerId)
+    if (!manager || manager.tools.length === 0) {
+      throw new Error(`No runnable tool is configured for ${managerId}`)
+    }
+    if (!tool.trim()) throw new Error(`No runnable tool is configured for ${managerId}`)
+    const plannedArgs = dryRun ? dryRunTemplate(managerId, args) : args
+    if (!plannedArgs) {
+      throw new Error(`No reliable dry-run command is available for ${managerId}`)
+    }
+    const commandLine = [tool, ...plannedArgs].join(' ')
+    return await this.runArgs(cwd, manager, tool as ToolName, plannedArgs, commandLine, dryRun)
+  }
+
   async execute(
     cwd: string,
     managerId: DependencyManagerId,
@@ -347,20 +396,82 @@ export class ExtendedManagerService {
   ): Promise<ExtendedManagerCommandResult> {
     const bin = await resolveToolBin(tool, cwd)
     const backup = dryRun ? undefined : await createCommandBackup(cwd, manager, commandLine, args)
-    const result = await runLoggedCommand(bin, args, {
-      cwd,
-      displayBin: tool
-    })
+    try {
+      const result = await runLoggedCommand(bin, args, {
+        cwd,
+        displayBin: tool
+      })
 
-    return {
-      command: [tool, ...args].join(' '),
-      stdout: result.stdout,
-      stderr: result.stderr,
-      backup
+      return {
+        command: [tool, ...args].join(' '),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        backup,
+        restore: { attempted: false, restored: false }
+      }
+    } catch (error: any) {
+      if (backup) {
+        try {
+          const restored = await this.restoreBackup(cwd, backup.path)
+          if (restored.conflicts.length > 0) throw new Error(`Backup restore conflicted on: ${restored.conflicts.map((item) => item.file).join(', ')}`)
+        } catch (restoreError) {
+          throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
+            backup,
+            restore: { attempted: true, restored: false, error: String(restoreError) }
+          })
+        }
+      }
+      throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
+        backup,
+        restore: { attempted: Boolean(backup), restored: Boolean(backup) }
+      })
     }
   }
 
-  async restoreBackup(cwd: string, backupPath: string): Promise<ExtendedManagerRestoreResult> {
+  async executeWithMutation(
+    cwd: string,
+    managerId: DependencyManagerId,
+    args: string[],
+    mutate: () => Promise<void>,
+    dryRun = false
+  ): Promise<ExtendedManagerCommandResult> {
+    if (dryRun) return await this.executeWithMutationUnlocked(cwd, managerId, args, mutate, true)
+    return await withProjectMutation(cwd, () => this.executeWithMutationUnlocked(cwd, managerId, args, mutate, false))
+  }
+
+  private async executeWithMutationUnlocked(
+    cwd: string,
+    managerId: DependencyManagerId,
+    args: string[],
+    mutate: () => Promise<void>,
+    dryRun = false
+  ): Promise<ExtendedManagerCommandResult> {
+    const manager = getManagerDefinition(managerId)
+    if (!manager) throw new Error(`Unknown dependency manager: ${managerId}`)
+    const tool = primaryRunTool(manager)
+    const commandLine = [tool, ...args].join(' ')
+    if (dryRun) {
+      return { command: commandLine, stdout: 'dry-run: manifest was not changed', stderr: '', backup: undefined }
+    }
+    const backup = await createCommandBackup(cwd, manager, commandLine, args)
+    try {
+      await mutate()
+      const bin = await resolveToolBin(tool, cwd)
+      const result = await runLoggedCommand(bin, args, { cwd, displayBin: tool })
+      return { command: commandLine, stdout: result.stdout, stderr: result.stderr, backup, restore: { attempted: false, restored: false } }
+    } catch (error: any) {
+      if (backup) {
+        try {
+          const restored = await this.restoreBackup(cwd, backup.path)
+          if (restored.conflicts.length > 0) throw new Error(`Backup restore conflicted on: ${restored.conflicts.map((item) => item.file).join(', ')}`)
+        } catch (restoreError) {
+          throw Object.assign(error instanceof Error ? error : new Error(String(error)), { backup, restore: { attempted: true, restored: false, error: String(restoreError) } })
+        }
+      }
+      throw Object.assign(error instanceof Error ? error : new Error(String(error)), { backup, restore: { attempted: Boolean(backup), restored: Boolean(backup) } })
+    }
+  }
+  async restoreBackup(cwd: string, backupPath: string, expectedState?: Record<string, { exists: boolean; hash: string }>): Promise<ExtendedManagerRestoreResult> {
     const resolvedBackupPath = resolveBackupPath(cwd, backupPath)
     const payload = parseJson<ExtendedManagerBackupPayload | null>(await readText(resolvedBackupPath), null)
     if (!payload || !Array.isArray(payload.files)) {
@@ -372,21 +483,38 @@ export class ExtendedManagerService {
     }
 
     const restoredFiles: string[] = []
+    const conflicts: ExtendedManagerRestoreConflict[] = []
     for (const file of payload.files) {
       const targetPath = resolve(cwd, file.file)
       if (!isInside(cwd, targetPath)) {
         throw new Error(`Backup contains an unsafe file path: ${file.file}`)
       }
+      let actualExists = false
+      let actualHash = sha256('')
+      try {
+        await access(targetPath)
+        actualExists = true
+        actualHash = sha256(await readText(targetPath))
+      } catch { }
+      if (expectedState?.[file.file] && (expectedState[file.file].exists !== actualExists || (actualExists && expectedState[file.file].hash !== actualHash))) {
+        conflicts.push({ file: file.file, expectedExists: expectedState[file.file].exists, actualExists, expectedHash: expectedState[file.file].hash, actualHash })
+        continue
+      }
 
       await mkdir(dirname(targetPath), { recursive: true })
-      await writeFile(targetPath, file.content, 'utf-8')
+      if (file.exists) {
+        await writeFile(targetPath, file.content, 'utf-8')
+      } else {
+        try { await unlink(targetPath) } catch { }
+      }
       restoredFiles.push(file.file)
     }
 
     return {
       backupPath: resolvedBackupPath,
       restoredCount: restoredFiles.length,
-      restoredFiles
+      restoredFiles,
+      conflicts
     }
   }
 }
@@ -395,6 +523,7 @@ interface OperationTemplate {
   args: string[]
   requirements: string[]
   warnings: string[]
+  supported?: boolean
 }
 
 async function operationTemplate(
@@ -411,10 +540,11 @@ async function operationTemplate(
     }
   }
 
-  const unsupported = (fallback: string[], warning: string): OperationTemplate => ({
-    args: fallback,
-    requirements,
-    warnings: [...warnings, warning]
+  const unsupported = (_fallback: string[], warning: string): OperationTemplate => ({
+    args: [],
+    requirements: [warning],
+    warnings: [warning],
+    supported: false
   })
 
   if (isNodeWorkspaceManager(managerId)) {
@@ -532,11 +662,12 @@ async function operationTemplate(
       if (request.operation === 'lock' || request.operation === 'sync') return { args: ['install'], requirements, warnings }
       return unsupported(['install'], 'CocoaPods add/remove requires editing Podfile in this generic adapter.')
     case 'helm':
+      if (request.operation === 'install' || request.operation === 'remove') return { args: ['dependency', 'update'], requirements, warnings: [...warnings, 'Helm dependency declarations are managed in Chart.yaml; review the manifest change before refreshing Chart.lock.'] }
       if (request.operation === 'update' || request.operation === 'sync') return { args: ['dependency', 'update'], requirements, warnings }
       if (request.operation === 'lock') return { args: ['dependency', 'build'], requirements, warnings }
       if (request.operation === 'list' || request.operation === 'tree') return { args: ['dependency', 'list'], requirements, warnings }
       if (request.operation === 'audit') return { args: ['lint'], requirements, warnings }
-      return unsupported(['dependency', 'list'], 'Helm dependency add/remove requires editing Chart.yaml in this generic adapter.')
+      return { args: ['dependency', 'list'], requirements, warnings }
     case 'docker':
       if (request.operation === 'audit') return { args: ['scout', 'cves'], requirements, warnings: [...warnings, 'Docker Scout must be available and enabled for vulnerability scanning.'] }
       if (request.operation === 'list' || request.operation === 'tree') return { args: ['image', 'ls'], requirements, warnings }
@@ -938,11 +1069,12 @@ async function readBackupFilePreview(
 
   return await Promise.all(files.map(async (file) => {
     const content = await readText(join(cwd, file))
-    return {
-      file,
-      hash: sha256(content),
-      size: Buffer.byteLength(content, 'utf-8')
-    }
+      return {
+        file,
+        hash: sha256(content),
+        size: Buffer.byteLength(content, 'utf-8'),
+        exists: true
+      }
   }))
 }
 
@@ -965,15 +1097,29 @@ async function createCommandBackup(
     ...manager.lockFiles,
     ...(manager.configFiles || [])
   ])
-  if (files.length === 0) return undefined
+  // Raw manifest/lock/config entries are kept so restore can also remove files that appear
+  // during the command; glob patterns are not concrete files and must not enter the backup.
+  const concretePatterns = (patterns: readonly string[]) => patterns.filter((pattern) => !/[*?[\]{}]/.test(pattern))
+  const candidates = [...new Set([
+    ...files,
+    ...concretePatterns(manager.lockFiles),
+    ...concretePatterns(manager.manifestFiles),
+    ...concretePatterns(manager.configFiles || [])
+  ])]
 
-  const backedUpFiles = await Promise.all(files.map(async (file) => {
-    const content = await readText(join(cwd, file))
-    return {
-      file,
-      hash: sha256(content),
-      size: Buffer.byteLength(content, 'utf-8'),
-      content
+  const backedUpFiles = await Promise.all(candidates.map(async (file) => {
+    try {
+      await access(join(cwd, file))
+      const content = await readText(join(cwd, file))
+      return {
+        file,
+        hash: sha256(content),
+        size: Buffer.byteLength(content, 'utf-8'),
+        exists: true,
+        content
+      }
+    } catch {
+      return { file, hash: sha256(''), size: 0, exists: false, content: '' }
     }
   }))
 

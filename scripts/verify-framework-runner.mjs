@@ -12,15 +12,55 @@ const GROUPS = {
     script: 'scripts/verify-node-managers.mjs',
     timeoutMs: 60_000
   },
+  deno: {
+    description: 'Deno preview adapter behavior',
+    script: 'scripts/verify-deno-manager.mjs',
+    timeoutMs: 60_000
+  },
+  cocoapods: {
+    description: 'CocoaPods platform adapter behavior',
+    script: 'scripts/verify-cocoapods-manager.mjs',
+    timeoutMs: 60_000
+  },
   python: {
     description: 'uv, Poetry, Pipenv, and Conda preview adapter behavior',
     script: 'scripts/verify-python-managers.mjs',
+    timeoutMs: 60_000
+  },
+  ansible: {
+    description: 'Ansible Galaxy infrastructure adapter behavior',
+    script: 'scripts/verify-ansible-manager.mjs',
     timeoutMs: 60_000
   },
   backend: {
     description: 'NuGet, Composer, and Bundler preview adapter behavior',
     script: 'scripts/verify-backend-managers.mjs',
     timeoutMs: 60_000
+  },
+  cloud: {
+    description: 'Helm preview adapter behavior',
+    script: 'scripts/verify-cloud-managers.mjs',
+    timeoutMs: 60_000
+  },
+  swiftpm: {
+    description: 'SwiftPM platform adapter behavior',
+    script: 'scripts/verify-swiftpm-manager.mjs',
+    timeoutMs: 60_000
+  },
+  terraform: {
+    description: 'Terraform and OpenTofu infrastructure adapter behavior',
+    script: 'scripts/verify-terraform-managers.mjs',
+    timeoutMs: 60_000
+  },
+  helmfile: {
+    description: 'Helmfile cloud adapter behavior',
+    script: 'scripts/verify-helmfile-manager.mjs',
+    timeoutMs: 60_000
+  },
+  core: {
+    description: 'core F1-F4 behavior and recovery regression scenarios',
+    script: 'scripts/verify-core-behaviors.mjs',
+    timeoutMs: 120_000
   },
   legacy: {
     description: 'existing full framework regression fixture',

@@ -15,11 +15,21 @@ import type {
 } from '../../shared/managerWorkspace'
 import { ManagerAdapterRegistry, type ManagerAdapter } from '../managers/adapter'
 import { createBackendManagerAdapters } from '../managers/groups/backend/backendAdapters'
+import { createCloudManagerAdapters } from '../managers/groups/cloud/cloudAdapters'
+import { createHelmfileManagerAdapters } from '../managers/groups/cloud/helmfileAdapters'
+import { createPlatformManagerAdapters } from '../managers/groups/platform/platformAdapters'
+import { createInfraManagerAdapters } from '../managers/groups/infra/infraAdapters'
 import { createNodeManagerAdapters } from '../managers/groups/node/nodeAdapters'
 import { createPythonManagerAdapters } from '../managers/groups/python/pythonAdapters'
 import { createLegacyManagerAdapters } from '../managers/legacyAdapter'
+import { MANAGER_DEFINITIONS } from '../../shared/managerRegistry'
 import { ExtendedManagerService } from './extendedManager'
 
+export interface ManagerAdapterDiagnostic {
+  managerId: DependencyManagerId
+  registered: boolean
+  issues: string[]
+}
 export interface ManagerWorkspaceServiceOptions {
   adapters?: readonly ManagerAdapter[]
   legacyService?: ExtendedManagerService
@@ -35,12 +45,36 @@ export class ManagerWorkspaceService {
     for (const adapter of createNodeManagerAdapters(this.legacyService)) this.registry.replace(adapter)
     for (const adapter of createPythonManagerAdapters(this.legacyService)) this.registry.replace(adapter)
     for (const adapter of createBackendManagerAdapters(this.legacyService)) this.registry.replace(adapter)
+    for (const adapter of createCloudManagerAdapters(this.legacyService)) this.registry.replace(adapter)
+    for (const adapter of createHelmfileManagerAdapters(this.legacyService)) this.registry.replace(adapter)
+    for (const adapter of createPlatformManagerAdapters(this.legacyService)) this.registry.replace(adapter)
+    for (const adapter of createInfraManagerAdapters(this.legacyService)) this.registry.replace(adapter)
     for (const adapter of options.adapters || []) this.registry.replace(adapter)
   }
 
   descriptors(): ManagerDescriptor[] {
     return this.registry.descriptors()
   }
+  diagnostics(): ManagerAdapterDiagnostic[] {
+    // Built-in managers are served by their dedicated services rather than the adapter registry,
+    // so they are intentionally outside the scope of this adapter contract check.
+    return MANAGER_DEFINITIONS.filter((definition) => !definition.builtIn).map((definition) => {
+      const adapter = this.registry.list().find((item) => item.descriptor.managerId === definition.id)
+      const issues: string[] = []
+      if (!adapter) issues.push('adapter is not registered')
+      if (adapter && definition.status !== adapter.descriptor.status) {
+        issues.push(`status ${definition.status} is declared but the adapter reports ${adapter.descriptor.status}`)
+      }
+      if (adapter && definition.searchable !== adapter.descriptor.capabilities.search) {
+        issues.push('search capability differs between the registry declaration and the adapter')
+      }
+      if (adapter && definition.healthSupported !== adapter.descriptor.capabilities.health) {
+        issues.push('health capability differs between the registry declaration and the adapter')
+      }
+      return { managerId: definition.id, registered: Boolean(adapter), issues }
+    }).filter((item) => item.issues.length > 0)
+  }
+
 
   async detected(cwd: string): Promise<ManagerDetection[]> {
     const projectPath = normalizeProjectPath(cwd)
@@ -80,10 +114,16 @@ export class ManagerWorkspaceService {
     cwd: string,
     managerId: DependencyManagerId,
     request: ManagerOperationRequest,
-    options?: ManagerExecuteOptions
+    options?: ManagerExecuteOptions & { plan?: ManagerOperationPlan }
   ): Promise<ManagerCommandResult> {
     const adapter = this.registry.get(managerId)
     assertOperationSupported(adapter, request)
+    if (options?.plan) {
+      const plan = options.plan
+      if (plan.managerId !== managerId || plan.operation !== request.operation || JSON.stringify(plan.request) !== JSON.stringify(request)) {
+        throw new Error('Operation plan is stale or does not match the current request')
+      }
+    }
     return await adapter.execute(normalizeProjectPath(cwd), request, options)
   }
 

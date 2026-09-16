@@ -11,14 +11,14 @@ const config: ExtendedManagerWorkspaceConfig = {
   noDetectionMessage: 'No Terraform/OpenTofu or Ansible dependency files detected yet',
   detectionHint: 'Add .tf files, .terraform.lock.hcl, requirements.yml, collections/requirements.yml, roles/requirements.yml, or ansible.cfg for stronger detection.',
   operationOptions: [
-    { value: 'sync', label: 'Init/install' },
-    { value: 'install', label: 'Install dependencies' },
-    { value: 'remove', label: 'Remove/edit dependency' },
+    { value: 'sync', label: 'Initialize dependencies' },
+    { value: 'install', label: 'Initialize declared dependencies' },
+    { value: 'remove', label: 'Review manifest removal' },
     { value: 'update', label: 'Upgrade dependencies' },
-    { value: 'outdated', label: 'Review outdated' },
-    { value: 'audit', label: 'Validate/audit' },
-    { value: 'tree', label: 'Dependency tree' },
-    { value: 'list', label: 'List dependencies' },
+    { value: 'outdated', label: 'Review provider locks' },
+    { value: 'audit', label: 'Validate configuration' },
+    { value: 'tree', label: 'Provider tree' },
+    { value: 'list', label: 'List providers' },
     { value: 'lock', label: 'Lock providers' }
   ],
   quickCommands: {

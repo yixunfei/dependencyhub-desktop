@@ -141,6 +141,7 @@ const IGNORED_DIRECTORIES = new Set([
 ])
 
 const MANAGER_IDS = MANAGER_DEFINITIONS.map((manager) => manager.id)
+const directoryNamesCache = new Map<string, Promise<string[]>>()
 
 export class WorkspaceDiscoveryService {
   async report(projectPath: string): Promise<WorkspaceDiscoveryReport> {
@@ -150,6 +151,7 @@ export class WorkspaceDiscoveryService {
 
     const root = resolve(projectPath)
     await access(root)
+    directoryNamesCache.clear()
 
     const directories = await walkDirectories(root, MAX_SCAN_DEPTH)
     const explicitCandidates = await discoverExplicitWorkspaces(root, directories)
@@ -810,11 +812,12 @@ async function existingPatternMatches(directory: string, patterns: readonly stri
 }
 
 async function readDirectoryNames(directory: string): Promise<string[]> {
-  try {
-    return (await readdir(directory)).sort()
-  } catch {
-    return []
-  }
+  const key = resolve(directory)
+  const cached = directoryNamesCache.get(key)
+  if (cached) return await cached
+  const pending = readdir(key).then((entries) => entries.sort()).catch(() => [])
+  directoryNamesCache.set(key, pending)
+  return await pending
 }
 
 async function exists(path: string): Promise<boolean> {

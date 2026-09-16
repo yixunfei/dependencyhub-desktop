@@ -1,0 +1,31 @@
+name: release-gates
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Require release evidence
+        run: |
+          npm run verify:release-integrity -- --no-write
+          npm run verify:release-signature
+          npm run verify:release-trust
+        env:
+          NPM_MANAGER_RELEASE_SIGNING_KEY: ${{ secrets.NPM_MANAGER_RELEASE_SIGNING_KEY }}
+          NPM_MANAGER_RELEASE_SIGNER: ${{ vars.NPM_MANAGER_RELEASE_SIGNER }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-gate-output
+          path: .npmDesktopManager/reports
+          if-no-files-found: warn

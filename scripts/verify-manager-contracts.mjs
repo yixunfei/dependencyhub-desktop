@@ -33,6 +33,26 @@ for (const definition of selected) {
   assert(definition.manifestFiles.length + definition.lockFiles.length + (definition.detectionFiles?.length || 0) > 0, definition.id + ' declares detection evidence')
 }
 
+const helmDefinition = extended.find((item) => item.id === 'helm')
+assert(helmDefinition?.status === 'preview', 'Helm is promoted to preview')
+assert(helmDefinition?.healthSupported === true, 'Helm declares health support')
+const swiftpmDefinition = extended.find((item) => item.id === 'swiftpm')
+assert(swiftpmDefinition?.status === 'preview', 'SwiftPM is promoted to preview')
+assert(swiftpmDefinition?.healthSupported === true, 'SwiftPM declares health support')
+const helmfileDefinition = extended.find((item) => item.id === 'helmfile')
+assert(helmfileDefinition?.status === 'preview', 'Helmfile is promoted to preview')
+assert(helmfileDefinition?.healthSupported === true, 'Helmfile declares health support')
+for (const managerId of ['terraform', 'opentofu']) {
+  const definition = extended.find((item) => item.id === managerId)
+  assert(definition?.status === 'preview', managerId + ' is promoted to preview')
+  assert(definition?.healthSupported === true, managerId + ' declares health support')
+}
+for (const managerId of ['kustomize', 'skaffold', 'argocd', 'flux']) {
+  const definition = extended.find((item) => item.id === managerId)
+  assert(definition?.status === 'preview', managerId + ' is promoted to preview')
+  assert(definition?.healthSupported === true, managerId + ' declares health support')
+}
+
 for (const managerId of ['pnpm', 'yarn', 'bun', 'uv', 'poetry', 'pipenv', 'conda', 'nuget', 'composer', 'bundler']) {
   const definition = extended.find((item) => item.id === managerId)
   assert(definition?.status === 'preview', managerId + ' is promoted to preview')

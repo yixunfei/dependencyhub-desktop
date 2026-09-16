@@ -9,12 +9,14 @@ export interface PackageInfo {
   wanted?: string
   dependent?: string
   description?: string
-  type?: 'dependencies' | 'devDependencies'
+  type?: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
   outdated?: boolean
   homepage?: string
   license?: string
   size?: string
   fileCount?: number
+  status?: 'installed' | 'missing' | 'invalid' | 'extraneous' | 'peer-conflict'
+  problems?: string[]
 }
 
 interface CacheData {
@@ -28,6 +30,7 @@ interface PackageState {
   projectPackages: PackageInfo[]
   globalPackages: PackageInfo[]
   loading: boolean
+  projectError: string | null
   packageDetails: Record<string, any>
   cache: Record<string, CacheData>
   currentProjectPath: string
@@ -82,6 +85,11 @@ interface InstallVersionArgs {
 }
 
 const CACHE_EXPIRY = 5 * 60 * 1000 // 5分钟缓存过期
+let projectRequestId = 0
+
+function normalizeProjectPath(path: string): string {
+  return path.trim().replace(/[\\/]+$/, '').toLowerCase()
+}
 
 async function fetchPackageDetailsBatch(packageNames: string[], batchSize = 5): Promise<Record<string, any>> {
   const results: Record<string, any> = {}
@@ -115,6 +123,7 @@ export const usePackageStore = create<PackageState>()(
       projectPackages: [],
       globalPackages: [],
       loading: false,
+      projectError: null,
       packageDetails: {},
       cache: {},
       currentProjectPath: '',
@@ -129,11 +138,11 @@ export const usePackageStore = create<PackageState>()(
       
       getCache: (path) => {
         const state = get()
-        return state.cache[path] || null
+        return state.cache[normalizeProjectPath(path)] || null
       },
       
       setCache: (path, data) => set((state) => ({
-        cache: { ...state.cache, [path]: data }
+        cache: { ...state.cache, [normalizeProjectPath(path)]: data }
       })),
       
       clearCache: (path) => {
@@ -156,26 +165,32 @@ export const usePackageStore = create<PackageState>()(
       },
       
       fetchProjectPackages: async (projectPath: string, forceRefresh = false) => {
+        const normalizedPath = normalizeProjectPath(projectPath)
+        const requestId = ++projectRequestId
         const state = get()
         
         // 检查缓存
-        if (!forceRefresh && state.isCacheValid(projectPath) && state.cache[projectPath]?.projectPackages) {
-          const cached = state.cache[projectPath]
+        if (!forceRefresh && state.isCacheValid(normalizedPath) && state.cache[normalizedPath]?.projectPackages) {
+          const cached = state.cache[normalizedPath]
           set({ 
             projectPackages: cached.projectPackages,
+            projectError: null,
             currentProjectPath: projectPath
           })
           return
         }
         
-        set({ loading: true, currentProjectPath: projectPath })
+        set({ loading: true, projectError: null, currentProjectPath: projectPath })
         
         try {
           const listResult = await window.electronAPI.npm.list(projectPath, false)
+          if (requestId !== projectRequestId || normalizeProjectPath(get().currentProjectPath) !== normalizedPath) return
           const outdatedResult = await window.electronAPI.npm.outdated(projectPath)
           
+          const statuses = listResult.statuses || {}
           const packages: PackageInfo[] = []
           const allPackageNames: string[] = []
+          for (const name of Object.keys(listResult.dependencies || {})) allPackageNames.push(name)
           
           if (listResult.dependencies) {
             Object.entries(listResult.dependencies).forEach(([name]: [string, any]) => {
@@ -210,7 +225,9 @@ export const usePackageStore = create<PackageState>()(
               packages.push({
                 name,
                 version: currentVersion,
-                type: 'dependencies' as const,
+                type: statuses[name]?.type || 'dependencies',
+                status: statuses[name]?.status || 'installed',
+                problems: statuses[name]?.problems,
                 wanted: outdated?.wanted,
                 latest: latestVersion,
                 outdated: isOutdated,
@@ -242,6 +259,8 @@ export const usePackageStore = create<PackageState>()(
                 name,
                 version: currentVersion,
                 type: 'devDependencies' as const,
+                status: statuses[name]?.status || 'installed',
+                problems: statuses[name]?.problems,
                 wanted: outdated?.wanted,
                 latest: latestVersion,
                 outdated: isOutdated,
@@ -254,6 +273,13 @@ export const usePackageStore = create<PackageState>()(
             })
           }
           
+          const rows = Object.entries(listResult.statuses || {}) as Array<[string, any]>
+          for (const [name, status] of rows) {
+            if (packages.some((item) => item.name === name)) continue
+            const info = listResult.dependencies?.[name] || {}
+            packages.push({ name, version: info.version || '', type: status.type, status: status.status, problems: status.problems, outdated: false })
+          }
+
           // 更新缓存
           get().setCache(projectPath, {
             projectPackages: packages,
@@ -262,11 +288,18 @@ export const usePackageStore = create<PackageState>()(
             projectPath
           })
           
-          set({ projectPackages: packages })
+          if (requestId === projectRequestId && normalizeProjectPath(get().currentProjectPath) === normalizedPath) {
+            set({ projectPackages: packages, projectError: null })
+          }
         } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
           console.error('Failed to fetch project packages:', error)
+          if (requestId === projectRequestId && normalizeProjectPath(get().currentProjectPath) === normalizedPath) {
+            const cached = get().cache[normalizeProjectPath(projectPath)]
+            set({ projectPackages: cached?.projectPackages || [], projectError: message })
+          }
         } finally {
-          set({ loading: false })
+          if (requestId === projectRequestId) set({ loading: false })
         }
       },
       
@@ -290,6 +323,7 @@ export const usePackageStore = create<PackageState>()(
           
           const packages: PackageInfo[] = []
           const allPackageNames: string[] = []
+          for (const name of Object.keys(listResult.dependencies || {})) allPackageNames.push(name)
           
           if (listResult.dependencies) {
             Object.entries(listResult.dependencies).forEach(([name]: [string, any]) => {
@@ -330,6 +364,13 @@ export const usePackageStore = create<PackageState>()(
             })
           }
           
+          const rows = Object.entries(listResult.statuses || {}) as Array<[string, any]>
+          for (const [name, status] of rows) {
+            if (packages.some((item) => item.name === name)) continue
+            const info = listResult.dependencies?.[name] || {}
+            packages.push({ name, version: info.version || '', type: status.type, status: status.status, problems: status.problems, outdated: false })
+          }
+
           // 更新缓存
           get().setCache(globalCacheKey, {
             projectPackages: [],

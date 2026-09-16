@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { AutoComplete, Button, Empty, Spin, Modal, Form, Input, Switch, Select, Tag, Dropdown, Space, Tooltip, Table, Tabs, Card } from 'antd'
+import { Alert, AutoComplete, Button, Empty, Spin, Modal, Form, Input, Switch, Select, Tag, Dropdown, Space, Tooltip, Table, Tabs, Card } from 'antd'
 import { ReloadOutlined, FolderOpenOutlined, PlusOutlined, SwapOutlined, FolderFilled, PlayCircleOutlined, CheckCircleOutlined, WarningOutlined, SyncOutlined, HistoryOutlined, SecurityScanOutlined, InfoCircleOutlined, DownloadOutlined, ApartmentOutlined, CloudDownloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../../../../stores/appStore'
 import { usePackageStore, PackageInfo } from '../../../../../stores/packageStore'
-import { resolvePackageUpdateTarget, useSettingsStore } from '../../../../../stores/settingsStore'
+import { resolvePackageUpdateTarget, resolveSmartPackageUpdateTarget, useSettingsStore } from '../../../../../stores/settingsStore'
 import { useCommandLogStore } from '../../../../../stores/commandLogStore'
 import { PackageDetailModal } from '../../../../../components/Package/PackageDetailModal'
 import { SecurityAuditModal } from '../../../../../components/Package/SecurityAuditModal'
@@ -66,8 +66,9 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   const currentPath = useAppStore((state) => state.currentPath)
   const addNotification = useAppStore((state) => state.addNotification)
   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
+  const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
   const setTerminalVisible = useCommandLogStore((state) => state.setVisible)
-  const { projectPackages, loading, fetchProjectPackages, installPackage, uninstallPackage, installSpecificVersion } = usePackageStore()
+  const { projectPackages, loading, projectError, fetchProjectPackages, installPackage, uninstallPackage, installSpecificVersion } = usePackageStore()
 
   useDependencyHealthReminder('npm', currentPath, !!currentPath && projectPackages.length > 0)
   
@@ -174,7 +175,9 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       for (const packageName of selectedPackages) {
         try {
           const pkg = pendingUpdates.find((item) => item.name === packageName)
-          const targetVersion = pkg ? resolvePackageUpdateTarget(pkg, updateStrategy) : undefined
+          const targetVersion = pkg && updateStrategy === 'smart'
+            ? (await resolveSmartPackageUpdateTarget(pkg, conflictStrategy)).targetVersion
+            : pkg ? resolvePackageUpdateTarget(pkg, updateStrategy) : undefined
           await window.electronAPI.npm.update({
             packageName,
             cwd: currentPath,
@@ -665,10 +668,22 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       dataIndex: 'type',
       key: 'type',
       width: 80,
-      render: (text: string) => (
-        <Tag color={text === 'dependencies' ? 'green' : 'orange'}>
-          {text === 'dependencies' ? '生产' : '开发'}
-        </Tag>
+      render: (text: PackageInfo['type']) => {
+        if (text === 'devDependencies') return <Tag color="orange">开发</Tag>
+        if (text === 'optionalDependencies') return <Tag color="blue">可选</Tag>
+        if (text === 'peerDependencies') return <Tag color="purple">同伴</Tag>
+        return <Tag color="green">生产</Tag>
+      }
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 110,
+      render: (status: PackageInfo['status'], record: PackageInfo) => (
+        <Tooltip title={record.problems?.join('\n')}>
+          <Tag color={!status || status === 'installed' ? 'green' : 'red'}>{status || 'installed'}</Tag>
+        </Tooltip>
       )
     },
     {
@@ -809,8 +824,26 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         </div>
       </div>
 
-      {!hideToolchainPanel && (
-        <ProjectToolchainPanel projectPath={currentPath} />
+      {!hideToolchainPanel && <ProjectToolchainPanel projectPath={currentPath} />}
+      {!currentPath && (
+        <Alert
+          type="info"
+          showIcon
+          title="先选择项目目录"
+          description="选择包含 package.json 的目录后，即可查看依赖、运行脚本和执行更新。"
+          action={<ProjectPathBar compact />}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      {currentPath && projectError && (
+        <Alert
+          type="error"
+          showIcon
+          title="项目依赖读取失败"
+          description={projectError}
+          action={<Button size="small" onClick={() => fetchProjectPackages(currentPath, true)}>重试</Button>}
+          style={{ marginBottom: 16 }}
+        />
       )}
       
       <Tabs items={[
@@ -826,7 +859,11 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
               </Space>
               
               <Spin spinning={loading}>
-                {projectPackages.length === 0 ? (
+                {!currentPath ? (
+                  <Empty description="请选择项目目录开始管理" />
+                ) : projectError ? (
+                  <Empty description="依赖读取失败，请重试" />
+                ) : projectPackages.length === 0 ? (
                   <Empty description="暂无依赖，请选择项目目录或安装新包" />
                 ) : (
                   <Table 

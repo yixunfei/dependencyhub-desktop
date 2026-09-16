@@ -66,7 +66,29 @@ import { ThirdPartyNoticesService } from './electron/services/thirdPartyNotices'
 import { DEFAULT_READINESS_POLICY, ReadinessGateService } from './electron/services/readinessGate'
 
 const checks: string[] = []
-const execFile = promisify(execFileCallback)
+const phaseStartedAt = new Map<string, number>()
+const phaseDurations: Array<{ phase: string; durationMs: number }> = []
+  const execFile = promisify(execFileCallback)
+
+  async function timedList(service: ExtendedManagerService, projectPath: string, managerId: string) {
+    const startedAt = Date.now()
+    console.log('[legacy:extended-list] start ' + managerId)
+    const result = await service.list(projectPath, managerId as any)
+    console.log('[legacy:extended-list] done ' + managerId + ' ' + (Date.now() - startedAt) + 'ms')
+    return result
+  }
+
+function phaseStart(name: string) {
+  phaseStartedAt.set(name, Date.now())
+  console.log('[legacy:' + name + '] start')
+}
+function phaseEnd(name: string) {
+  const started = phaseStartedAt.get(name)
+  if (!started) return
+  const durationMs = Date.now() - started
+  phaseDurations.push({ phase: name, durationMs })
+  console.log('[legacy:' + name + '] done ' + durationMs + 'ms')
+}
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message)
@@ -915,6 +937,7 @@ function hasComponentFrom(report: any, managerId: string, name: string, sourceFi
 }
 
 async function main() {
+  phaseStart('framework-main')
   const implemented = getImplementedManagerDefinitions()
   const planned = getPlannedManagerDefinitions()
   const ids = MANAGER_DEFINITIONS.map((manager) => manager.id)
@@ -1147,7 +1170,10 @@ async function main() {
   assert(healthCenterSource.includes('Approval source') && healthCenterSource.includes('releaseApprovalSource'), 'health center exposes workspace release approval inheritance state')
   assert(healthCenterSource.includes('Exception source') && healthCenterSource.includes('releaseExceptionSource'), 'health center exposes workspace release exception inheritance state')
 
+  phaseEnd('static-contracts')
+  phaseStart('fixture-governance')
   const cwd = await createFixture()
+  phaseStart('extended-parsers')
   try {
     const workspaceDiscovery = new WorkspaceDiscoveryService()
     const workspaceReport = await workspaceDiscovery.report(cwd)
@@ -1736,6 +1762,9 @@ async function main() {
     const dependencyHealthDashboardHtml = await readFile(dependencyHealthDashboardExport.path, 'utf-8')
     assert(dependencyHealthDashboardExport.path.replace(/\\/g, '/').endsWith('.npmDesktopManager/reports/dependency-health-dashboard.html') && dependencyHealthDashboardExport.componentCount > 0 && dependencyHealthDashboardExport.riskCount > 0, 'dependency health dashboard exports aggregate production dependency health metadata')
     assert(dependencyHealthDashboardHtml.includes('Dependency Health Dashboard') && dependencyHealthDashboardHtml.includes('Readiness') && dependencyHealthDashboardHtml.includes('Dependency Policy') && dependencyHealthDashboardHtml.includes('License Compliance') && dependencyHealthDashboardHtml.includes('Workspace Governance') && dependencyHealthDashboardHtml.includes('Floating execution') && dependencyHealthDashboardHtml.includes('Floating deployment refs') && dependencyHealthDashboardHtml.includes('Missing deployment baselines'), 'dependency health dashboard exports consolidated HTML governance, policy, license, workspace, floating execution, deployment-reference, and deployment-baseline evidence')
+    phaseEnd('extended-parsers')
+    phaseStart('supply-chain-readiness')
+
     const frameworkCoverageReport = frameworkCoverage.report(cwd)
     assert(frameworkCoverageReport.summary.managerCount === MANAGER_DEFINITIONS.length && frameworkCoverageReport.routeGroups.some((group) => group.route === '/node' && group.managerIds.includes('pnpm')) && frameworkCoverageReport.summary.warningGapCount >= 0, 'framework coverage report summarizes registry managers, grouped workspace routes, and follow-up gaps')
     const exportedFrameworkCoverage = await frameworkCoverage.exportMarkdown(cwd)
@@ -1756,7 +1785,9 @@ async function main() {
     const releaseIntegrityCliResult = await execFile(process.execPath, [releaseIntegrityCliPath, cwd, '--json-only', '--quiet'], {
       cwd: process.cwd(),
       windowsHide: true,
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      timeout: 5_000,
+      killSignal: 'SIGTERM'
     })
     const releaseIntegrityCliJsonData = JSON.parse(await readFile(join(cwd, '.npmDesktopManager', 'reports', 'release-integrity-verification.json'), 'utf-8'))
     assert(releaseIntegrityCliResult.stdout.includes('release integrity:') && releaseIntegrityCliJsonData.summary.artifactCount === releaseBundleManifest.summary.artifactCount && releaseIntegrityCliJsonData.status !== 'blocked', 'release integrity CLI verifies release bundle artifacts and writes JSON metadata')
@@ -1779,7 +1810,9 @@ async function main() {
       cwd: process.cwd(),
       env: { ...process.env, NPM_MANAGER_RELEASE_SIGNING_KEY: 'fixture-release-signing-key', NPM_MANAGER_RELEASE_SIGNER: 'framework-verifier' },
       windowsHide: true,
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      timeout: 5_000,
+      killSignal: 'SIGTERM'
     })
     const releaseSignatureCliJsonData = JSON.parse(releaseSignatureCliResult.stdout)
     assert(releaseSignatureCliJsonData.verificationStatus === 'verified' && releaseSignatureCliJsonData.verified && releaseSignatureCliJsonData.payloadSha256 === exportedReleaseSignatureJsonData.payload.sha256, 'release signature CLI verifies exported signed envelopes against the current canonical payload')
@@ -1795,7 +1828,9 @@ async function main() {
     const releaseTrustCliResult = await execFile(process.execPath, [releaseTrustCliPath, cwd, '--json-only', '--quiet', '--allow-blocked'], {
       cwd: process.cwd(),
       windowsHide: true,
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      timeout: 5_000,
+      killSignal: 'SIGTERM'
     })
     const releaseTrustCliJsonData = JSON.parse(releaseTrustCliResult.stdout)
     assert(releaseTrustCliJsonData.checkCount === exportedReleaseTrustPolicyJsonData.summary.checkCount && typeof releaseTrustCliJsonData.signatureVerified === 'boolean', 'release trust CLI reads exported trust policy JSON and reports gate status')
@@ -1839,7 +1874,9 @@ async function main() {
         cwd: process.cwd(),
         env: { ...process.env, NPM_MANAGER_RELEASE_SIGNING_KEY: 'fixture-release-signing-key', NPM_MANAGER_RELEASE_SIGNER: 'framework-verifier' },
         windowsHide: true,
-        maxBuffer: 1024 * 1024
+        maxBuffer: 1024 * 1024,
+      timeout: 5_000,
+      killSignal: 'SIGTERM'
       })
     } catch (error) {
       releaseSignatureCliFailed = true
@@ -1888,7 +1925,9 @@ async function main() {
       await execFile(process.execPath, [releaseIntegrityCliPath, cwd, '--json-only', '--quiet'], {
         cwd: process.cwd(),
         windowsHide: true,
-        maxBuffer: 1024 * 1024
+        maxBuffer: 1024 * 1024,
+      timeout: 5_000,
+      killSignal: 'SIGTERM'
       })
     } catch (error) {
       releaseIntegrityCliFailed = true
@@ -1907,7 +1946,9 @@ async function main() {
     })
 
     const extended = new ExtendedManagerService()
+    console.log('[legacy:extended-detected] start')
     const detected = await extended.detected(cwd)
+    console.log('[legacy:extended-detected] done')
     assert(detected.some((manager) => manager.id === 'pnpm' && manager.detected), 'extended detection identifies pnpm lockfile')
     assert(['uv', 'poetry', 'pipenv', 'conda'].every((id) => detected.some((manager) => manager.id === id && manager.detected)), 'extended detection identifies Python environment manager files')
     assert(['nuget', 'composer', 'bundler'].every((id) => detected.some((manager) => manager.id === id && manager.detected)), 'extended detection identifies backend package manager files')
@@ -1923,162 +1964,162 @@ async function main() {
     assert(detected.some((manager) => manager.id === 'composer' && manager.detected), 'extended detection identifies composer manifest')
     assert(detected.some((manager) => manager.id === 'docker' && manager.detected), 'extended detection identifies Dockerfile')
 
-    const pnpmDeps = await extended.list(cwd, 'pnpm')
+    const pnpmDeps = await timedList(extended, cwd, 'pnpm')
     assert(pnpmDeps.some((dep) => dep.name === 'react' && dep.version === '^19.0.0'), 'extended pnpm parser reads package.json dependencies')
 
-    const composerDeps = await extended.list(cwd, 'composer')
+    const composerDeps = await timedList(extended, cwd, 'composer')
     assert(composerDeps.some((dep) => dep.name === 'monolog/monolog'), 'extended composer parser reads composer.json dependencies')
 
-    const uvDeps = await extended.list(cwd, 'uv')
+    const uvDeps = await timedList(extended, cwd, 'uv')
     assert(uvDeps.some((dep) => dep.name === 'fastapi' && dep.version === '>=0.110'), 'extended uv parser reads pyproject project dependencies')
 
-    const poetryDeps = await extended.list(cwd, 'poetry')
+    const poetryDeps = await timedList(extended, cwd, 'poetry')
     assert(poetryDeps.some((dep) => dep.name === 'attrs' && dep.version === '^23.2.0'), 'extended poetry parser reads pyproject poetry dependencies')
 
-    const pipenvDeps = await extended.list(cwd, 'pipenv')
+    const pipenvDeps = await timedList(extended, cwd, 'pipenv')
     assert(pipenvDeps.some((dep) => dep.name === 'flask' && dep.version === '==3.0.0'), 'extended pipenv parser reads Pipfile dependencies')
 
-    const condaDeps = await extended.list(cwd, 'conda')
+    const condaDeps = await timedList(extended, cwd, 'conda')
     assert(condaDeps.some((dep) => dep.name === 'numpy' && dep.version === '1.26'), 'extended conda parser reads environment.yml dependencies')
 
-    const nugetDeps = await extended.list(cwd, 'nuget')
+    const nugetDeps = await timedList(extended, cwd, 'nuget')
     assert(nugetDeps.some((dep) => dep.name === 'Newtonsoft.Json' && dep.version === '13.0.3'), 'extended nuget parser reads project package references')
 
-    const bundlerDeps = await extended.list(cwd, 'bundler')
+    const bundlerDeps = await timedList(extended, cwd, 'bundler')
     assert(bundlerDeps.some((dep) => dep.name === 'rack' && dep.version === '3.0.8' && dep.requestedVersion === '~> 3.0'), 'extended Bundler inventory merges Gemfile constraints with lockfile resolutions')
 
-    const dockerDeps = await extended.list(cwd, 'docker')
+    const dockerDeps = await timedList(extended, cwd, 'docker')
     assert(dockerDeps.some((dep) => dep.name === 'node' && dep.version === '22-alpine'), 'extended docker parser reads Dockerfile base images')
     assert(dockerDeps.some((dep) => dep.name === 'postgres' && dep.version === 'latest'), 'extended docker parser reads compose service images')
 
-    const helmDeps = await extended.list(cwd, 'helm')
+    const helmDeps = await timedList(extended, cwd, 'helm')
     assert(helmDeps.some((dep) => dep.name === 'redis' && dep.version === '19.6.2'), 'extended helm parser reads Chart.yaml dependencies')
 
-    const kustomizeDeps = await extended.list(cwd, 'kustomize')
+    const kustomizeDeps = await timedList(extended, cwd, 'kustomize')
     assert(kustomizeDeps.some((dep) => dep.name === 'github.com/acme/platform/base' && dep.version === 'v1.2.0') && kustomizeDeps.some((dep) => dep.name === 'ghcr.io/acme/api' && dep.version === '1.4.2'), 'extended Kustomize parser reads remote bases, images, and versions')
 
-    const helmfileDeps = await extended.list(cwd, 'helmfile')
+    const helmfileDeps = await timedList(extended, cwd, 'helmfile')
     assert(helmfileDeps.some((dep) => dep.name === 'bitnami/redis' && dep.version === '19.6.2') && helmfileDeps.some((dep) => dep.name === 'bitnami' && dep.source === 'https://charts.bitnami.com/bitnami'), 'extended Helmfile parser reads repositories and release chart pins')
 
-    const skaffoldDeps = await extended.list(cwd, 'skaffold')
+    const skaffoldDeps = await timedList(extended, cwd, 'skaffold')
     assert(skaffoldDeps.some((dep) => dep.name === 'ghcr.io/acme/api' && dep.version === '1.4.2') && skaffoldDeps.some((dep) => dep.name === 'oci://ghcr.io/acme/charts/api'), 'extended Skaffold parser reads artifact images and deploy chart references')
 
-    const argoDeps = await extended.list(cwd, 'argocd')
+    const argoDeps = await timedList(extended, cwd, 'argocd')
     assert(argoDeps.some((dep) => dep.name === 'fixture-chart' && dep.version === 'v1.2.3' && dep.source === 'https://github.com/acme/platform-config'), 'extended Argo CD parser reads Application source revisions')
 
-    const fluxDeps = await extended.list(cwd, 'flux')
+    const fluxDeps = await timedList(extended, cwd, 'flux')
     assert(fluxDeps.some((dep) => dep.name === 'platform-config' && dep.version === 'v1.2.3') && fluxDeps.some((dep) => dep.name === 'redis' && dep.version === '19.6.2'), 'extended Flux parser reads GitRepository and HelmRelease source pins')
     assert(fluxDeps.some((dep) => dep.name === 'floating-platform' && dep.version === 'main'), 'extended Flux parser preserves floating GitOps branch refs for production policy review')
 
-    const denoDeps = await extended.list(cwd, 'deno')
+    const denoDeps = await timedList(extended, cwd, 'deno')
     assert(denoDeps.some((dep) => dep.name === 'lodash' && dep.version === '4.17.21'), 'extended deno parser reads deno.json imports')
 
-    const swiftDeps = await extended.list(cwd, 'swiftpm')
+    const swiftDeps = await timedList(extended, cwd, 'swiftpm')
     assert(swiftDeps.some((dep) => dep.name === 'Alamofire' && dep.version === '5.8.0'), 'extended SwiftPM parser reads Package.swift dependencies')
 
-    const podDeps = await extended.list(cwd, 'cocoapods')
+    const podDeps = await timedList(extended, cwd, 'cocoapods')
     assert(podDeps.some((dep) => dep.name === 'AFNetworking' && dep.version === '~> 4.0'), 'extended CocoaPods parser reads Podfile dependencies')
 
-    const sbtDeps = await extended.list(cwd, 'sbt')
+    const sbtDeps = await timedList(extended, cwd, 'sbt')
     assert(sbtDeps.some((dep) => dep.name === 'com.typesafe:config' && dep.version === '1.4.3'), 'extended sbt parser reads build.sbt library dependencies')
 
-    const leinDeps = await extended.list(cwd, 'leiningen')
+    const leinDeps = await timedList(extended, cwd, 'leiningen')
     assert(leinDeps.some((dep) => dep.name === 'ring/ring-core' && dep.version === '1.12.1'), 'extended Leiningen parser reads project.clj dependencies')
 
-    const mixDeps = await extended.list(cwd, 'mix')
+    const mixDeps = await timedList(extended, cwd, 'mix')
     assert(mixDeps.some((dep) => dep.name === 'phoenix' && dep.version === '~> 1.7'), 'extended Mix parser reads mix.exs dependencies')
 
-    const rebarDeps = await extended.list(cwd, 'rebar3')
+    const rebarDeps = await timedList(extended, cwd, 'rebar3')
     assert(rebarDeps.some((dep) => dep.name === 'cowboy' && dep.version === '2.10.0'), 'extended rebar3 parser reads rebar.config dependencies')
 
-    const cabalDeps = await extended.list(cwd, 'cabal')
+    const cabalDeps = await timedList(extended, cwd, 'cabal')
     assert(cabalDeps.some((dep) => dep.name === 'aeson' && dep.version === '>= 2.2'), 'extended Cabal parser reads .cabal build-depends')
 
-    const stackDeps = await extended.list(cwd, 'stack')
+    const stackDeps = await timedList(extended, cwd, 'stack')
     assert(stackDeps.some((dep) => dep.name === 'warp' && dep.version === '3.3.31') && stackDeps.some((dep) => dep.name === 'text' && dep.version === '>=2.0'), 'extended Stack parser reads stack.yaml and package.yaml dependencies')
 
-    const renvDeps = await extended.list(cwd, 'renv')
+    const renvDeps = await timedList(extended, cwd, 'renv')
     assert(renvDeps.some((dep) => dep.name === 'dplyr' && dep.version === '1.1.4'), 'extended renv parser reads renv.lock dependencies')
 
-    const juliaDeps = await extended.list(cwd, 'julia')
+    const juliaDeps = await timedList(extended, cwd, 'julia')
     assert(juliaDeps.some((dep) => dep.name === 'DataFrames' && dep.version === '1.6') && juliaDeps.some((dep) => dep.name === 'CSV' && dep.version === '0.10.14'), 'extended Julia parser reads Project.toml compat and Manifest.toml dependencies')
 
-    const terraformDeps = await extended.list(cwd, 'terraform')
+    const terraformDeps = await timedList(extended, cwd, 'terraform')
     assert(terraformDeps.some((dep) => dep.name === 'hashicorp/aws' && dep.version === '5.54.1') && terraformDeps.some((dep) => dep.name === 'terraform-aws-modules/vpc/aws' && dep.version === '5.8.1'), 'extended Terraform parser reads provider locks and module dependencies')
 
-    const tofuDeps = await extended.list(cwd, 'opentofu')
+    const tofuDeps = await timedList(extended, cwd, 'opentofu')
     assert(tofuDeps.some((dep) => dep.name === 'hashicorp/aws' && dep.version === '5.54.1'), 'extended OpenTofu parser reads Terraform-compatible provider locks')
 
-    const ansibleDeps = await extended.list(cwd, 'ansible')
+    const ansibleDeps = await timedList(extended, cwd, 'ansible')
     assert(ansibleDeps.some((dep) => dep.name === 'community.general' && dep.version === '8.6.0') && ansibleDeps.some((dep) => dep.name === 'geerlingguy.nginx' && dep.version === '3.1.0'), 'extended Ansible parser reads Galaxy collection and role requirements')
 
-    const githubActionsDeps = await extended.list(cwd, 'github-actions')
+    const githubActionsDeps = await timedList(extended, cwd, 'github-actions')
     assert(githubActionsDeps.some((dep) => dep.name === 'actions/checkout' && dep.version === 'v4') && githubActionsDeps.some((dep) => dep.name === 'actions/setup-node' && dep.version === 'v5.1.0'), 'extended GitHub Actions parser reads workflow action pins')
 
-    const gitlabCiDeps = await extended.list(cwd, 'gitlab-ci')
+    const gitlabCiDeps = await timedList(extended, cwd, 'gitlab-ci')
     assert(gitlabCiDeps.some((dep) => dep.name === 'devops/templates' && dep.version === 'v2.3.0') && gitlabCiDeps.some((dep) => dep.name === 'gitlab.com/components/secret-detection' && dep.version === '1.2.0'), 'extended GitLab CI parser reads include project refs and components')
 
-    const preCommitDeps = await extended.list(cwd, 'pre-commit')
+    const preCommitDeps = await timedList(extended, cwd, 'pre-commit')
     assert(preCommitDeps.some((dep) => dep.name === 'https://github.com/pre-commit/pre-commit-hooks' && dep.version === 'v4.6.0') && preCommitDeps.some((dep) => dep.name === 'https://github.com/astral-sh/ruff-pre-commit' && dep.version === 'v0.5.0'), 'extended pre-commit parser reads hook repository revisions')
 
-    const bazelDeps = await extended.list(cwd, 'bazel')
+    const bazelDeps = await timedList(extended, cwd, 'bazel')
     assert(bazelDeps.some((dep) => dep.name === 'rules_jvm_external' && dep.version === '6.3') && bazelDeps.some((dep) => dep.name === 'com.google.guava:guava' && dep.version === '33.0.0-jre'), 'extended Bazel parser reads bzlmod and maven_install dependencies')
 
-    const pantsDeps = await extended.list(cwd, 'pants')
+    const pantsDeps = await timedList(extended, cwd, 'pants')
     assert(pantsDeps.some((dep) => dep.name === 'pantsbuild.pants' && dep.version === '2.22.0') && pantsDeps.some((dep) => dep.name === 'requests' && dep.version === '2.32.3'), 'extended Pants parser reads pants.toml plugins/resolves and BUILD python requirements')
 
-    const buckDeps = await extended.list(cwd, 'buck')
+    const buckDeps = await timedList(extended, cwd, 'buck')
     assert(buckDeps.some((dep) => dep.name === 'com.google.guava:guava' && dep.version === '33.0.0-jre') && buckDeps.some((dep) => dep.name === 'zlib' && dep.version === '1.3.1'), 'extended Buck parser reads Maven jars and external archives')
 
-    const opamDeps = await extended.list(cwd, 'opam')
+    const opamDeps = await timedList(extended, cwd, 'opam')
     assert(opamDeps.some((dep) => dep.name === 'dune' && dep.version?.includes('3.14')) && opamDeps.some((dep) => dep.name === 'yojson' && dep.version?.includes('2.1.0')), 'extended opam parser reads opam and dune-project dependencies')
 
-    const cpanDeps = await extended.list(cwd, 'cpan')
+    const cpanDeps = await timedList(extended, cwd, 'cpan')
     assert(cpanDeps.some((dep) => dep.name === 'Mojolicious' && dep.version === '>= 9.37') && cpanDeps.some((dep) => dep.name === 'Test::More' && dep.version === '>= 1.302'), 'extended CPAN parser reads cpanfile requirements')
 
-    const luaDeps = await extended.list(cwd, 'luarocks')
+    const luaDeps = await timedList(extended, cwd, 'luarocks')
     assert(luaDeps.some((dep) => dep.name === 'luasocket' && dep.version === '>= 3.1.0') && luaDeps.some((dep) => dep.name === 'inspect' && dep.version === '== 3.1.3'), 'extended LuaRocks parser reads rockspec dependency constraints')
 
-    const shardDeps = await extended.list(cwd, 'shards')
+    const shardDeps = await timedList(extended, cwd, 'shards')
     assert(shardDeps.some((dep) => dep.name === 'kemal' && dep.version === '~> 1.4.0') && shardDeps.some((dep) => dep.name === 'ameba' && dep.version === '~> 1.6.0'), 'extended Crystal Shards parser reads shard.yml dependencies')
 
-    const zigDeps = await extended.list(cwd, 'zig')
+    const zigDeps = await timedList(extended, cwd, 'zig')
     assert(zigDeps.some((dep) => dep.name === 'zlib' && dep.source?.includes('zlib-1.3.1')), 'extended Zig parser reads build.zig.zon and build.zig dependencies')
 
-    const brewDeps = await extended.list(cwd, 'homebrew')
+    const brewDeps = await timedList(extended, cwd, 'homebrew')
     assert(brewDeps.some((dep) => dep.name === 'git' && dep.version === '2.45.0') && brewDeps.some((dep) => dep.name === 'visual-studio-code' && dep.type === 'cask'), 'extended Homebrew parser reads Brewfile formulae, casks, and versions')
 
-    const chocoDeps = await extended.list(cwd, 'chocolatey')
+    const chocoDeps = await timedList(extended, cwd, 'chocolatey')
     assert(chocoDeps.some((dep) => dep.name === 'git' && dep.version === '2.45.0') && chocoDeps.some((dep) => dep.name === 'nodejs-lts' && dep.version === '22.13.0'), 'extended Chocolatey parser reads packages.config package pins')
 
-    const scoopDeps = await extended.list(cwd, 'scoop')
+    const scoopDeps = await timedList(extended, cwd, 'scoop')
     assert(scoopDeps.some((dep) => dep.name === 'ripgrep' && dep.version === '14.1.1') && scoopDeps.some((dep) => dep.name === 'fd' && dep.version === '10.2.0'), 'extended Scoop parser reads scoop export app and bucket manifests')
 
-    const wingetDeps = await extended.list(cwd, 'winget')
+    const wingetDeps = await timedList(extended, cwd, 'winget')
     assert(wingetDeps.some((dep) => dep.name === 'Git.Git' && dep.version === '2.45.0') && wingetDeps.some((dep) => dep.name === 'OpenJS.NodeJS.LTS' && dep.version === '22.13.0'), 'extended winget parser reads exported package identifiers')
 
-    const asdfDeps = await extended.list(cwd, 'asdf')
+    const asdfDeps = await timedList(extended, cwd, 'asdf')
     assert(asdfDeps.some((dep) => dep.name === 'nodejs' && dep.version === '22.13.0') && asdfDeps.some((dep) => dep.name === 'python' && dep.version === '3.12.8'), 'extended asdf parser reads .tool-versions runtime pins')
 
-    const miseDeps = await extended.list(cwd, 'mise')
+    const miseDeps = await timedList(extended, cwd, 'mise')
     assert(miseDeps.some((dep) => dep.name === 'node' && dep.version === '22.13.0') && miseDeps.some((dep) => dep.name === 'python' && dep.version === '3.12.8'), 'extended mise parser reads mise.toml runtime pins')
 
-    const sdkmanDeps = await extended.list(cwd, 'sdkman')
+    const sdkmanDeps = await timedList(extended, cwd, 'sdkman')
     assert(sdkmanDeps.some((dep) => dep.name === 'java' && dep.version === '17.0.10-tem') && sdkmanDeps.some((dep) => dep.name === 'gradle' && dep.version === '8.10'), 'extended SDKMAN parser reads .sdkmanrc candidate pins')
 
-    const aptDeps = await extended.list(cwd, 'apt')
+    const aptDeps = await timedList(extended, cwd, 'apt')
     assert(aptDeps.some((dep) => dep.name === 'curl' && dep.version === '8.5.0-2ubuntu10') && aptDeps.some((dep) => dep.name === 'git' && dep.version === '>= 1:2.43.0'), 'extended APT parser reads Debian package baseline pins and constraints')
 
-    const dnfDeps = await extended.list(cwd, 'dnf')
+    const dnfDeps = await timedList(extended, cwd, 'dnf')
     assert(dnfDeps.some((dep) => dep.name === 'git' && dep.version === '2.45.0') && dnfDeps.some((dep) => dep.name === 'openssl' && dep.version === '>= 3.2.1'), 'extended DNF parser reads RPM package baseline pins and constraints')
 
-    const apkDeps = await extended.list(cwd, 'apk')
+    const apkDeps = await timedList(extended, cwd, 'apk')
     assert(apkDeps.some((dep) => dep.name === 'curl' && dep.version === '8.5.0-r0') && apkDeps.some((dep) => dep.name === 'openssl' && dep.version === '3.2.1-r0'), 'extended apk parser reads Alpine package baseline pins')
 
-    const pacmanDeps = await extended.list(cwd, 'pacman')
+    const pacmanDeps = await timedList(extended, cwd, 'pacman')
     assert(pacmanDeps.some((dep) => dep.name === 'git' && dep.version === '2.45.0-1') && pacmanDeps.some((dep) => dep.name === 'base-devel'), 'extended pacman parser reads Arch package baselines')
 
-    const nixDeps = await extended.list(cwd, 'nix')
+    const nixDeps = await timedList(extended, cwd, 'nix')
     assert(nixDeps.some((dep) => dep.name === 'nixpkgs' && dep.version === 'nixos-24.05') && nixDeps.some((dep) => dep.name === 'nodejs_22') && nixDeps.some((dep) => dep.name === 'flake-utils' && dep.source?.includes('numtide/flake-utils')), 'extended Nix parser reads flake inputs, lock nodes, and dev shell packages')
 
     const pnpmPlan = await extended.plan(cwd, 'pnpm', {
@@ -2796,6 +2837,8 @@ async function main() {
   }
 
   console.log('framework verification passed (' + checks.length + ' checks)')
+  phaseEnd('framework-main')
+  console.log('[legacy:slowest] ' + phaseDurations.sort((a, b) => b.durationMs - a.durationMs).slice(0, 5).map((item) => item.phase + '=' + item.durationMs + 'ms').join(', '))
 }
 
 await main()

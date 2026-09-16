@@ -3,7 +3,7 @@ import { AutoComplete, Button, Descriptions, Empty, Spin, Modal, Form, Select, T
 import { ReloadOutlined, PlusOutlined, SwapOutlined, FolderFilled, SyncOutlined, CheckCircleOutlined, WarningOutlined, HistoryOutlined, ApartmentOutlined, InfoCircleOutlined, SecurityScanOutlined, FolderOpenOutlined, CloudDownloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../../../../stores/appStore'
 import { usePackageStore, PackageInfo } from '../../../../../stores/packageStore'
-import { resolvePackageUpdateTarget, useSettingsStore } from '../../../../../stores/settingsStore'
+import { resolvePackageUpdateTarget, resolveSmartPackageUpdateTarget, useSettingsStore } from '../../../../../stores/settingsStore'
 import { DependencyTreeModal } from '../../../../../components/Package/DependencyTreeModal'
 import { PackageDetailModal } from '../../../../../components/Package/PackageDetailModal'
 import { BatchVersionPreviewModal } from '../../../../../components/Package/BatchVersionPreviewModal'
@@ -49,6 +49,7 @@ const GlobalPage: React.FC = () => {
   
   const addNotification = useAppStore((state) => state.addNotification)
   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
+  const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
   const { globalPackages, loading, fetchGlobalPackages, installPackage, uninstallPackage, installSpecificVersion } = usePackageStore()
   
   useEffect(() => {
@@ -301,7 +302,9 @@ const GlobalPage: React.FC = () => {
       for (const packageName of selectedPackages) {
         try {
           const pkg = pendingUpdates.find((item) => item.name === packageName)
-          const targetVersion = pkg ? resolvePackageUpdateTarget(pkg, updateStrategy) : undefined
+          const targetVersion = pkg && updateStrategy === 'smart'
+            ? (await resolveSmartPackageUpdateTarget(pkg, conflictStrategy)).targetVersion
+            : pkg ? resolvePackageUpdateTarget(pkg, updateStrategy) : undefined
           await window.electronAPI.npm.update({
             packageName,
             global: true,
