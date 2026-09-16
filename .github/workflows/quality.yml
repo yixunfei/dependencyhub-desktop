@@ -26,5 +26,11 @@ jobs:
       - run: node scripts/verify-framework-runner.mjs core hardening contracts node python backend cloud swiftpm helmfile deno cocoapods ansible terraform
       - if: runner.os == 'Windows'
         run: npm run verify:ipc
+      - name: Configure Electron sandbox on Linux
+        if: runner.os == 'Linux'
+        run: |
+          node node_modules/electron/install.js
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - if: runner.os == 'Linux'
         run: xvfb-run -a npm run verify:ipc
