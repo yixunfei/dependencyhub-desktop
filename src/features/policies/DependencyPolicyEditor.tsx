@@ -122,7 +122,7 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
       okText="保存策略"
       cancelText="取消"
       width={920}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" size={14} style={{ width: '100%' }}>
         <Alert

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-17
+
+### Fixed
+- Prevent deadlocks in nested project mutations and serialize competing writes.
+- Stop command process trees on cancellation, timeout, or output overflow before
+  restoring project files; preserve failure and recovery details through Electron IPC.
+- Reject stale inventory, operation plan, restore, and health report responses after
+  project changes, and support independent retries for failed health reports.
+- Fix empty-project rendering, manifest watching, and manager capability detection.
+- Propagate build and packaging failures and select native package formats correctly.
+  The all-platform release command now requests every platform explicitly.
+- Use a supported PNG packaging icon and read the About version from app metadata.
+- Restrict privileged window navigation to the application document or exact development origin.
+
+### Changed
+- Split health-center actions and panels by responsibility; add regression checks
+  for concurrency, IPC, release scripts, and engineering debt in CI.
+- Update Electron, Vite, electron-builder, routing, and transitive dependencies.
+- Require Node.js 22.12 or newer for development.
+
 ## [1.0.2] - 2026-08-06
 
 ### Changed

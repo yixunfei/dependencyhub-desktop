@@ -1,0 +1,478 @@
+{
+  "description": "Existing production TypeScript debt as of 2026-09-16. New files: at most 1500 lines, functions at most 100 lines, no explicit any. Lower allowances when removing debt; do not regenerate to accept regressions.",
+  "files": {
+    "electron/main.ts": {
+      "maxLines": 2136,
+      "anyTypes": 19,
+      "longFunctions": [
+        1515
+      ]
+    },
+    "electron/managers/groups/cloud/cloudHealth.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/cloud/cloudLocks.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/cloud/cloudManifests.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/cloud/declarativeAdapters.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/cloud/helmfileHealth.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/cloud/helmfileInventory.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/infra/infraInventory.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/node/nodeHealth.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/node/nodeWorkspaceManifests.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/platform/platformAdapters.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/groups/platform/swiftpmHealth.ts": {
+      "anyTypes": 1
+    },
+    "electron/managers/search/http.ts": {
+      "anyTypes": 1
+    },
+    "electron/preload.ts": {
+      "anyTypes": 5
+    },
+    "electron/services/auditEvidence.ts": {
+      "anyTypes": 40,
+      "longFunctions": [
+        158
+      ]
+    },
+    "electron/services/automationSafetyPlan.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/cargo.ts": {
+      "anyTypes": 5
+    },
+    "electron/services/ciEvidence.ts": {
+      "anyTypes": 3
+    },
+    "electron/services/ciIntegrationPlan.ts": {
+      "anyTypes": 1,
+      "longFunctions": [
+        117,
+        114,
+        110
+      ]
+    },
+    "electron/services/credentialRotationPlan.ts": {
+      "anyTypes": 1,
+      "longFunctions": [
+        130
+      ]
+    },
+    "electron/services/dependencyAutomationPlan.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/dependencyChangeCalendar.ts": {
+      "longFunctions": [
+        103
+      ]
+    },
+    "electron/services/dependencyHealth.ts": {
+      "anyTypes": 5
+    },
+    "electron/services/dependencyHealthDashboard.ts": {
+      "anyTypes": 2,
+      "longFunctions": [
+        201,
+        145,
+        145,
+        127
+      ]
+    },
+    "electron/services/dependencyOwnershipPlan.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/dependencyUpgradePlaybook.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/extendedManager.ts": {
+      "maxLines": 3036,
+      "anyTypes": 4,
+      "longFunctions": [
+        482,
+        101
+      ]
+    },
+    "electron/services/flutter.ts": {
+      "anyTypes": 26
+    },
+    "electron/services/go.ts": {
+      "anyTypes": 6
+    },
+    "electron/services/gradle.ts": {
+      "anyTypes": 7
+    },
+    "electron/services/maven.ts": {
+      "anyTypes": 12
+    },
+    "electron/services/native.ts": {
+      "anyTypes": 8
+    },
+    "electron/services/npm.ts": {
+      "anyTypes": 48
+    },
+    "electron/services/offlineCacheReadiness.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/pip.ts": {
+      "anyTypes": 29
+    },
+    "electron/services/policyAsCodePack.ts": {
+      "anyTypes": 1,
+      "longFunctions": [
+        108
+      ]
+    },
+    "electron/services/project.ts": {
+      "anyTypes": 2
+    },
+    "electron/services/publish.ts": {
+      "anyTypes": 2
+    },
+    "electron/services/readinessGate.ts": {
+      "maxLines": 3353,
+      "anyTypes": 3,
+      "longFunctions": [
+        208,
+        203,
+        106,
+        101
+      ]
+    },
+    "electron/services/registryReachability.ts": {
+      "anyTypes": 3
+    },
+    "electron/services/releaseApproval.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/releaseEvidenceCompleteness.ts": {
+      "anyTypes": 2
+    },
+    "electron/services/releaseException.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/releaseIntegrityVerification.ts": {
+      "anyTypes": 3
+    },
+    "electron/services/releaseProvenanceAttestation.ts": {
+      "anyTypes": 4,
+      "longFunctions": [
+        105
+      ]
+    },
+    "electron/services/releaseRiskProfile.ts": {
+      "anyTypes": 1,
+      "longFunctions": [
+        146,
+        103
+      ]
+    },
+    "electron/services/releaseSignature.ts": {
+      "anyTypes": 3
+    },
+    "electron/services/releaseTrustPolicy.ts": {
+      "anyTypes": 1,
+      "longFunctions": [
+        185,
+        105
+      ]
+    },
+    "electron/services/runtimePinning.ts": {
+      "anyTypes": 2,
+      "longFunctions": [
+        128
+      ]
+    },
+    "electron/services/supplyChain.ts": {
+      "maxLines": 2470,
+      "anyTypes": 3,
+      "longFunctions": [
+        137
+      ]
+    },
+    "electron/services/system.ts": {
+      "anyTypes": 6
+    },
+    "electron/services/terminal.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/toolchain.ts": {
+      "anyTypes": 2
+    },
+    "electron/services/vulnerabilityRemediationPlan.ts": {
+      "anyTypes": 1
+    },
+    "electron/services/workspaceDiscovery.ts": {
+      "anyTypes": 1,
+      "longFunctions": [
+        116
+      ]
+    },
+    "electron/services/workspaceGovernance.ts": {
+      "maxLines": 3770,
+      "anyTypes": 5,
+      "longFunctions": [
+        409,
+        233,
+        193,
+        141,
+        136,
+        119,
+        105
+      ]
+    },
+    "src/components/CommandLog/CommandLogWindow.tsx": {
+      "anyTypes": 2,
+      "longFunctions": [
+        526,
+        103
+      ]
+    },
+    "src/components/Layout/MainLayout.tsx": {
+      "longFunctions": [
+        191
+      ]
+    },
+    "src/components/Package/BatchVersionPreviewModal.tsx": {
+      "anyTypes": 3,
+      "longFunctions": [
+        213
+      ]
+    },
+    "src/components/Package/DependencyHealthModal.tsx": {
+      "anyTypes": 2,
+      "longFunctions": [
+        213
+      ]
+    },
+    "src/components/Package/DependencyTreeModal.tsx": {
+      "anyTypes": 18,
+      "longFunctions": [
+        314
+      ]
+    },
+    "src/components/Package/DependencyTreeViewer.tsx": {
+      "anyTypes": 8
+    },
+    "src/components/Package/PackageConflictModal.tsx": {
+      "longFunctions": [
+        109
+      ]
+    },
+    "src/components/Package/PackageDetailModal.tsx": {
+      "anyTypes": 9,
+      "longFunctions": [
+        329
+      ]
+    },
+    "src/components/Package/PackageSearchCard.tsx": {
+      "anyTypes": 1
+    },
+    "src/components/Package/SecurityAuditModal.tsx": {
+      "anyTypes": 9,
+      "longFunctions": [
+        309
+      ]
+    },
+    "src/components/Toolchain/GlobalToolchainPanel.tsx": {
+      "anyTypes": 3,
+      "longFunctions": [
+        124
+      ]
+    },
+    "src/components/Toolchain/ProjectToolchainPanel.tsx": {
+      "anyTypes": 3,
+      "longFunctions": [
+        149
+      ]
+    },
+    "src/components/Toolchain/ToolchainStatusModal.tsx": {
+      "anyTypes": 3,
+      "longFunctions": [
+        137
+      ]
+    },
+    "src/features/health/automationGovernance/AutomationGovernanceOverview.tsx": {
+      "longFunctions": [
+        145
+      ]
+    },
+    "src/features/health/policyGovernance/PolicyGovernanceOverview.tsx": {
+      "longFunctions": [
+        102
+      ]
+    },
+    "src/features/health/releaseGovernance/ReleaseGovernanceOverview.tsx": {
+      "longFunctions": [
+        106
+      ]
+    },
+    "src/features/health/reproducibilityGovernance/ReproducibilityGovernanceOverview.tsx": {
+      "longFunctions": [
+        102
+      ]
+    },
+    "src/features/health/workspaceGovernance/WorkspaceGovernanceOverview.tsx": {
+      "longFunctions": [
+        107
+      ]
+    },
+    "src/features/managers/cargo/Cargo.tsx": {
+      "anyTypes": 15,
+      "longFunctions": [
+        535
+      ]
+    },
+    "src/features/managers/extended/ExtendedEcosystems.tsx": {
+      "anyTypes": 6,
+      "longFunctions": [
+        475
+      ]
+    },
+    "src/features/managers/extended/ExtendedManagerWorkspace.tsx": {
+      "anyTypes": 1,
+      "longFunctions": [
+        480
+      ]
+    },
+    "src/features/managers/extended/ManagerDiagnosticsPanel.tsx": {
+      "anyTypes": 2
+    },
+    "src/features/managers/flutter/Flutter.tsx": {
+      "anyTypes": 23,
+      "longFunctions": [
+        1008
+      ]
+    },
+    "src/features/managers/go/Go.tsx": {
+      "anyTypes": 16,
+      "longFunctions": [
+        562
+      ]
+    },
+    "src/features/managers/gradle/Gradle.tsx": {
+      "anyTypes": 16,
+      "longFunctions": [
+        596
+      ]
+    },
+    "src/features/managers/maven/MavenManagerPage.tsx": {
+      "anyTypes": 21,
+      "longFunctions": [
+        1027
+      ]
+    },
+    "src/features/managers/native/Native.tsx": {
+      "anyTypes": 10,
+      "longFunctions": [
+        453
+      ]
+    },
+    "src/features/managers/npm/NpmManagerPage.tsx": {
+      "longFunctions": [
+        110
+      ]
+    },
+    "src/features/managers/npm/scopes/global/Global.tsx": {
+      "anyTypes": 17,
+      "longFunctions": [
+        744
+      ]
+    },
+    "src/features/managers/npm/scopes/project/Project.tsx": {
+      "anyTypes": 24,
+      "longFunctions": [
+        1060
+      ]
+    },
+    "src/features/managers/npm/scopes/publish/Publish.tsx": {
+      "anyTypes": 7,
+      "longFunctions": [
+        413
+      ]
+    },
+    "src/features/managers/pip/PipManagerPage.tsx": {
+      "anyTypes": 26,
+      "longFunctions": [
+        1113
+      ]
+    },
+    "src/features/policies/DependencyPolicyEditor.tsx": {
+      "longFunctions": [
+        282,
+        107
+      ]
+    },
+    "src/features/policies/ReadinessPolicyEditor.tsx": {
+      "anyTypes": 2,
+      "longFunctions": [
+        350
+      ]
+    },
+    "src/features/search/Search.tsx": {
+      "anyTypes": 15,
+      "longFunctions": [
+        883,
+        291,
+        120
+      ]
+    },
+    "src/features/settings/Settings.tsx": {
+      "anyTypes": 17,
+      "longFunctions": [
+        925
+      ]
+    },
+    "src/features/workspace/ManagerHub.tsx": {
+      "longFunctions": [
+        190
+      ]
+    },
+    "src/features/workspace/MultiManager.tsx": {
+      "longFunctions": [
+        109
+      ]
+    },
+    "src/pages/PluginComponents/PluginComponents.tsx": {
+      "anyTypes": 27,
+      "longFunctions": [
+        884,
+        128
+      ]
+    },
+    "src/stores/packageStore.ts": {
+      "anyTypes": 12,
+      "longFunctions": [
+        344,
+        138
+      ]
+    },
+    "src/stores/searchStore.ts": {
+      "anyTypes": 1
+    },
+    "src/types/global.d.ts": {
+      "maxLines": 5859,
+      "anyTypes": 17
+    },
+    "src/utils/localizedFeedback.ts": {
+      "anyTypes": 8
+    }
+  }
+}

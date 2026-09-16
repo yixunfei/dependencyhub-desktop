@@ -1,3 +1,4 @@
+import type { IpcFailureEnvelope } from '../../shared/ipcFailure'
 import type {
   ManagerCommandResult,
   ManagerDependency,
@@ -203,11 +204,23 @@ declare global {
         detected: (cwd: string) => Promise<ManagerDetection[]>
         inventory: (cwd: string, managerId: DependencyManagerId) => Promise<ManagerDependency[]>
         plan: (cwd: string, managerId: DependencyManagerId, request: ManagerOperationRequest) => Promise<ManagerOperationPlan>
-        execute: (cwd: string, managerId: DependencyManagerId, request: ManagerOperationRequest, options?: ManagerExecuteOptions) => Promise<ManagerCommandResult>
-        runCustom: (cwd: string, managerId: DependencyManagerId, commandLine: string) => Promise<ManagerCommandResult>
+        execute: (cwd: string, managerId: DependencyManagerId, request: ManagerOperationRequest, options?: ManagerExecuteOptions) => Promise<ManagerCommandResult | IpcFailureEnvelope>
+        runCustom: (cwd: string, managerId: DependencyManagerId, commandLine: string, options?: { operationId?: string }) => Promise<ManagerCommandResult | IpcFailureEnvelope>
         search: (cwd: string | undefined, managerId: DependencyManagerId, query: ManagerSearchQuery) => Promise<ManagerSearchResult[]>
         health: (cwd: string, managerId: DependencyManagerId) => Promise<ManagerHealthReport>
         restoreBackup: (cwd: string, backupPath: string) => Promise<ManagerRestoreResult>
+      }
+
+      operations: {
+        cancel: (operationId: string) => Promise<boolean>
+        cancelProject: (projectPath: string) => Promise<number>
+        listActive: () => Promise<Array<{ operationId: string; label?: string; projectPath?: string }>>
+      }
+
+      operations: {
+        cancel: (operationId: string) => Promise<boolean>
+        cancelProject: (projectPath: string) => Promise<number>
+        listActive: () => Promise<Array<{ operationId: string; label?: string; projectPath?: string }>>
       }
 
       supplyChain: {
@@ -5788,8 +5801,12 @@ declare global {
   }
   
   interface FileChangeData {
-    type: 'package.json'
+    type: 'manifest'
     path: string
+    /** The manifest or lock file that changed, for example package-lock.json. */
+    file?: string
+    /** Raw fs.watch event type: change, rename, add, or unlink. */
+    event?: string
   }
 
   interface InstallArgs {

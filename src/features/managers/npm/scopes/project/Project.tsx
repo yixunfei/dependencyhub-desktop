@@ -92,10 +92,10 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         if (projectInfo.hasPackageJson) {
           await window.electronAPI.watcher.start(currentPath)
           window.electronAPI.watcher.onChange((data) => {
-            if (data.type === 'package.json' && data.path === currentPath) {
+            if (data.path === currentPath) {
               addNotification({
                 type: 'info',
-                message: 'package.json 已变更',
+                message: `${data.file || 'dependency manifest'} 已变更`,
                 description: '正在自动刷新...'
               })
               fetchProjectPackages(currentPath, true)

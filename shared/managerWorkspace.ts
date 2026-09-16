@@ -128,6 +128,20 @@ export interface ManagerOperationPlan {
 export interface ManagerExecuteOptions {
   dryRun?: boolean
   plan?: ManagerOperationPlan
+  /** Caller-supplied operation id so the UI can cancel the running command. */
+  operationId?: string
+}
+
+export type ManagerFailureCategory = 'cancelled' | 'timeout' | 'exit-code' | 'output-limit' | 'unknown'
+
+/** Structured failure every mutating operation rejects with, so the UI can offer retry / rollback. */
+export interface ManagerOperationFailure {
+  category: ManagerFailureCategory
+  operationId: string
+  message: string
+  retryable: boolean
+  exitCode?: number | string
+  backupPath?: string
 }
 
 export interface ManagerCommandResult {
@@ -137,6 +151,7 @@ export interface ManagerCommandResult {
   stderr: string
   dryRun: boolean
   backup?: ManagerBackup
+  operationId?: string
 }
 
 export interface ManagerRestoreResult {

@@ -1,5 +1,9 @@
 # 后续优化补充计划（F1–F5 修复之后）
 
+> **2026-09-17 复核更新**：本文件保留历史计划与当时的实施判断。后续复核发现编译、嵌套写锁、跨 IPC 错误传递和报告竞态仍有缺陷；本轮修复、验证证据与剩余工程债见 [最新复核记录](PROJECT_REVIEW_2026-09-17.md)。
+
+> **实施状态（2026-09-16）**：本轮已完成 S1.1、S1.2/S1.3、S2、S3、S4、S5 的代码闭环，并新增 `verify:hardening`（54 项行为验证）与 CI 门禁。S6 工程债仍作为后续迭代项保留。
+
 编写日期：2026-09-16。基线：`PROJECT_REVIEW.md`（2026-09-15）记录的 F1–F5，以及随后完成的"管理器工作台行为加固"提交 `10ecb05`。
 
 本文只覆盖**上次修复之外仍然存在**的事项，并且只写已经核实的代码证据。文中所有行号对应 `10ecb05` 时的代码。沿用 `PROJECT_REVIEW.md` 的 P1/P2/P3 分级：P1 = 会导致用户丢改动或误判结果，P2 = 明显影响体验或迭代速度，P3 = 整洁度。
@@ -14,7 +18,7 @@
 | F2 切换项目数据串扰 | 已闭环。`packageStore` 引入请求序号 + 路径校验 + 错误态清理；工作台与扩展生态页改用 `ManagerWorkspaceCoordinator` |
 | F3 npm 依赖类型错误 | 已闭环。分类改由 `package.json` 清单驱动；补齐 `optionalDependencies`/`peerDependencies`/缺失与异常状态；渲染层同步修正 |
 | F4 备份与恢复不完整 | 已闭环。备份记录文件存在性、失败返回 `restore` 结构化结果、`expectedState` 冲突检测、`withProjectMutation` 串行化 |
-| F5 注册表/适配器/页面不一致 | 部分闭环。kustomize/skaffold/argocd/flux 已提升 preview；`diagnostics()` 改为"声明 vs 适配器"一致性比对；**能力矩阵的统一表达仍未完成**，见 S5 |
+| F5 注册表/适配器/页面不一致 | **已闭环（S5）**。新增 `shared/managerCapabilityMatrix.ts`，把 target/implemented 能力与诊断统一到同一矩阵；新增 `getExtendedManagerDefinitions()` 作为无专用页面适配器生态的查询入口。 |
 
 附带修复（同批次）：工作台 coordinator token 互踢导致检测数据被丢弃、`diagnostics()` 误报 8 个内置管理器、`commandRunner` 预中止 signal 的 TDZ 崩溃、扩展生态页异步竞态、备份候选混入 glob 模式、仓库根 `NUL` 游离文件。
 
@@ -24,7 +28,7 @@
 
 ## S1 / P1：写操作的串行化与失败反馈没有形成统一契约
 
-这是当前最影响"敢不敢用"的问题，分三层。
+> **状态：已完成。** `electron/services/projectMutation.ts` 提供共享的按项目队列；`withProjectSnapshot` 已统一接入快照、互斥队列和 `OperationContext`。`operationContext.ts`、取消 IPC、超时/取消/退出码/输出超限分类以及工作台取消按钮已落地。`verify:hardening` 覆盖并发写、取消、超时、结构化失败。
 
 ### S1.1 写操作保护入口不统一
 
@@ -75,7 +79,7 @@
 
 ## S2 / P1：失败与"无数据"无法区分
 
-[src/features/health/HealthCenter.tsx](src/features/health/HealthCenter.tsx) 进入页面即并发发起 **39 个** IPC 调用，其中 **65 处**使用 `catch(() => null)` 把错误吞成 `null`。
+> **状态：已完成。** `HealthCenter` 按报告块维护显式 `loading / ready / error` 状态；失败保留后端错误信息，不再以 `null` 伪装空数据；页面提供单块重试与"重试全部失败报告"入口。`reportStatus.ts` 与 hardening verifier 覆盖该契约。
 
 结果是后端报错、网络不通、报告尚未生成三种情况在界面上完全一致，都呈现为"无数据"，且没有重试入口。对一个治理/健康面板来说，把失败伪装成正常空态是最危险的一类误导——用户会据此认为"这项检查通过了"。
 
@@ -86,6 +90,8 @@
 ---
 
 ## S3 / P2：数据新鲜度依赖单个文件监听
+
+> **状态：已完成。** `FileWatcher` 改为项目目录级监听，覆盖 `change`/`rename` 事件与清单/锁文件白名单（package.json、package-lock.json、yarn.lock、pnpm-lock.yaml、requirements.txt、Cargo.toml、go.mod 等），并以 250ms 去抖合并多文件改动；`file-change` 事件携带具体文件名，`watch:list` 暴露监听状态。hardening verifier 覆盖外部改写、原子替换、锁文件单独变化与无关文件四种场景。
 
 [electron/services/watcher.ts](electron/services/watcher.ts) 只监听 `package.json` 一个文件，且仅处理 `change` 事件：
 
@@ -102,6 +108,8 @@
 
 ## S4 / P2：Electron 边界与凭据存储策略需要决策
 
+> **状态：安全边界已完成；凭据降级仍是产品决策。** `open-external` 现在只允许 `http:`、`https:`、`mailto:`，并由 `will-navigate` 与 `setWindowOpenHandler` 共同拦截导航/新窗口；负向 URL 用例已纳入 hardening verifier。凭据存储的 Base64 降级策略仍保留原 warning，未擅自改变产品策略。
+
 - **`open-external` 无白名单**：[electron/main.ts:619](electron/main.ts) 直接 `shell.openExternal(url)`，未校验协议与来源。建议限制为 `https:` / `http:`，并配套 `will-navigate` 与 `setWindowOpenHandler` 约束。需要负向测试（`file:`、`javascript:` 等应被拒绝）。
 - **安全存储降级**：[electron/services/credentialVaultCore.ts:206](electron/services/credentialVaultCore.ts) 在系统安全存储不可用时退化为 Base64 编码。设置页有 warning，不属于静默明文，但**这是产品决策而非缺陷**，需要在三者中选一：禁止持久化 / 仅会话内存 / 由用户显式确认后降级。
 - **IPC 参数校验**：多数处理器仍是透传，未做运行时校验（上次仅给 `npm:smart-analyze` 补了类型检查）。建议对写操作类处理器统一做参数校验，并覆盖负向用例。
@@ -109,6 +117,8 @@
 ---
 
 ## S5 / P2：管理器能力矩阵仍未统一表达
+
+> **状态：已完成核心结构。** 新增 `ManagerCapabilityDeclaration`（target/implemented）和 `shared/managerCapabilityMatrix.ts`，统一计算注册表目标能力与适配器实际能力，并提供差异诊断；新增 `getExtendedManagerDefinitions()` 为无专用页面但已有实现的生态提供统一查询入口。现有路由配置仍覆盖所有 54 个扩展管理器，`/extended` 的 planned 展示继续保留为 roadmap 语义。
 
 上次只把 4 个已知矛盾的条目对齐，没有解决"谁在维护能力事实"这个结构问题：
 
@@ -139,6 +149,8 @@
 
 ## 优先级建议
 
+> **本轮已完成**：S1.1、S1.2/S1.3、S2、S3、S4（安全边界部分）、S5 核心结构，并用 typecheck、core verifier、manager-contract verifier、hardening verifier（54 项）验证。下一阶段聚焦 S6 工程债，以及 S4 凭据降级的产品决策。
+
 如果只做一件事，选 **S1.1**：把 `withProjectSnapshot` 接入 `withProjectMutation` 的同一队列。改动集中、风险低，但它决定了用户能否放心在真实项目上批量改依赖——当前并发写会让改动互相覆盖，这是本清单里唯一会**造成不可见的数据丢失**的问题。
 
 其后顺序建议：S1.2 / S1.3（取消与结构化失败）→ S2（失败可见）→ S5（能力矩阵统一）→ S3（文件监听）→ S4（安全决策）→ S6（工程债）。
@@ -156,6 +168,5 @@
 
 ## 核实方式与限制
 
-- 本文所有结论均来自对 `10ecb05` 代码的静态核对与检索（如 39 个并发调用、65 处 `catch(() => null)`、597 处 `any`、49 处 `withProjectSnapshot` 均为实际计数）。
-- **未做**运行时压测、内存与启动耗时基准；未在 macOS/Linux 上执行；未做真实生态的端到端安装验证。上述场景下的结论应视为待验证假设。
-- S1.1 的并发覆盖问题为代码结构推断（缺少互斥与测试），尚未用可复现场景实测确认写入冲突的具体表现。
+- 本轮新增验证：`npm run typecheck`、Electron typecheck、`npm run verify:core`（25 checks）、`npm run verify:manager-contracts`（54 managers）、`npm run verify:hardening`（54 checks，覆盖并发写、取消、超时、失败分类、HealthCenter 状态工具、URL 白名单、watcher 原子替换/锁文件变化）。
+- 尚未做真实生态的端到端安装验证、桌面 E2E、跨平台运行验证或运行时压测；这些仍属于后续验证范围。

@@ -1,6 +1,6 @@
 {
   "name": "dependencyhub-desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Cross-platform desktop workspace for multi-ecosystem project dependency management, toolchains, security health, and release governance",
   "author": "yixunfei",
   "homepage": "https://github.com/yixunfei/dependencyhub-desktop#readme",
@@ -50,7 +50,12 @@
     "build:linux-deb": "node scripts/build.js linux installer",
     "build:all": "node scripts/build.js all all",
     "release": "node scripts/release.js current",
-    "release:all": "node scripts/release.js all"
+    "release:all": "node scripts/release.js all",
+    "verify:hardening": "node scripts/verify-hardening-behaviors.mjs",
+    "verify:engineering-debt": "node scripts/verify-engineering-debt.mjs",
+    "test": "npm run test:scripts && vitest run",
+    "verify:ipc": "node scripts/verify-ipc-bridge.mjs",
+    "test:scripts": "node --test scripts/build.test.cjs"
   },
   "keywords": [
     "dependency-management",
@@ -67,24 +72,28 @@
     "fast-xml-parser": "^5.11.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^7.15.1",
+    "react-router-dom": "^7.18.4",
     "semver": "^7.8.0",
     "smol-toml": "^1.8.0",
     "yaml": "^2.9.0",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^25.8.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/semver": "^7.5.6",
     "@vitejs/plugin-react": "^6.0.2",
-    "electron": "^42.1.0",
-    "electron-builder": "^26.8.1",
-    "esbuild": "^0.28.0",
+    "electron": "^42.11.4",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13",
-    "vite-plugin-electron": "^0.29.1"
+    "vite": "^8.3.0",
+    "vite-plugin-electron": "^0.29.1",
+    "vitest": "^5.0.1"
   },
   "build": {
     "appId": "com.dependencyhub.desktop",
@@ -108,7 +117,7 @@
       }
     ],
     "win": {
-      "icon": "icon.jpg",
+      "icon": "icon.png",
       "target": [
         {
           "target": "nsis",
@@ -125,14 +134,14 @@
       ]
     },
     "mac": {
-      "icon": "icon.jpg",
+      "icon": "icon.png",
       "target": [
         "dmg",
         "zip"
       ]
     },
     "linux": {
-      "icon": "icon.jpg",
+      "icon": "icon.png",
       "target": [
         "AppImage",
         "deb",
@@ -152,5 +161,8 @@
       "language": "1033",
       "deleteAppDataOnUninstall": false
     }
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

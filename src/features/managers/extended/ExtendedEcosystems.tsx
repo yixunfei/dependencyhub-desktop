@@ -1,3 +1,4 @@
+import { managerCommands } from './managerCommands'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Checkbox, Empty, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import { CodeOutlined, FolderOpenOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
@@ -162,7 +163,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
     setRunning(true)
     setCommandOutput('Running...')
     try {
-      const result = await window.electronAPI.managers.runCustom(currentPath, activeManager, commandLine)
+      const result = await managerCommands.runCustom(currentPath, activeManager, commandLine)
       if (result.backup) {
         setLastBackup(result.backup)
       }
@@ -242,7 +243,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
     setRunning(true)
     setCommandOutput('Running...')
     try {
-      const result = await window.electronAPI.managers.execute(
+      const result = await managerCommands.execute(
         currentPath,
         activeManager,
         operationPlan.request,

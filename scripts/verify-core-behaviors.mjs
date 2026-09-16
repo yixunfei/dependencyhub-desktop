@@ -17,6 +17,7 @@ import { join } from 'path'
 import { ExtendedManagerService } from './electron/services/extendedManager'
 import { NpmService } from './electron/services/npm'
 import { getManagerDefinition } from './shared/managerRegistry'
+import { withProjectMutation } from './electron/services/projectMutation'
 import { getCalls, resetCalls, setCommandFailure } from './commandRunner'
 
 const checks = []
@@ -68,6 +69,25 @@ async function testDeletedFileRestore() {
   } catch { }
   setCommandFailure(false)
   assert(await readFile(join(cwd, 'Package.resolved'), 'utf8') === 'lock', 'F4 deleted pre-existing file is restored')
+}
+
+async function testCancelledMutationRestoresWithinOuterGuard() {
+  const cwd = await fixture('cancelled-mutation')
+  await writeFile(join(cwd, 'Package.swift'), 'original')
+  const service = new ExtendedManagerService()
+  setCommandFailure('cancelled')
+  let error
+  try {
+    await withProjectMutation(cwd, () => service.executeWithMutation(cwd, 'swiftpm', ['package', 'resolve'], async () => {
+      await writeFile(join(cwd, 'Package.swift'), 'changed')
+      await writeFile(join(cwd, 'Package.resolved'), 'generated')
+    }))
+  } catch (value) { error = value }
+  setCommandFailure(false)
+  assert(error?.failure?.category === 'cancelled', 'cancelled adapter keeps the failure category inside an outer mutation guard')
+  assert(error?.restore?.restored === true, 'cancelled adapter reports completed manifest restoration')
+  assert(await readFile(join(cwd, 'Package.swift'), 'utf8') === 'original', 'cancelled adapter restores the original manifest')
+  await assertMissing(join(cwd, 'Package.resolved'), 'cancelled adapter removes a newly generated lockfile')
 }
 
 async function testBackupConflict() {
@@ -141,6 +161,7 @@ try {
   await testPlanAndUnsupported()
   await testBackupCreationAndNewFileRollback()
   await testDeletedFileRestore()
+  await testCancelledMutationRestoresWithinOuterGuard()
   await testBackupConflict()
   await testCoordinatorRace()
   await testRealNpmFixture()
@@ -159,6 +180,7 @@ export function getCalls() { return calls }
 export function setCommandFailure(value) { commandFailure = value }
 export async function runLoggedCommand(_bin, args, options = {}) {
   calls.push([...args])
+  if (commandFailure === 'cancelled') throw Object.assign(new Error('fixture was cancelled'), { failure: { category: 'cancelled' } })
   if (commandFailure) throw Object.assign(new Error('fixture command failure'), { stderr: 'fixture command failure', code: 1 })
   return { stdout: 'ok', stderr: '' }
 }

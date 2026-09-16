@@ -24,6 +24,10 @@
   margin-bottom: 0 !important;
 }
 
+.reportFailures {
+  margin-bottom: 0;
+}
+
 .pathInfo {
   display: inline-flex;
   align-items: center;

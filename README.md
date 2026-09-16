@@ -16,7 +16,7 @@
 
 </div>
 
-> 当前版本：**1.0.2**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases) 下载）。
+> 当前版本：**1.0.3**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases) 下载）。
 
 ## 简体中文
 
@@ -34,7 +34,7 @@ DependencyHub Desktop 已从最初的 npm 依赖小工具升级为**项目依赖
 
 #### 依赖与项目工作区
 
-- 自动检测 \`package.json\`、\`requirements.txt\`、\`pyproject.toml\`、\`pom.xml\`、\`Cargo.toml\`、\`go.mod\`、\`pubspec.yaml\`、\`CMakeLists.txt\` 等项目入口。
+- 自动检测 `package.json`、`requirements.txt`、`pyproject.toml`、`pom.xml`、`Cargo.toml`、`go.mod`、`pubspec.yaml`、`CMakeLists.txt` 等项目入口。
 - 项目依赖和全局依赖分开管理；切换项目目录后自动刷新清单、锁文件和命令上下文。
 - 安装、卸载、升级、批量升级、版本切换，并在执行前显示版本变更预览。
 - 依赖列表、依赖树、依赖数量和包体积可视化；支持过滤、分页和详情弹窗。
@@ -44,21 +44,21 @@ DependencyHub Desktop 已从最初的 npm 依赖小工具升级为**项目依赖
 
 | 生态 | 管理器 | 典型清单/锁文件 | 重点能力 |
 | --- | --- | --- | --- |
-| Node.js | npm | \`package.json\` / \`package-lock.json\` | 搜索、依赖管理、脚本、\`npm audit\`、发布 |
-| Python | pip | \`requirements.txt\` / \`pyproject.toml\` | 环境包管理、\`pip check\`、\`pip-audit\`、发布 |
-| JVM | Maven | \`pom.xml\` / \`settings.xml\` | 依赖树、版本切换、离线准备、OWASP 检查、部署 |
-| JVM / Android | Gradle | \`build.gradle(.kts)\` / \`gradle.lockfile\` | task、dependency insight、锁文件审查 |
-| Rust | Cargo | \`Cargo.toml\` / \`Cargo.lock\` | crates.io 搜索、依赖树、\`cargo audit\` |
-| Go | Go Modules | \`go.mod\` / \`go.sum\` | 模块增删改、\`go mod tidy\`、\`govulncheck\` |
-| Dart | Flutter pub | \`pubspec.yaml\` / \`pubspec.lock\` | \`pub outdated\`、依赖树、OSV 审计、发布前检查 |
-| C / C++ | CMake / vcpkg / Conan | \`CMakeLists.txt\`、\`vcpkg.json\`、\`conanfile.*\` | 原生库搜索、构建任务、工具链与锁文件 |
+| Node.js | npm | `package.json` / `package-lock.json` | 搜索、依赖管理、脚本、`npm audit`、发布 |
+| Python | pip | `requirements.txt` / `pyproject.toml` | 环境包管理、`pip check`、`pip-audit`、发布 |
+| JVM | Maven | `pom.xml` / `settings.xml` | 依赖树、版本切换、离线准备、OWASP 检查、部署 |
+| JVM / Android | Gradle | `build.gradle(.kts)` / `gradle.lockfile` | task、dependency insight、锁文件审查 |
+| Rust | Cargo | `Cargo.toml` / `Cargo.lock` | crates.io 搜索、依赖树、`cargo audit` |
+| Go | Go Modules | `go.mod` / `go.sum` | 模块增删改、`go mod tidy`、`govulncheck` |
+| Dart | Flutter pub | `pubspec.yaml` / `pubspec.lock` | `pub outdated`、依赖树、OSV 审计、发布前检查 |
+| C / C++ | CMake / vcpkg / Conan | `CMakeLists.txt`、`vcpkg.json`、`conanfile.*` | 原生库搜索、构建任务、工具链与锁文件 |
 
 #### 搜索、发布与供应链
 
 - 聚合 npm、PyPI、Maven Central、crates.io、Go/GitHub 模块和 pub.dev 元数据，展示版本、README/变更日志、下载量、依赖者和包大小。
 - 发布管理器提供清单校验、发布标签、访问权限、Registry 选择和 readiness gate；发布凭据通过安全桥接层传递，不写入 README、日志或 Release 资产。
 - 健康中心统一呈现依赖健康、锁文件漂移、过期包、Registry 可达性和工具链状态。
-- 适配 \`npm audit\`、\`pip-audit\`、\`cargo audit\`、\`govulncheck\`、OWASP dependency-check 与 OSV 查询。
+- 适配 `npm audit`、`pip-audit`、`cargo audit`、`govulncheck`、OWASP dependency-check 与 OSV 查询。
 - 供应链策略包含许可证、包/管理器黑名单、版本固定、浮动 CI/容器引用、SBOM/报告索引，以及 CI 记录、审批、异常、回滚快照、完整性/签名/来源证明。
 
 #### 工具链与体验
@@ -101,7 +101,7 @@ pnpm、Yarn、Bun、uv、Poetry、Pipenv、Conda、NuGet、Composer 与 Bundler 
 
 | 场景 | DependencyHub Desktop | 传统分散式 CLI 流程 |
 | --- | --- | --- |
-| 依赖盘点 | 自动检测清单/锁文件，列表和树视图共享结果 | 分别运行 \`npm ls\`、\`pip list\`、\`mvn dependency:tree\` 后手工拼接 |
+| 依赖盘点 | 自动检测清单/锁文件，列表和树视图共享结果 | 分别运行 `npm ls`、`pip list`、`mvn dependency:tree` 后手工拼接 |
 | 批量升级 | 统一选择、版本预览、执行和日志回看 | 每个生态使用不同命令或脚本，升级前后人工核对 |
 | 安全审计 | 健康中心聚合审计、漂移、Registry 和许可证信号 | 各生态分别执行审计工具，再整理报告 |
 | 工具链切换 | 全局/项目路径集中管理，命令运行器复用解析结果 | 依赖 shell 配置、PATH 和项目脚本，容易环境不一致 |
@@ -111,11 +111,11 @@ pnpm、Yarn、Bun、uv、Poetry、Pipenv、Conda、NuGet、Composer 与 Bundler 
 
 不要把跨机器不可复现的数字写成宣传结论，请在相同 Node.js、磁盘、网络和缓存条件下采集自己的基准：
 
-\`\`\`powershell
+```powershell
 Measure-Command { npm run build }
 Get-ChildItem dist -Recurse -File | Measure-Object -Property Length -Sum
 npm ls --all --json > $env:TEMP\dependencyhub-desktop-deps.json
-\`\`\`
+```
 
 对比“CLI 命令串行执行”和“平台一次检测/批量操作”的总耗时；不要把单个包管理器的下载速度当作平台性能。构建产物和 Release 页面会提供版本、架构与 SHA-256，便于复核。
 
@@ -124,54 +124,57 @@ npm ls --all --json > $env:TEMP\dependencyhub-desktop-deps.json
 #### 直接使用发布包
 
 1. 打开 [Releases](https://github.com/yixunfei/dependencyhub-desktop/releases)。
-2. Windows 选择 \`DependencyHub.Desktop.Setup.<version>.exe\`（安装版）或 \`DependencyHub.Desktop.<version>.exe\`（便携版）。GitHub Release 会将文件名中的空格规范化为点号。
+2. Windows 选择 `DependencyHub.Desktop.Setup.<version>.exe`（安装版）或 `DependencyHub.Desktop.<version>.exe`（便携版）。GitHub Release 会将文件名中的空格规范化为点号。
 3. 首次启动后选择项目目录，平台会显示检测到的管理器。
 
-macOS 可使用 \`.dmg\` / \`.zip\`，Linux 可使用 \`.AppImage\` / \`.deb\` / \`.rpm\`（具体资产取决于发布版本）。
+macOS 可使用 `.dmg` / `.zip`，Linux 可使用 `.AppImage` / `.deb` / `.rpm`（具体资产取决于发布版本）。
 
 #### 从源码运行
 
-要求 Node.js 22+、npm 10+、Git，以及目标生态的 CLI（Python/pip、JDK/Maven、Rust/Cargo、Go、Flutter、CMake/vcpkg/Conan 等）。
+要求 Node.js 22.12+、npm 10+、Git，以及目标生态的 CLI（Python/pip、JDK/Maven、Rust/Cargo、Go、Flutter、CMake/vcpkg/Conan 等）。
 
-\`\`\`bash
+```bash
 git clone https://github.com/yixunfei/dependencyhub-desktop.git
 cd dependencyhub-desktop
 npm install
 npm run dev
-\`\`\`
+```
 
-构建当前平台安装包和便携包：\`npm run dist\`。按平台构建：
+构建当前平台安装包和便携包：`npm run dist`。按平台构建：
 
-\`\`\`bash
+```bash
 npm run build:win-installer
 npm run build:win-portable
 npm run build:mac-dmg
 npm run build:mac-zip
 npm run build:linux-appimage
 npm run build:linux-deb
-\`\`\`
+```
 
-跨平台构建受操作系统和签名工具限制；构建输出位于 \`release/\`，该目录默认被 \`.gitignore\` 排除，不会混入源代码提交。
+跨平台构建受操作系统和签名工具限制；构建输出位于 `release/`，该目录默认被 `.gitignore` 排除，不会混入源代码提交。
 
 ### 验证与故障排查
 
-\`\`\`bash
+```bash
 npm run build
+npm test
+npm run verify:ipc
+npm run verify:engineering-debt
 npm run verify:framework
 npm run verify:release-integrity
 npm run verify:release-signature
 npm run verify:release-trust
-\`\`\`
+```
 
 - 工具不可用时，在“工具链/Tool Versions”中配置项目级路径。
 - 审计工具是可选依赖；缺失时界面显示安装建议，不会伪造审计结果。
-- Maven/Gradle 远程搜索速度取决于 Maven Central、镜像和本地 \`.m2\` 规模。
+- Maven/Gradle 远程搜索速度取决于 Maven Central、镜像和本地 `.m2` 规模。
 - Windows 终端乱码时，优先将相关 CLI 和终端编码设置为 UTF-8。
 - 发布失败时先查看命令日志和 readiness gate，再决定是否手动覆盖。
 
 ### 项目结构
 
-\`\`\`text
+```text
 dependencyhub-desktop/
 ├─ electron/                 # 主进程、preload 与生态服务
 ├─ shared/                   # 共享管理器注册表和领域类型
@@ -184,11 +187,11 @@ dependencyhub-desktop/
 ├─ image*.png                # README 演示截图
 ├─ LICENSE                   # MIT 许可证
 └─ package.json              # 开发、构建和发布入口
-\`\`\`
+```
 
 ### 贡献与许可证
 
-欢迎提交 Issue 和 Pull Request。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并在提交前运行 \`npm run build\` 与相关验证脚本。新增管理器时，优先扩展共享注册表和独立 service，保持 UI 与底层命令解耦。
+欢迎提交 Issue 和 Pull Request。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并在提交前运行 `npm run build` 与相关验证脚本。新增管理器时，优先扩展共享注册表和独立 service，保持 UI 与底层命令解耦。
 
 本项目使用 [MIT License](LICENSE) 开源；第三方依赖仍受其各自许可证约束。
 
@@ -226,11 +229,11 @@ The application improves workflow latency by detecting a project once, reusing m
 
 Download the latest installer or portable artifact from [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases). For source development:
 
-\`\`\`bash
+```bash
 git clone https://github.com/yixunfei/dependencyhub-desktop.git
 cd dependencyhub-desktop
 npm install
 npm run dev
-\`\`\`
+```
 
-Build the current platform with \`npm run dist\`. Run \`npm run build\` and the \`verify:*\` scripts before opening a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) and [LICENSE](LICENSE).
+Build the current platform with `npm run dist`. Run `npm run build` and the `verify:*` scripts before opening a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) and [LICENSE](LICENSE).

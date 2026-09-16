@@ -62,6 +62,11 @@ const GROUPS = {
     script: 'scripts/verify-core-behaviors.mjs',
     timeoutMs: 120_000
   },
+  hardening: {
+    description: 'S1 write serialization, cancellation, timeout, structured failure, and URL guard behavior',
+    script: 'scripts/verify-hardening-behaviors.mjs',
+    timeoutMs: 120_000
+  },
   legacy: {
     description: 'existing full framework regression fixture',
     script: 'scripts/verify-framework.mjs',

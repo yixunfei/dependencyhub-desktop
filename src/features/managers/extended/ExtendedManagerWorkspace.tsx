@@ -1,3 +1,6 @@
+import { useWorkspaceRequest } from './useWorkspaceRequest'
+import { executeManagerCommand, cancelManagerCommand } from './managerExecution'
+import { managerCommands } from './managerCommands'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Checkbox, Empty, Form, Input, Segmented, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import {
@@ -84,16 +87,32 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
   const [dependencyDiff, setDependencyDiff] = useState<DependencyComponentDiff | null>(null)
   const [loading, setLoading] = useState(false)
   const [running, setRunning] = useState(false)
-  const [restoring, setRestoring] = useState(false)
-  const [planning, setPlanning] = useState(false)
+  const [activeOperationId, setActiveOperationId] = useState<string | null>(null)
+  const inventoryRequest = useWorkspaceRequest({ projectPath: currentPath, managerId: activeManager })
+  const planRequest = useWorkspaceRequest({ projectPath: currentPath, managerId: activeManager })
+  const restoreRequest = useWorkspaceRequest({ projectPath: currentPath, managerId: activeManager })
+  const planning = planRequest.pending
+  const restoring = restoreRequest.pending
   const [operationForm] = Form.useForm<OperationFormValues>()
   const [commandForm] = Form.useForm<{ commandLine: string }>()
-  // Overview and inventory requests track staleness independently; sharing a single
-  // coordinator would let an inventory load discard a concurrent overview response.
   const overviewCoordinator = React.useMemo(() => new ManagerWorkspaceCoordinator(), [])
-  const inventoryCoordinator = React.useMemo(() => new ManagerWorkspaceCoordinator(), [])
   const currentPathRef = React.useRef(currentPath)
-  useEffect(() => { currentPathRef.current = currentPath }, [currentPath])
+  currentPathRef.current = currentPath
+  const operationScopeRef = React.useRef({ currentPath, activeManager, id: '' })
+  if (operationScopeRef.current.currentPath !== currentPath || operationScopeRef.current.activeManager !== activeManager) {
+    operationScopeRef.current = { currentPath, activeManager, id: '' }
+  }
+  useEffect(() => {
+    setCommandOutput('')
+    setLastBackup(null)
+    setActiveOperationId(null)
+    setRunning(false)
+    return () => {
+      operationScopeRef.current.id = ''
+    }
+  }, [currentPath, activeManager])
+
+  useEffect(() => () => overviewCoordinator.invalidate(), [currentPath, overviewCoordinator])
 
   const definitions = useMemo(() => config.managerIds.map((id) => getManagerDefinition(id)!).filter(Boolean), [config.managerIds])
   const activeDefinition = getManagerDefinition(activeManager)
@@ -116,12 +135,10 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
 
   useEffect(() => {
     if (!currentPath) {
-      inventoryCoordinator.invalidate()
       setDependencies([])
       setOperationPlan(null)
       return
     }
-    inventoryCoordinator.invalidate()
     setOperationPlan(null)
     void loadDependencies(activeManager)
   }, [activeManager, currentPath])
@@ -145,7 +162,8 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
         setDependencies([])
         setReadinessReport(null)
         setDependencyDiff(null)
-        setToolStatuses(await window.electronAPI.system.checkTools())
+        const tools = await window.electronAPI.system.checkTools()
+        if (overviewCoordinator.accepts(token, { projectPath: path })) setToolStatuses(tools)
         return
       }
 
@@ -172,20 +190,14 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
 
   const loadDependencies = async (managerId: DependencyManagerId = activeManager) => {
     if (!currentPath) return
-    const path = currentPath
-    const token = inventoryCoordinator.begin({ projectPath: path, managerId })
-    setLoading(true)
-    try {
-      if (!inventoryCoordinator.accepts(token, { projectPath: path, managerId })) return
-      setDependencies(await window.electronAPI.managers.inventory(path, managerId))
-    } catch (error: any) {
-      if (inventoryCoordinator.accepts(token, { projectPath: path, managerId })) {
+    await inventoryRequest.run(
+      () => window.electronAPI.managers.inventory(currentPath, managerId),
+      setDependencies,
+      (error) => {
         setDependencies([])
         addNotification({ type: 'error', message: `Failed to read ${managerId} dependencies`, description: error.message })
       }
-    } finally {
-      if (inventoryCoordinator.accepts(token, { projectPath: path, managerId })) setLoading(false)
-    }
+    )
   }
 
   const generateOperationPlan = async () => {
@@ -195,61 +207,28 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
     }
 
     const values = operationForm.getFieldsValue()
-    setPlanning(true)
-    try {
-      const plan = await window.electronAPI.managers.plan(currentPath, activeManager, {
+    await planRequest.run(
+      () => window.electronAPI.managers.plan(currentPath, activeManager, {
         operation: values.operation || 'sync',
         packageName: values.packageName,
         version: values.version,
         dev: values.dev
-      })
-      setOperationPlan(plan)
-      commandForm.setFieldValue('commandLine', plan.command)
-      if (plan.requirements.length > 0) {
-        addNotification({ type: 'warning', message: 'Operation plan needs more input', description: plan.requirements.join('; ') })
-      }
-    } catch (error: any) {
-      addNotification({ type: 'error', message: 'Failed to generate operation plan', description: error.message })
-    } finally {
-      setPlanning(false)
-    }
+      }),
+      (plan) => {
+        setOperationPlan(plan)
+        commandForm.setFieldValue('commandLine', plan.command)
+        if (plan.requirements.length > 0) {
+          addNotification({ type: 'warning', message: 'Operation plan needs more input', description: plan.requirements.join('; ') })
+        }
+      },
+      (error) => addNotification({ type: 'error', message: 'Failed to generate operation plan', description: error.message })
+    )
   }
 
-  const executeAndRefresh = async (operation: () => Promise<ManagerCommandResult>) => {
-    if (!currentPath) return
-    const operationPath = currentPath
-    setRunning(true)
-    setCommandOutput('Running...')
-    try {
-      const result = await operation()
-      if (result.backup) setLastBackup(result.backup)
-      setCommandOutput([
-        `$ ${result.command}`,
-        '',
-        result.stdout,
-        result.stderr,
-        result.dryRun ? '[dry-run] no project changes were requested' : '',
-        result.backup ? `[backup] ${result.backup.files.length} files saved to ${result.backup.path}` : ''
-      ].filter(Boolean).join('\n'))
-      addNotification({ type: 'success', message: result.dryRun ? 'Dry-run completed' : 'Command completed', description: result.command })
-      // Apply the refresh only while the project the command targeted is still active.
-      const applyIfSameProject = (apply: () => void) => {
-        if (currentPathRef.current === operationPath) apply()
-      }
-      await Promise.all([
-        loadDependencies(activeManager),
-        window.electronAPI.supplyChain.dependencyDiffLatestSnapshot(operationPath).then((value) => applyIfSameProject(() => setDependencyDiff(value))).catch(() => null),
-        window.electronAPI.readiness.report(operationPath).then((value) => applyIfSameProject(() => setReadinessReport(value))).catch(() => null)
-      ])
-    } catch (error: any) {
-      const backup = error?.backup as ManagerBackup | undefined
-      if (backup) setLastBackup(backup)
-      setCommandOutput(error.message || String(error))
-      addNotification({ type: 'error', message: 'Command failed', description: error.message })
-    } finally {
-      setRunning(false)
-    }
-  }
+  const executeAndRefresh = (operation: (operationId: string) => Promise<ManagerCommandResult>) =>
+    executeManagerCommand({ currentPath, activeManager, operationScopeRef, currentPathRef, setActiveOperationId, setRunning, setCommandOutput, setLastBackup, addNotification, loadDependencies, setDependencyDiff, setReadinessReport }, operation)
+
+  const cancelRunningOperation = () => cancelManagerCommand(activeOperationId, setCommandOutput, addNotification)
 
   const executeCommand = async (commandLine?: string) => {
     if (!currentPath) {
@@ -259,7 +238,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
 
     const command = (commandLine || commandForm.getFieldValue('commandLine') || '').trim()
     if (!command) return
-    await executeAndRefresh(() => window.electronAPI.managers.runCustom(currentPath, activeManager, command))
+    await executeAndRefresh((operationId) => managerCommands.runCustom(currentPath, activeManager, command, { operationId }))
   }
 
   const executeOperationPlan = async (dryRun = false) => {
@@ -274,27 +253,25 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
       return
     }
     if (!currentPath) return
-    await executeAndRefresh(() => window.electronAPI.managers.execute(
+    await executeAndRefresh((operationId) => managerCommands.execute(
       currentPath,
       activeManager,
       operationPlan.request,
-      { dryRun, plan: operationPlan }
+      { dryRun, plan: operationPlan, operationId }
     ))
   }
 
   const restoreLastBackup = async () => {
     if (!currentPath || !lastBackup) return
-    setRestoring(true)
-    try {
-      const result = await window.electronAPI.managers.restoreBackup(currentPath, lastBackup.path)
-      setCommandOutput((prev) => `${prev}\n\n[restore] ${result.restoredFiles.join(', ')}`)
-      addNotification({ type: 'success', message: config.restoreSuccessMessage, description: `${result.restoredCount} files restored` })
-      await loadDependencies(activeManager)
-    } catch (error: any) {
-      addNotification({ type: 'error', message: 'Failed to restore backup', description: error.message })
-    } finally {
-      setRestoring(false)
-    }
+    await restoreRequest.run(
+      () => window.electronAPI.managers.restoreBackup(currentPath, lastBackup.path),
+      async (result) => {
+        setCommandOutput((prev) => `${prev}\n\n[restore] ${result.restoredFiles.join(', ')}`)
+        addNotification({ type: 'success', message: config.restoreSuccessMessage, description: `${result.restoredCount} files restored` })
+        await loadDependencies(activeManager)
+      },
+      (error) => addNotification({ type: 'error', message: 'Failed to restore backup', description: error.message })
+    )
   }
 
   const availableOperationOptions = useMemo(() => {
@@ -341,7 +318,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
         <Space wrap>
           <ProjectPathBar compact />
           <Button icon={<FolderOpenOutlined />} onClick={chooseDirectory}>Select folder</Button>
-          <Button icon={<ReloadOutlined />} onClick={loadOverview} loading={loading}>Reload</Button>
+          <Button icon={<ReloadOutlined />} onClick={loadOverview} loading={loading || inventoryRequest.pending}>Reload</Button>
           {config.secondaryAction && (
             <Button onClick={() => navigate(config.secondaryAction!.route)}>{config.secondaryAction.label}</Button>
           )}
@@ -429,7 +406,7 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
             rowKey={(record) => `${record.managerId}:${record.file}:${record.type}:${record.name}:${record.version || ''}`}
             size="small"
             scroll={{ x: 780 }}
-            loading={loading}
+            loading={loading || inventoryRequest.pending}
             pagination={{ pageSize: 10 }}
             locale={{ emptyText: <Empty description={currentPath ? (config.dependencyEmptyDescription || 'No dependencies parsed for this manager') : 'Select a project directory first'} /> }}
             columns={[
@@ -549,6 +526,9 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
               <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} loading={running} disabled={!currentPath}>
                 Run command
               </Button>
+              {running && activeOperationId && (
+                <Button danger onClick={cancelRunningOperation}>Cancel</Button>
+              )}
               {lastBackup && (
                 <>
                   <Button icon={<ExportOutlined />} onClick={() => window.electronAPI.system.openFile(lastBackup.path)}>Open backup</Button>

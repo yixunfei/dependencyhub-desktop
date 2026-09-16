@@ -118,7 +118,7 @@ interface RiskCardProps { icon: React.ReactNode; title: string; status?: string;
 
 const RiskCard: React.FC<RiskCardProps> = ({ icon, title, status, primary, detail }) => (
   <Card className={styles.metricCard} variant="borderless">
-    <Space direction="vertical" size={6}><Space wrap>{icon}<Text type="secondary">{title}</Text><Tag color={statusColor(status)}>{status || 'not available'}</Tag></Space><Text strong>{primary}</Text><Text type="secondary">{detail}</Text></Space>
+    <Space orientation="vertical" size={6}><Space wrap>{icon}<Text type="secondary">{title}</Text><Tag color={statusColor(status)}>{status || 'not available'}</Tag></Space><Text strong>{primary}</Text><Text type="secondary">{detail}</Text></Space>
   </Card>
 )
 

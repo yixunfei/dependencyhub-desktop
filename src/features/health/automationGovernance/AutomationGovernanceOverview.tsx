@@ -183,7 +183,7 @@ interface AutomationCardProps {
 
 const AutomationCard: React.FC<AutomationCardProps> = ({ icon, title, status, primary, detail }) => (
   <Card className={styles.metricCard} variant="borderless">
-    <Space direction="vertical" size={6}>
+    <Space orientation="vertical" size={6}>
       <Space wrap>
         {icon}
         <Text type="secondary">{title}</Text>

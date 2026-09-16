@@ -198,7 +198,7 @@ const ReadinessPolicyEditor: React.FC<ReadinessPolicyEditorProps> = ({
       okText="Save policy"
       cancelText="Cancel"
       width={840}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" size={14} style={{ width: '100%' }}>
         <Alert

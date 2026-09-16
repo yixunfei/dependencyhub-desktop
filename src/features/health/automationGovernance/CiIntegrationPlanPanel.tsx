@@ -56,7 +56,7 @@ const CiWorkspaceMatrix: React.FC<{ matrix: CiIntegrationMatrixEntry[] }> = ({ m
     columns={[
       {
         title: 'Workspace', dataIndex: 'workspaceRelativePath', key: 'workspaceRelativePath', width: 180,
-        render: (path: string, record: CiIntegrationMatrixEntry) => <Space direction="vertical" size={0}><Text>{record.workspaceName}</Text><Text type="secondary">{path}</Text></Space>
+        render: (path: string, record: CiIntegrationMatrixEntry) => <Space orientation="vertical" size={0}><Text>{record.workspaceName}</Text><Text type="secondary">{path}</Text></Space>
       },
       {
         title: 'Managers', dataIndex: 'managerIds', key: 'managerIds', width: 260,

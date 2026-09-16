@@ -1,3 +1,4 @@
+import { recoverCommandFailure } from './commandRecovery'
 import { createHash } from 'crypto'
 import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
@@ -8,7 +9,8 @@ import {
   type DependencyManagerDefinition,
   type DependencyManagerId
 } from '../../shared/managerRegistry'
-import { runLoggedCommand } from './commandRunner'
+import { runLoggedCommand, type LoggedCommandOptions } from './commandRunner'
+import { withProjectMutation } from './projectMutation'
 import { resolveToolBin, type ToolName } from './toolchain'
 import {
   createNodeOperationTemplate,
@@ -111,19 +113,12 @@ export interface ExtendedManagerBackup {
   files: ExtendedManagerBackupFile[]
 }
 
-const projectMutationQueues = new Map<string, Promise<unknown>>()
-
-export async function withProjectMutation<T>(cwd: string, task: () => Promise<T>): Promise<T> {
-  const key = resolve(cwd)
-  const previous = projectMutationQueues.get(key) || Promise.resolve()
-  const run = previous.then(task, task)
-  const queued = run.catch(() => undefined)
-  projectMutationQueues.set(key, queued)
-  try {
-    return await run
-  } finally {
-    if (projectMutationQueues.get(key) === queued) projectMutationQueues.delete(key)
-  }
+export interface ExtendedManagerCommandResult {
+  command: string
+  stdout: string
+  stderr: string
+  backup?: ExtendedManagerBackup
+  restore?: { attempted: boolean; restored: boolean; error?: string; conflicts?: ExtendedManagerRestoreConflict[] }
 }
 
 export interface ExtendedManagerRestoreConflict {
@@ -133,6 +128,8 @@ export interface ExtendedManagerRestoreConflict {
   expectedHash: string
   actualHash: string
 }
+
+export type ExtendedManagerOperationContext = Pick<LoggedCommandOptions, 'signal' | 'timeoutMs' | 'operationId'>
 
 export interface ExtendedManagerRestoreResult {
   backupPath: string
@@ -329,7 +326,12 @@ export class ExtendedManagerService {
     }
   }
 
-  async run(cwd: string, managerId: DependencyManagerId, commandLine: string): Promise<ExtendedManagerCommandResult> {
+  async run(
+    cwd: string,
+    managerId: DependencyManagerId,
+    commandLine: string,
+    context?: ExtendedManagerOperationContext
+  ): Promise<ExtendedManagerCommandResult> {
     const manager = getManagerDefinition(managerId)
     if (!manager || manager.tools.length === 0) {
       throw new Error(`No runnable tool is configured for ${managerId}`)
@@ -337,7 +339,7 @@ export class ExtendedManagerService {
 
     const tool = primaryRunTool(manager)
     const args = normalizeArgs(tool, splitCommandLine(commandLine))
-    return await this.runArgs(cwd, manager, tool, args, commandLine, false)
+    return await this.runArgs(cwd, manager, tool, args, commandLine, false, context)
   }
 
   async executePlanned(
@@ -345,7 +347,8 @@ export class ExtendedManagerService {
     managerId: DependencyManagerId,
     tool: string,
     args: string[],
-    dryRun = false
+    dryRun = false,
+    context?: ExtendedManagerOperationContext
   ): Promise<ExtendedManagerCommandResult> {
     const manager = getManagerDefinition(managerId)
     if (!manager || manager.tools.length === 0) {
@@ -357,14 +360,15 @@ export class ExtendedManagerService {
       throw new Error(`No reliable dry-run command is available for ${managerId}`)
     }
     const commandLine = [tool, ...plannedArgs].join(' ')
-    return await this.runArgs(cwd, manager, tool as ToolName, plannedArgs, commandLine, dryRun)
+    return await this.runArgs(cwd, manager, tool as ToolName, plannedArgs, commandLine, dryRun, context)
   }
 
   async execute(
     cwd: string,
     managerId: DependencyManagerId,
     request: ExtendedManagerOperationRequest,
-    dryRun = false
+    dryRun = false,
+    context?: ExtendedManagerOperationContext
   ): Promise<ExtendedManagerCommandResult> {
     const manager = getManagerDefinition(managerId)
     if (!manager || manager.tools.length === 0) {
@@ -383,7 +387,9 @@ export class ExtendedManagerService {
     }
 
     const commandLine = [tool, ...args].join(' ')
-    return await this.runArgs(cwd, manager, tool, args, commandLine, dryRun)
+    const run = () => this.runArgs(cwd, manager, tool, args, commandLine, dryRun, context)
+    if (dryRun || !commandMutatesProjectFiles(args)) return await run()
+    return await withProjectMutation(cwd, run)
   }
 
   private async runArgs(
@@ -392,14 +398,18 @@ export class ExtendedManagerService {
     tool: ToolName,
     args: string[],
     commandLine: string,
-    dryRun: boolean
+    dryRun: boolean,
+    context?: ExtendedManagerOperationContext
   ): Promise<ExtendedManagerCommandResult> {
     const bin = await resolveToolBin(tool, cwd)
     const backup = dryRun ? undefined : await createCommandBackup(cwd, manager, commandLine, args)
     try {
       const result = await runLoggedCommand(bin, args, {
         cwd,
-        displayBin: tool
+        displayBin: tool,
+        signal: context?.signal,
+        timeoutMs: context?.timeoutMs,
+        operationId: context?.operationId
       })
 
       return {
@@ -409,22 +419,8 @@ export class ExtendedManagerService {
         backup,
         restore: { attempted: false, restored: false }
       }
-    } catch (error: any) {
-      if (backup) {
-        try {
-          const restored = await this.restoreBackup(cwd, backup.path)
-          if (restored.conflicts.length > 0) throw new Error(`Backup restore conflicted on: ${restored.conflicts.map((item) => item.file).join(', ')}`)
-        } catch (restoreError) {
-          throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
-            backup,
-            restore: { attempted: true, restored: false, error: String(restoreError) }
-          })
-        }
-      }
-      throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
-        backup,
-        restore: { attempted: Boolean(backup), restored: Boolean(backup) }
-      })
+    } catch (error: unknown) {
+      return await recoverCommandFailure(error, backup, (path) => this.restoreBackup(cwd, path))
     }
   }
 
@@ -433,10 +429,11 @@ export class ExtendedManagerService {
     managerId: DependencyManagerId,
     args: string[],
     mutate: () => Promise<void>,
-    dryRun = false
+    dryRun = false,
+    context?: ExtendedManagerOperationContext
   ): Promise<ExtendedManagerCommandResult> {
-    if (dryRun) return await this.executeWithMutationUnlocked(cwd, managerId, args, mutate, true)
-    return await withProjectMutation(cwd, () => this.executeWithMutationUnlocked(cwd, managerId, args, mutate, false))
+    if (dryRun) return await this.executeWithMutationUnlocked(cwd, managerId, args, mutate, true, context)
+    return await withProjectMutation(cwd, () => this.executeWithMutationUnlocked(cwd, managerId, args, mutate, false, context))
   }
 
   private async executeWithMutationUnlocked(
@@ -444,7 +441,8 @@ export class ExtendedManagerService {
     managerId: DependencyManagerId,
     args: string[],
     mutate: () => Promise<void>,
-    dryRun = false
+    dryRun = false,
+    context?: ExtendedManagerOperationContext
   ): Promise<ExtendedManagerCommandResult> {
     const manager = getManagerDefinition(managerId)
     if (!manager) throw new Error(`Unknown dependency manager: ${managerId}`)
@@ -457,18 +455,16 @@ export class ExtendedManagerService {
     try {
       await mutate()
       const bin = await resolveToolBin(tool, cwd)
-      const result = await runLoggedCommand(bin, args, { cwd, displayBin: tool })
+      const result = await runLoggedCommand(bin, args, {
+        cwd,
+        displayBin: tool,
+        signal: context?.signal,
+        timeoutMs: context?.timeoutMs,
+        operationId: context?.operationId
+      })
       return { command: commandLine, stdout: result.stdout, stderr: result.stderr, backup, restore: { attempted: false, restored: false } }
-    } catch (error: any) {
-      if (backup) {
-        try {
-          const restored = await this.restoreBackup(cwd, backup.path)
-          if (restored.conflicts.length > 0) throw new Error(`Backup restore conflicted on: ${restored.conflicts.map((item) => item.file).join(', ')}`)
-        } catch (restoreError) {
-          throw Object.assign(error instanceof Error ? error : new Error(String(error)), { backup, restore: { attempted: true, restored: false, error: String(restoreError) } })
-        }
-      }
-      throw Object.assign(error instanceof Error ? error : new Error(String(error)), { backup, restore: { attempted: Boolean(backup), restored: Boolean(backup) } })
+    } catch (error: unknown) {
+      return await recoverCommandFailure(error, backup, (path) => this.restoreBackup(cwd, path))
     }
   }
   async restoreBackup(cwd: string, backupPath: string, expectedState?: Record<string, { exists: boolean; hash: string }>): Promise<ExtendedManagerRestoreResult> {

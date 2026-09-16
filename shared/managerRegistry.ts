@@ -1440,6 +1440,10 @@ export function getPlannedManagerDefinitions(): DependencyManagerDefinition[] {
   return MANAGER_DEFINITIONS.filter((manager) => manager.status === 'planned')
 }
 
+export function getExtendedManagerDefinitions(): DependencyManagerDefinition[] {
+  return MANAGER_DEFINITIONS.filter((manager) => !manager.builtIn && !manager.route && manager.implemented)
+}
+
 export function getPreviewManagerDefinitions(): DependencyManagerDefinition[] {
   return MANAGER_DEFINITIONS.filter((manager) => manager.status === 'preview')
 }

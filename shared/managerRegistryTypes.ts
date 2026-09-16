@@ -91,6 +91,12 @@ export type ManagerCapability =
   | 'license-policy'
   | 'container-scan'
 
+export interface ManagerCapabilityDeclaration {
+  /** Capabilities planned for the manager, regardless of implementation status. */
+  target: readonly ManagerCapability[]
+  /** Capabilities actually exposed by a registered adapter / dedicated page. */
+  implemented: readonly ManagerCapability[]
+}
 export interface DependencyManagerDefinition {
   id: DependencyManagerId
   name: string
@@ -114,4 +120,6 @@ export interface DependencyManagerDefinition {
   status: ManagerImplementationStatus
   searchable: boolean
   healthSupported: boolean
+  /** One source of truth for desired versus delivered capability facts. */
+  capabilityDeclaration?: ManagerCapabilityDeclaration
 }
