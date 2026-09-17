@@ -1,5 +1,6 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
+import { CJK_CHARACTERS, CJK_CLASS_ID } from './cjk-characters.mjs'
 
 /**
  * Source-level guard for renderer localization.
@@ -22,6 +23,12 @@ import { join, relative, sep } from 'node:path'
  * The ratchet covers product copy only: `src/i18n/**` holds the dictionaries and
  * the literal fallback map, and `*.test.tsx` pins localized strings that must be
  * present for the assertion to mean anything. Neither is untranslated copy.
+ *
+ * What counts as CJK is defined in `cjk-characters.mjs`, shared with the coverage
+ * report so the two cannot disagree. It covers Chinese punctuation as well as
+ * ideographs: the earlier `[\u4e00-\u9fff]` class missed 210 occurrences of `，、。（）；？：`
+ * and `“”`, so a file whose only remaining Chinese was `；` scored zero and dropped
+ * out of the ratchet while still showing Chinese to an English user.
  */
 
 const DICTIONARIES = ['en-US', 'zh-CN']
@@ -30,12 +37,22 @@ const SOURCE = join('src', 'i18n', 'dictionaries.ts')
 // literal fallback map), so the ratchet below skips the whole directory.
 const I18N_DIR = 'src/i18n'
 const BASELINE = join('scripts', 'i18n-cjk-baseline.json')
-const CJK_CHARACTERS = /[\u4e00-\u9fff]/g
 const update = process.argv.includes('--update')
+const rebaseline = process.argv.includes('--rebaseline')
 
 const failures = []
 const assert = (condition, message) => {
   if (!condition) failures.push(message)
+}
+
+/**
+ * Report and stop. Throwing would print a stack trace and bury the message, which is
+ * the part a reader needs.
+ */
+function bail(message) {
+  console.error(message)
+  console.error('[i18n] failed')
+  process.exit(1)
 }
 
 function parseDictionary(source, language) {
@@ -148,7 +165,55 @@ try {
 } catch {
   assert(false, `${toKey(BASELINE)} is missing or unreadable; run \`node scripts/verify-i18n.mjs --update\``)
 }
+/** Persist the baseline with the character class that produced it. */
+function serializeBaseline(previous, files, generatedAt) {
+  return JSON.stringify(
+    { note: previous.note, characterClass: CJK_CLASS_ID, generatedAt, files },
+    null,
+    2
+  )
+}
+
 const recorded = baseline.files || {}
+const totalOf = (files) => Object.values(files).reduce((sum, value) => sum + value, 0)
+
+// A baseline is only meaningful against the character class that produced it. Changing
+// the class invalidates every recorded count at once, so say that plainly instead of
+// reporting fifteen files as "grew" when nobody edited them. A missing field is the same
+// situation: the baseline predates the field, so its class is unknown.
+if (!rebaseline && baseline.characterClass !== CJK_CLASS_ID) {
+  bail(
+    `${toKey(BASELINE)} was generated with character class ` +
+      `${baseline.characterClass ?? '(unrecorded, predates the field)'}, ` +
+      `but the current class is ${CJK_CLASS_ID}.\n` +
+      'The recorded counts are not comparable. Run `node scripts/verify-i18n.mjs --rebaseline` ' +
+      'to recompute them from the current source and review the printed delta.'
+  )
+}
+
+if (rebaseline) {
+  const next = {}
+  for (const [file, count] of [...current].sort(([a], [b]) => a.localeCompare(b))) next[file] = count
+
+  // Print the delta so a rebaseline is reviewable rather than a silent rewrite. A real
+  // class change moves many files by a few characters each; a suspicious one shows up as
+  // a large jump on files that were not being translated.
+  const delta = []
+  for (const file of [...new Set([...Object.keys(recorded), ...Object.keys(next)])].sort()) {
+    const before = recorded[file] ?? 0
+    const after = next[file] ?? 0
+    if (before !== after) delta.push(`  ${after > before ? '+' : ''}${after - before}  ${before} -> ${after}  ${file}`)
+  }
+  console.log(`[i18n] rebaselining against character class ${CJK_CLASS_ID}`)
+  console.log(delta.length ? delta.join('\n') : '  (no per-file change)')
+  console.log(
+    `[i18n] total ${totalOf(recorded)} -> ${totalOf(next)} across ${Object.keys(recorded).length} -> ${Object.keys(next).length} files`
+  )
+
+  await writeFile(BASELINE, `${serializeBaseline(baseline, next, new Date().toISOString().slice(0, 10))}\n`, 'utf-8')
+  console.log('[i18n] passed')
+  process.exit(0)
+}
 
 if (update) {
   const raised = []
@@ -160,14 +225,10 @@ if (update) {
     else if (count > previous) raised.push(`${file}: ${previous} -> ${count}`)
     next[file] = previous === undefined ? count : Math.min(previous, count)
   }
-  if (raised.length) throw new Error(`refusing to raise recorded CJK counts:\n${raised.join('\n')}`)
-  if (introduced.length) throw new Error(`refusing to record new hardcoded CJK:\n${introduced.join('\n')}`)
-  await writeFile(
-    BASELINE,
-    `${JSON.stringify({ note: baseline.note, generatedAt: baseline.generatedAt, files: next }, null, 2)}\n`,
-    'utf-8'
-  )
-  const total = Object.values(next).reduce((sum, value) => sum + value, 0)
+  if (raised.length) bail(`refusing to raise recorded CJK counts:\n${raised.join('\n')}`)
+  if (introduced.length) bail(`refusing to record new hardcoded CJK:\n${introduced.join('\n')}`)
+  await writeFile(BASELINE, `${serializeBaseline(baseline, next, baseline.generatedAt)}\n`, 'utf-8')
+  const total = totalOf(next)
   console.log(`[i18n] baseline tightened: ${Object.keys(next).length} files, ${total} hardcoded CJK characters remain`)
   console.log('[i18n] passed')
   process.exit(0)
@@ -182,10 +243,10 @@ for (const [file, count] of current) {
   }
 }
 
-const remaining = [...current.values()].reduce((sum, value) => sum + value, 0)
+const remaining = totalOf(Object.fromEntries(current))
 const cleared = Object.keys(recorded).filter((file) => !current.has(file)).length
 
-if (failures.length) throw new Error(failures.join('\n'))
+if (failures.length) bail(failures.join('\n'))
 
 console.log(
   `[i18n] ${english.size} keys in en-US and zh-CN, no duplicates, no empty values, all t() call sites resolve`

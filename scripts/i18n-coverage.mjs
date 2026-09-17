@@ -18,19 +18,30 @@
 // rest of the file, or strips comments first and corrupts every string containing `//`.
 //
 // Every bucket is reconciled against the raw per-file character count that the ratchet
-// uses, so a gap in the parser cannot silently under-report the backlog.
+// uses, so a gap in the parser cannot silently under-report the backlog. Both sides take
+// the character class from ./cjk-characters.mjs, so they cannot disagree on what counts.
 //
-// Usage: node scripts/i18n-coverage.mjs [--top N]
+// Usage:
+//   node scripts/i18n-coverage.mjs                 rank files by user-visible CJK
+//   node scripts/i18n-coverage.mjs --top 30        show more rows
+//   node scripts/i18n-coverage.mjs --file <path>   list one file's literals, with lines
+//
+// `--file` is the first step of a localization batch: it is the list of strings that
+// actually need a dictionary key, in source order, with the ones the runtime map
+// already handles marked so they can be skipped.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import ts from 'typescript'
+import { countCjk } from './cjk-characters.mjs'
 
 const ROOT = process.cwd()
 const SRC = join(ROOT, 'src')
 
 const topIndex = process.argv.indexOf('--top')
 const TOP = topIndex === -1 ? 15 : Number(process.argv[topIndex + 1])
+const fileIndex = process.argv.indexOf('--file')
+const ONLY_FILE = fileIndex === -1 ? null : process.argv[fileIndex + 1]
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -40,8 +51,6 @@ function walk(dir, out = []) {
   }
   return out
 }
-
-const countCjk = (text) => (text.match(/[\u4e00-\u9fff]/g) || []).length
 
 /** True for `import x from '...'` / `export * from '...'` style specifiers. */
 function isModuleSpecifier(node) {
@@ -61,22 +70,14 @@ const covered = new Set(
   [...literalsSource.matchAll(/^  '((?:[^'\\]|\\.)*)':/gm)].map((m) => m[1].replace(/\\'/g, "'"))
 )
 
-const rows = []
-let commentChars = 0
-let regexChars = 0
-let coveredChars = 0
-let uncoveredChars = 0
-let templateChars = 0
-let fileChars = 0
-
-for (const file of walk(SRC)) {
+/**
+ * Split one file's CJK into the buckets above.
+ *
+ * `entries` records each literal individually so `--file` can print them in source
+ * order; the summary mode only needs the totals.
+ */
+function analyze(file) {
   const key = relative(ROOT, file).split(sep).join('/')
-  if (key === 'src/i18n.ts' || key.startsWith('src/i18n/')) continue
-  // The ratchet skips test files, because a test that asserts localized copy has to
-  // contain that copy. Mirroring it here keeps the totals comparable.
-  if (/\.test\.tsx?$/.test(key)) continue
-  if (!statSync(file).isFile()) continue
-
   const source = readFileSync(file, 'utf8')
   const sourceFile = ts.createSourceFile(
     file,
@@ -114,47 +115,119 @@ for (const file of walk(SRC)) {
   let cov = 0
   let unc = 0
   let tpl = 0
+  const entries = []
 
-  const record = (text) => {
+  const lineOf = (node) => source.slice(0, node.getStart(sourceFile)).split('\n').length
+
+  const record = (node, text, kind) => {
     const chars = countCjk(text)
     if (!chars) return
-    if (covered.has(text)) cov += chars
+    const isCovered = covered.has(text)
+    if (isCovered) cov += chars
     else unc += chars
+    entries.push({ line: lineOf(node), kind, chars, isCovered, text: text.trim() })
   }
 
   const visit = (node) => {
     if (ts.isJsxText(node)) {
-      record(node.text)
+      record(node, node.text, 'jsx')
     } else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-      if (!isModuleSpecifier(node)) record(node.text)
+      if (!isModuleSpecifier(node)) record(node, node.text, 'string')
     } else if (ts.isRegularExpressionLiteral(node)) {
-      regex += countCjk(node.text)
+      const chars = countCjk(node.text)
+      regex += chars
+      if (chars) entries.push({ line: lineOf(node), kind: 'regex', chars, isCovered: null, text: node.text })
     } else if (ts.isTemplateExpression(node)) {
-      tpl += countCjk(node.head.text)
-      for (const span of node.templateSpans) tpl += countCjk(span.literal.text)
+      // An interpolated template can never be matched exactly by the literal map, so
+      // every CJK character in one is user-visible regardless of its contents.
+      const text = node.head.text + node.templateSpans.map((span) => span.literal.text).join('')
+      const chars = countCjk(text)
+      tpl += chars
+      if (chars) entries.push({ line: lineOf(node), kind: 'template', chars, isCovered: false, text })
     }
     ts.forEachChild(node, visit)
   }
   visit(sourceFile)
 
-  const fileTotal = countCjk(source)
-  fileChars += fileTotal
-  commentChars += comments
-  regexChars += regex
-  coveredChars += cov
-  uncoveredChars += unc
-  templateChars += tpl
+  return {
+    key,
+    fileTotal: countCjk(source),
+    comments,
+    regex,
+    covered: cov,
+    uncovered: unc,
+    template: tpl,
+    entries
+  }
+}
 
-  const accounted = comments + regex + cov + unc + tpl
-  if (accounted !== fileTotal) {
+if (ONLY_FILE) {
+  const target = ONLY_FILE.split(sep).join('/')
+  const result = analyze(ONLY_FILE)
+  const visible = result.uncovered + result.template
+  console.log(`${result.key}  —  ${result.fileTotal} CJK chars, ${visible} user-visible`)
+  console.log()
+  console.log('  line  kind      status     chars  text')
+  for (const entry of result.entries.sort((a, b) => a.line - b.line)) {
+    const status =
+      entry.kind === 'regex' ? 'n/a' : entry.isCovered ? 'covered' : 'TO TRANSLATE'
+    const text = entry.text.length > 72 ? `${entry.text.slice(0, 69)}...` : entry.text
+    console.log(
+      `  ${String(entry.line).padStart(4)}  ${entry.kind.padEnd(8)}  ${status.padEnd(12)}` +
+        ` ${String(entry.chars).padStart(5)}  ${JSON.stringify(text)}`
+    )
+  }
+  console.log()
+  console.log(
+    `  ${result.uncovered} uncovered + ${result.template} template = ${visible} to translate` +
+      ` (${result.covered} already handled by the runtime map, ${result.comments} in comments)`
+  )
+  process.exit(0)
+}
+
+const rows = []
+let commentChars = 0
+let regexChars = 0
+let coveredChars = 0
+let uncoveredChars = 0
+let templateChars = 0
+let fileChars = 0
+
+for (const file of walk(SRC)) {
+  const key = relative(ROOT, file).split(sep).join('/')
+  if (key === 'src/i18n.ts' || key.startsWith('src/i18n/')) continue
+  // The ratchet skips test files, because a test that asserts localized copy has to
+  // contain that copy. Mirroring it here keeps the totals comparable.
+  if (/\.test\.tsx?$/.test(key)) continue
+  if (!statSync(file).isFile()) continue
+
+  const result = analyze(file)
+  const accounted =
+    result.comments + result.regex + result.covered + result.uncovered + result.template
+  if (accounted !== result.fileTotal) {
     console.error(
-      `reconcile mismatch in ${key}: file ${fileTotal} vs accounted ${accounted}` +
-        ` (comments ${comments}, regex ${regex}, covered ${cov}, uncovered ${unc}, template ${tpl})`
+      `reconcile mismatch in ${key}: file ${result.fileTotal} vs accounted ${accounted}` +
+        ` (comments ${result.comments}, regex ${result.regex}, covered ${result.covered},` +
+        ` uncovered ${result.uncovered}, template ${result.template})`
     )
     process.exitCode = 1
   }
 
-  if (cov + unc + tpl > 0) rows.push({ file: key, covered: cov, uncovered: unc, template: tpl })
+  fileChars += result.fileTotal
+  commentChars += result.comments
+  regexChars += result.regex
+  coveredChars += result.covered
+  uncoveredChars += result.uncovered
+  templateChars += result.template
+
+  if (result.covered + result.uncovered + result.template > 0) {
+    rows.push({
+      file: key,
+      covered: result.covered,
+      uncovered: result.uncovered,
+      template: result.template
+    })
+  }
 }
 
 console.log('Remaining hardcoded CJK (excluding src/i18n):')
