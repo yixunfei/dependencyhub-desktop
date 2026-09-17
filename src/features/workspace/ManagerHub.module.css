@@ -29,19 +29,6 @@
   margin-bottom: 16px !important;
 }
 
-.pathLabel {
-  color: var(--text-secondary, #999);
-}
-
-.pathValue {
-  display: inline-block;
-  max-width: min(520px, 100%);
-  overflow: hidden;
-  color: var(--primary-color, #1890ff);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

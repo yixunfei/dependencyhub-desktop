@@ -23,7 +23,7 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run verify:engineering-debt
-      - run: node scripts/verify-framework-runner.mjs core hardening contracts node python backend cloud swiftpm helmfile deno cocoapods ansible terraform
+      - run: node scripts/verify-framework-runner.mjs core hardening contracts node python backend cloud swiftpm helmfile deno cocoapods ansible terraform ai i18n
       - if: runner.os == 'Windows'
         run: npm run verify:ipc
       - name: Configure Electron sandbox on Linux

@@ -776,17 +776,17 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         <h2 className={styles.title}>项目依赖</h2>
         <div className={styles.actions}>
           {!hideProjectSelector && <ProjectPathBar compact />}
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setInstallVisible(true)}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setInstallVisible(true)} disabled={!currentPath}>
             安装包
           </Button>
-          <Button icon={<CheckCircleOutlined />} onClick={handleCheckAllOutdated} loading={checkingAll}>
+          <Button icon={<CheckCircleOutlined />} onClick={handleCheckAllOutdated} loading={checkingAll} disabled={!currentPath}>
             检查更新
           </Button>
           <Button 
             icon={<SyncOutlined />} 
             onClick={handleUpdateSelected}
             loading={updatingSelected}
-            disabled={selectedRowKeys.length === 0}
+            disabled={!currentPath || selectedRowKeys.length === 0}
             type={selectedRowKeys.length > 0 ? 'primary' : 'default'}
           >
             更新选中 ({selectedRowKeys.length})
@@ -796,29 +796,29 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
             icon={<ReloadOutlined />} 
             onClick={handleUninstallSelected}
             loading={uninstallingSelected}
-            disabled={selectedRowKeys.length === 0}
+            disabled={!currentPath || selectedRowKeys.length === 0}
           >
             卸载选中 ({selectedRowKeys.length})
           </Button>
-          <Button icon={<SyncOutlined />} onClick={handleUpdateAll}>
+          <Button icon={<SyncOutlined />} onClick={handleUpdateAll} disabled={!currentPath}>
             更新全部
           </Button>
           <Button 
             icon={<SecurityScanOutlined />} 
-            onClick={() => setAuditVisible(true)}
+            onClick={() => setAuditVisible(true)} disabled={!currentPath}
           >
             安全审计
           </Button>
           <Button 
             icon={<ApartmentOutlined />} 
-            onClick={() => setDepTreeVisible(true)}
+            onClick={() => setDepTreeVisible(true)} disabled={!currentPath}
           >
             依赖树
           </Button>
           <Button icon={<WarningOutlined />} onClick={() => setHealthVisible(true)} disabled={!currentPath}>
             依赖诊断
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} disabled={!currentPath}>
             刷新
           </Button>
         </div>
@@ -853,7 +853,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
           children: (
             <div className={styles.depsContent}>
               <Space style={{ marginBottom: 16 }}>
-                <Button icon={<FolderFilled />} onClick={handleOpenPackageJson}>
+                <Button icon={<FolderFilled />} onClick={handleOpenPackageJson} disabled={!currentPath}>
                   打开 package.json
                 </Button>
               </Space>

@@ -177,6 +177,7 @@ npm run verify:ipc
 npm run verify:engineering-debt
 npm run verify:framework
 npm run verify:ai-managers
+npm run verify:i18n
 npm run verify:release-integrity
 npm run verify:release-signature
 npm run verify:release-trust

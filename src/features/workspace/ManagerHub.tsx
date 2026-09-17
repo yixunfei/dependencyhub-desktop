@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, Space, Tag, Typography } from 'antd'
-import { CloudUploadOutlined, ExperimentOutlined, FolderOpenOutlined, SearchOutlined, SafetyCertificateOutlined, ToolOutlined } from '@ant-design/icons'
+import { CloudUploadOutlined, ExperimentOutlined, SearchOutlined, SafetyCertificateOutlined, ToolOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../stores/appStore'
+import ProjectPathBar from '../../components/ProjectPathBar/ProjectPathBar'
+import { useT } from '../../i18n'
 import {
   formatManagerFiles,
   getImplementedManagerDefinitions,
@@ -18,9 +20,8 @@ const { Paragraph, Text, Title } = Typography
 
 const ManagerHub: React.FC = () => {
   const navigate = useNavigate()
+  const t = useT()
   const currentPath = useAppStore((state) => state.currentPath)
-  const setCurrentPath = useAppStore((state) => state.setCurrentPath)
-  const addNotification = useAppStore((state) => state.addNotification)
   const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null)
 
   const workspaceGroups = useMemo(() => MANAGER_WORKSPACE_GROUPS, [])
@@ -38,17 +39,6 @@ const ManagerHub: React.FC = () => {
     void loadProjectInfo()
   }, [currentPath])
 
-  const chooseDirectory = async () => {
-    const path = await window.electronAPI.selectDirectory()
-    if (!path) return
-    setCurrentPath(path)
-    addNotification({
-      type: 'info',
-      message: '工作目录已切换',
-      description: path
-    })
-  }
-
   const loadProjectInfo = async () => {
     if (!currentPath) {
       setProjectInfo(null)
@@ -65,37 +55,33 @@ const ManagerHub: React.FC = () => {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <Title level={2} className={styles.title}>一站式项目依赖工作区</Title>
-        <Paragraph className={styles.subtitle}>
-          统一管理项目依赖、语言工具链、仓库镜像、发布流程、健康诊断和后续插件化生态。
-        </Paragraph>
+        <Title level={2} className={styles.title}>{t('workspace.title')}</Title>
+        <Paragraph className={styles.subtitle}>{t('workspace.subtitle')}</Paragraph>
         <Space wrap>
-          <span className={styles.pathLabel}>当前目录</span>
-          <Text className={styles.pathValue}>{currentPath || '未选择'}</Text>
-          <Button icon={<FolderOpenOutlined />} onClick={chooseDirectory}>选择目录</Button>
-          <Button icon={<ToolOutlined />} onClick={() => navigate('/environment')}>环境与工具链</Button>
-          <Button icon={<SafetyCertificateOutlined />} onClick={() => navigate('/health')}>健康与安全</Button>
+          <ProjectPathBar />
+          <Button icon={<ToolOutlined />} onClick={() => navigate('/environment')}>{t('layout.environmentToolchains')}</Button>
+          <Button icon={<SafetyCertificateOutlined />} onClick={() => navigate('/health')}>{t('layout.healthSecurity')}</Button>
         </Space>
       </div>
 
       <Alert
         type={detectedIds.size > 0 ? 'success' : 'info'}
         showIcon
-        title={detectedIds.size > 0 ? '已根据当前目录识别依赖生态' : '选择项目目录后会自动识别依赖生态'}
+        title={detectedIds.size > 0 ? t('workspace.detectedEcosystems') : t('workspace.awaitingDirectory')}
         description={
           detectedIds.size > 0
             ? [...detectedIds].map((id) => {
                 const manager = projectInfo?.detectedManagers.find((item) => item.id === id)
                 return manager ? `${manager.name}: ${manager.files.join(', ')}` : id
-              }).join('；')
-            : '支持从 package.json、requirements.txt、pom.xml、Cargo.toml、build.gradle、go.mod、pubspec.yaml、CMake/vcpkg/Conan 等清单识别项目。'
+              }).join(t('common.listSeparator'))
+            : t('workspace.detectionHint')
         }
       />
 
       <section>
         <div className={styles.sectionHeader}>
-          <Title level={4}>Unified workspaces</Title>
-          <Text type="secondary">{workspaceGroups.length} grouped entry points from the shared manager map</Text>
+          <Title level={4}>{t('workspace.unifiedWorkspaces')}</Title>
+          <Text type="secondary">{workspaceGroups.length} {t('workspace.unifiedWorkspacesHint')}</Text>
         </div>
         <div className={styles.workspaceGrid}>
           {workspaceGroups.map((group) => {
@@ -107,7 +93,7 @@ const ManagerHub: React.FC = () => {
                     <span className={styles.workspaceIcon}>{managerIcon(group.iconManagerId)}</span>
                     <div>
                       <Title level={5} className={styles.cardTitle}>{group.label}</Title>
-                      <Text type="secondary">{group.managerIds.length} managers</Text>
+                      <Text type="secondary">{group.managerIds.length} {t('workspace.managerCount')}</Text>
                     </div>
                   </div>
                   <Paragraph className={styles.workspaceDescription}>{group.description}</Paragraph>
@@ -121,10 +107,10 @@ const ManagerHub: React.FC = () => {
                       )
                     })}
                     {group.managerIds.length > 5 && <Tag>+{group.managerIds.length - 5}</Tag>}
-                    {detectedCount > 0 && <Tag color="processing">{detectedCount} detected</Tag>}
+                    {detectedCount > 0 && <Tag color="processing">{detectedCount} {t('workspace.detectedCount')}</Tag>}
                   </Space>
                   <Button type={detectedCount > 0 ? 'primary' : 'default'} onClick={() => navigate(group.route)}>
-                    Open {group.shortLabel}
+                    {t('workspace.enter')} {group.shortLabel}
                   </Button>
                 </Space>
               </Card>
@@ -135,8 +121,8 @@ const ManagerHub: React.FC = () => {
 
       <section>
         <div className={styles.sectionHeader}>
-          <Title level={4}>已接入管理器</Title>
-          <Text type="secondary">{implementedManagers.length} 个生态可直接管理</Text>
+          <Title level={4}>{t('workspace.managedManagers')}</Title>
+          <Text type="secondary">{implementedManagers.length} {t('workspace.managedManagersHint')}</Text>
         </div>
         <div className={styles.grid}>
           {implementedManagers.map((manager) => (
@@ -154,7 +140,7 @@ const ManagerHub: React.FC = () => {
                 </Paragraph>
                 <Space size={6} wrap>
                   <Tag color={managerColor(manager.id)}>{implementationStatusText(manager.status)}</Tag>
-                  {detectedIds.has(manager.id) && <Tag color="success">当前项目</Tag>}
+                  {detectedIds.has(manager.id) && <Tag color="success">{t('workspace.inProject')}</Tag>}
                   <Tag>{formatManagerFiles(manager.manifestFiles)}</Tag>
                 </Space>
                 <div className={styles.toolList}>
@@ -163,7 +149,7 @@ const ManagerHub: React.FC = () => {
                   ))}
                 </div>
                 <Button type="primary" onClick={() => navigate(getManagerRoute(manager.id))}>
-                  进入 {manager.shortName}
+                  {t('workspace.enter')} {manager.shortName}
                 </Button>
               </Space>
             </Card>
@@ -173,8 +159,8 @@ const ManagerHub: React.FC = () => {
 
       <section>
         <div className={styles.sectionHeader}>
-          <Title level={4}>扩展路线</Title>
-          <Text type="secondary">这些生态已进入统一 registry，可逐步补齐 adapter 与页面能力</Text>
+          <Title level={4}>{t('workspace.roadmap')}</Title>
+          <Text type="secondary">{t('workspace.roadmapHint')}</Text>
         </div>
         <div className={styles.roadmap}>
           {plannedManagers.map((manager) => (
@@ -184,7 +170,7 @@ const ManagerHub: React.FC = () => {
                 <Text strong>{manager.shortName}</Text>
                 <Tag>{manager.language}</Tag>
                 <Tag>{formatManagerFiles(manager.lockFiles.length ? manager.lockFiles : manager.manifestFiles)}</Tag>
-                {detectedIds.has(manager.id) && <Tag color="processing">已识别</Tag>}
+                {detectedIds.has(manager.id) && <Tag color="processing">{t('workspace.detectedTag')}</Tag>}
               </Space>
               <Text type="secondary">{manager.productionTools.slice(0, 2).join(' / ')}</Text>
             </div>
@@ -198,10 +184,10 @@ const ManagerHub: React.FC = () => {
             {group.shortLabel}
           </Button>
         ))}
-        <Button icon={<SearchOutlined />} onClick={() => navigate('/search')}>跨生态搜索</Button>
-        <Button icon={<SafetyCertificateOutlined />} onClick={() => navigate('/health')}>健康与安全中心</Button>
-        <Button icon={<ExperimentOutlined />} onClick={() => navigate('/extended')}>扩展生态管理</Button>
-        <Button icon={<CloudUploadOutlined />} onClick={() => navigate('/publish')}>npm 发布管理</Button>
+        <Button icon={<SearchOutlined />} onClick={() => navigate('/search')}>{t('workspace.search')}</Button>
+        <Button icon={<SafetyCertificateOutlined />} onClick={() => navigate('/health')}>{t('workspace.healthCenter')}</Button>
+        <Button icon={<ExperimentOutlined />} onClick={() => navigate('/extended')}>{t('workspace.extendedEcosystems')}</Button>
+        <Button icon={<CloudUploadOutlined />} onClick={() => navigate('/publish')}>{t('workspace.publishManagement')}</Button>
       </div>
     </div>
   )

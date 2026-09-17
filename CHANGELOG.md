@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     language manifest keeps that ecosystem as its primary kind.
   - The lockfile drift report raises warning-level `missing-lockfile` findings
     for AI ecosystems that declare inputs without lock evidence.
+- `npm run verify:i18n` (framework runner group `i18n`) guards the renderer
+  dictionary: en-US/zh-CN key parity, duplicate keys that silently override each
+  other, empty translations, and `t()` call sites that do not resolve.
+- The framework runner now fails when a verification group is missing from
+  `.github/workflows/quality.yml`, so a new group cannot pass locally and never
+  run in CI. `legacy` stays deliberately excluded as the full regression.
 
 ### Changed
 - Extended manager registry now declares 57 extended managers (was 54), and the
@@ -53,6 +59,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `existingPatternMatches`, `readdirSafe`, and `wildcardToRegExp` moved to
   `electron/managers/patternFiles.ts`; the extended manager service and the
   supply chain previously carried byte-identical private copies.
+- The sidebar and the `/workspace` landing page now render through the renderer
+  dictionary instead of hardcoded Chinese, so an English-default install no
+  longer shows Chinese section headings and buttons.
+- The workspace landing page reuses the shared `ProjectPathBar` instead of its
+  own directory picker, so the recent-directory dropdown, full-path tooltip, and
+  history clearing work identically everywhere.
+
+### Fixed
+- The workspace landing page rendered the current directory as a raw absolute
+  path with no truncation and no tooltip; it now uses the shared path bar.
+- Npm project actions (`install`, `check updates`, `update all`, `audit`,
+  `dependency tree`, `refresh`, `open package.json`) stayed clickable with no
+  project selected and failed against an empty path. They are now disabled, so
+  the empty state points at the select-directory action instead.
+- Removed the duplicated directory-selection handler and the now-unused
+  `pathLabel`/`pathValue` styles from the workspace landing page.
 
 ## [1.0.3] - 2026-09-17
 

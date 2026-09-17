@@ -1,4 +1,5 @@
 import { spawn } from 'child_process'
+import { readFile } from 'fs/promises'
 import { resolve } from 'path'
 
 const GROUPS = {
@@ -62,6 +63,11 @@ const GROUPS = {
     script: 'scripts/verify-ai-managers.mjs',
     timeoutMs: 60_000
   },
+  i18n: {
+    description: 'renderer dictionary key parity, duplicates, and t() call-site resolution',
+    script: 'scripts/verify-i18n.mjs',
+    timeoutMs: 60_000
+  },
   core: {
     description: 'core F1-F4 behavior and recovery regression scenarios',
     script: 'scripts/verify-core-behaviors.mjs',
@@ -93,6 +99,8 @@ const selectedGroups = options.groups.length > 0
   : options.manager
     ? ['contracts']
     : Object.keys(GROUPS)
+
+await assertCiCoverage(selectedGroups)
 
 for (const groupName of [...new Set(selectedGroups)]) {
   const group = GROUPS[groupName]
@@ -172,6 +180,29 @@ function requiredValue(args, index, option) {
   const value = args[index]
   if (!value || value.startsWith('--')) throw new Error(`${option} requires a value`)
   return value
+}
+
+/**
+ * Every registered group except the deliberately excluded ones must be listed in
+ * the pull-request workflow, otherwise a new verification group would pass
+ * locally and never run in CI. `legacy` is the ~5 minute full regression.
+ */
+async function assertCiCoverage(selectedGroups) {
+  const excluded = new Set(['legacy'])
+  if (selectedGroups.length === 0) return
+  let workflow
+  try {
+    workflow = await readFile(resolve(process.cwd(), '.github', 'workflows', 'quality.yml'), 'utf-8')
+  } catch {
+    return
+  }
+  const invocation = workflow.split('\n').find((line) => line.includes('verify-framework-runner.mjs')) || ''
+  const tokens = invocation.trim().split(/\s+/)
+  const declared = new Set(tokens.slice(tokens.indexOf('verify-framework-runner.mjs') + 1))
+  const missing = Object.keys(GROUPS).filter((name) => !excluded.has(name) && !declared.has(name))
+  if (missing.length > 0) {
+    throw new Error(`verification groups missing from .github/workflows/quality.yml: ${missing.join(', ')}`)
+  }
 }
 
 async function runGroup(name, group, args, timeoutOverride) {

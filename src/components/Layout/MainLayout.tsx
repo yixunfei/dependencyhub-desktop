@@ -75,28 +75,28 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     {
       key: '/workspace',
       icon: <DashboardOutlined />,
-      label: '工作区'
+      label: t('layout.workspace')
     },
     {
       key: 'managers',
-      label: '生态管理',
+      label: t('layout.ecosystemManagement'),
       type: 'group' as const,
       children: managerItems
     },
     {
       key: '/environment',
       icon: <ToolOutlined />,
-      label: '环境与工具链'
+      label: t('layout.environmentToolchains')
     },
     {
       key: '/health',
       icon: <SafetyCertificateOutlined />,
-      label: '健康与安全'
+      label: t('layout.healthSecurity')
     },
     {
       key: '/extended',
       icon: <ExperimentOutlined />,
-      label: '扩展生态'
+      label: t('layout.extendedEcosystems')
     },
     {
       key: '/search',
