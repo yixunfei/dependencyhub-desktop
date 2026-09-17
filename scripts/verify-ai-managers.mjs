@@ -12,6 +12,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { ManagerWorkspaceService } from './electron/services/managerWorkspace'
+import { SupplyChainService } from './electron/services/supplyChain'
+import { WorkspaceDiscoveryService } from './electron/services/workspaceDiscovery'
+import { ExtendedManagerService } from './electron/services/extendedManager'
+import { LockfileDriftService } from './electron/services/lockfileDrift'
 
 const roots = []
 const checks = []
@@ -188,6 +192,71 @@ const main = async () => {
   assert(Boolean(agentsLockResult.backup), 'agents lock keeps a restorable backup')
   const agentsAudit = await service.execute(agents, 'ai-agents', { operation: 'audit' })
   assert(agentsAudit.stdout.includes('ai-agents audit'), 'agents audit returns local findings as command output')
+
+  // --- governance integration -------------------------------------------
+  const integration = await fixture()
+  await writeFile(join(integration, '.mcp.json'), JSON.stringify({
+    mcpServers: {
+      filesystem: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem@1.2.3'] },
+      remote: { type: 'sse', url: 'https://tools.example.test/sse' }
+    }
+  }, null, 2))
+  await mkdir(join(integration, 'skills', 'pdf'), { recursive: true })
+  await writeFile(join(integration, 'skills', 'pdf', 'SKILL.md'), '---\nname: pdf\ndescription: pdf tooling\nversion: 1.0.0\n---\n\nUse pdf.\n')
+  await writeFile(join(integration, 'AGENTS.md'), '# Instructions\n\nBe helpful.\n')
+
+  // The legacy extended-manager service backs the SBOM, so it must not fall
+  // back to listing the manifest file itself as if it were a dependency.
+  const legacy = new ExtendedManagerService()
+  const legacyMcp = await legacy.list(integration, 'mcp')
+  assert(legacyMcp.some((item) => item.name === 'filesystem') && !legacyMcp.some((item) => item.name === '.mcp.json'), 'extended manager list resolves real MCP servers instead of the manifest file')
+  const legacySkills = await legacy.list(integration, 'skills')
+  assert(legacySkills.some((item) => item.name === 'pdf'), 'extended manager list resolves skills for legacy consumers')
+  const legacyAgents = await legacy.list(integration, 'ai-agents')
+  assert(legacyAgents.some((item) => item.name === 'AGENTS'), 'extended manager list resolves agent instruction files for legacy consumers')
+
+  const supplyChain = new SupplyChainService()
+  const report = await supplyChain.report(integration)
+  const aiComponents = report.components.filter((item) => ['mcp', 'skills', 'ai-agents'].includes(item.managerId))
+  assert(aiComponents.some((item) => item.managerId === 'mcp' && item.name === 'filesystem' && item.version === '1.2.3'), 'supply chain inventory includes pinned MCP servers')
+  assert(!report.components.some((item) => item.name.endsWith('.mcp.json')), 'supply chain inventory never reports a manifest file as a dependency')
+  assert(aiComponents.some((item) => item.managerId === 'skills' && item.name === 'pdf'), 'supply chain inventory includes agent skills')
+  assert(aiComponents.some((item) => item.managerId === 'ai-agents' && item.name === 'AGENTS'), 'supply chain inventory includes agent instruction files')
+  assert(aiComponents.every((item) => typeof item.packageUrl === 'string' && item.packageUrl.startsWith('pkg:generic/')), 'every AI component carries a package URL for SBOM export')
+  for (const manager of ['mcp', 'skills', 'ai-agents']) {
+    const entry = report.managers.find((item) => item.id === manager)
+    assert(entry?.detected === true && entry.componentCount > 0, manager + ' is detected by the supply chain report with components')
+  }
+
+  const bom = JSON.parse(await read((await supplyChain.exportCycloneDx(integration)).path))
+  const bomAi = bom.components.filter((component) => ['mcp', 'skills', 'ai-agents'].includes(
+    component.properties?.find((property) => property.name === 'dependency.manager')?.value
+  ))
+  assert(bomAi.length === aiComponents.length, 'CycloneDX export carries every AI component')
+  assert(bomAi.every((component) => typeof component.purl === 'string' && component.purl.length > 0), 'CycloneDX export keeps AI package URLs')
+
+  const discovery = new WorkspaceDiscoveryService()
+  const rootWorkspace = (await discovery.report(integration)).workspaces.find((item) => item.kind === 'root')
+  assert(['mcp', 'skills', 'ai-agents'].every((id) => rootWorkspace.managerIds.includes(id)), 'workspace discovery detects all three AI managers')
+  assert(rootWorkspace.manifestFiles.includes('.mcp.json'), 'workspace discovery records the MCP manifest')
+
+  // Nested AI-only manifest directories must not be mislabelled as python-package.
+  await mkdir(join(integration, 'ai-only'), { recursive: true })
+  await writeFile(join(integration, 'ai-only', '.mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2))
+  await mkdir(join(integration, 'py-with-ai'), { recursive: true })
+  await writeFile(join(integration, 'py-with-ai', 'pyproject.toml'), '[project]\nname = "demo"\n')
+  await writeFile(join(integration, 'py-with-ai', '.mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2))
+  const nested = (await discovery.report(integration)).workspaces
+  const aiOnly = nested.find((item) => item.relativePath === 'ai-only')
+  assert(aiOnly?.kind === 'ai-project' && aiOnly.managerIds.join(',') === 'mcp', 'an AI-only manifest directory is reported as ai-project with the exact detected manager')
+  const pythonWithAi = nested.find((item) => item.relativePath === 'py-with-ai')
+  assert(pythonWithAi?.kind === 'python-package' && pythonWithAi.managerIds.includes('mcp'), 'a language manifest keeps its ecosystem kind while still detecting AI managers')
+
+  // AI managers join the existing governance reports instead of being invisible.
+  const drift = await new LockfileDriftService().report(integration)
+  const driftAi = drift.workspaces.flatMap((item) => item.findings).filter((finding) => ['mcp', 'skills', 'ai-agents'].includes(finding.managerId))
+  assert(driftAi.some((finding) => finding.managerId === 'mcp' && finding.kind === 'missing-lockfile'), 'lockfile drift report flags MCP servers declared without lock evidence')
+  assert(driftAi.every((finding) => finding.severity === 'warning'), 'AI lockfile findings are warnings because the ecosystems are preview-stage')
 
   // --- unsupported surfaces ---------------------------------------------
   let customRejected = false

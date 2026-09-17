@@ -29,14 +29,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behind a restorable backup and roll back on failure. AI managers refuse
   arbitrary custom commands instead of reporting a faked success.
 - `npm run verify:ai-managers` covering inventory, plans, health findings, lock
-  writes, dry-run no-write, declaration mutations, backup restore, and failure
-  rollback; wired into the framework verification runner as the `ai` group.
+  writes, dry-run no-write, declaration mutations, backup restore, failure
+  rollback, and the governance integrations below; wired into the framework
+  verification runner as the `ai` group.
+- AI dependencies now flow through the existing governance chains:
+  - SBOM exports (CycloneDX and SPDX) include MCP servers, skills, and agent
+    instructions with `pkg:generic/mcp-server`, `pkg:generic/agent-skill`, and
+    `pkg:generic/agent-instruction` package URLs.
+  - Workspace discovery recognises AI markers, reporting an AI-only manifest
+    directory as the new `ai-project` kind while a directory that also ships a
+    language manifest keeps that ecosystem as its primary kind.
+  - The lockfile drift report raises warning-level `missing-lockfile` findings
+    for AI ecosystems that declare inputs without lock evidence.
 
 ### Changed
 - Extended manager registry now declares 57 extended managers (was 54), and the
   AI managers are classified as declarative integrations.
 - `ExtendedManagerWorkspace` accepts `customCommands: false` to hide quick and
   custom command affordances for managers that are executed locally.
+- The Skills detection pattern now matches the standard `skills/<name>/SKILL.md`
+  layout instead of only `skills/SKILL.md`, so skills are detected in ordinary
+  repositories.
+- `existingPatternMatches`, `readdirSafe`, and `wildcardToRegExp` moved to
+  `electron/managers/patternFiles.ts`; the extended manager service and the
+  supply chain previously carried byte-identical private copies.
 
 ## [1.0.3] - 2026-09-17
 

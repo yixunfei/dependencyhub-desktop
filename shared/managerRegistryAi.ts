@@ -41,7 +41,7 @@ export const AI_MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     tools: ['skills'],
     manifestFiles: ['skills.json'],
     lockFiles: ['skills.lock.json'],
-    detectionFiles: ['skills.json', 'skills.lock.json', 'SKILL.md', 'skills/SKILL.md', '.workbuddy-ai/skills/*', '.claude/skills/*', '.codebuddy/skills/*', '.agents/skills/*', '.cursor/skills/*'],
+    detectionFiles: ['skills.json', 'skills.lock.json', 'SKILL.md', 'skills/*', '.workbuddy-ai/skills/*', '.claude/skills/*', '.codebuddy/skills/*', '.agents/skills/*', '.cursor/skills/*'],
     capabilities: ['install', 'uninstall', 'health', 'audit', 'dependency-tree', 'lockfile'],
     scopes: ['project', 'repository'],
     scenarios: ['reusable agent capabilities', 'shared skill libraries', 'prompt tooling', 'skill provenance review'],

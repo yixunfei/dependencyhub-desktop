@@ -8,6 +8,7 @@ import {
   type DependencyManagerId
 } from '../../shared/managerRegistry'
 import { ExtendedManagerService } from './extendedManager'
+import { existingPatternMatches, readdirSafe } from '../managers/patternFiles'
 
 export interface SupplyChainComponent {
   managerId: DependencyManagerId
@@ -335,7 +336,10 @@ const SPECIALIZED_INVENTORY_MANAGER_IDS = new Set<DependencyManagerId>([
   'conda',
   'nuget',
   'composer',
-  'bundler'
+  'bundler',
+  'mcp',
+  'skills',
+  'ai-agents'
 ])
 
 export class SupplyChainService {
@@ -1977,6 +1981,9 @@ function packageUrl(managerId: DependencyManagerId, name: string, version?: stri
   if (managerId === 'apk') return `pkg:apk/alpine/${encodeURIComponent(name)}${suffix}`
   if (managerId === 'pacman') return `pkg:alpm/arch/${encodeURIComponent(name)}${suffix}`
   if (managerId === 'nix') return `pkg:generic/nix/${encodeURIComponent(name)}${suffix}`
+  if (managerId === 'mcp') return `pkg:generic/mcp-server/${encodeURIComponent(name)}${suffix}`
+  if (managerId === 'skills') return `pkg:generic/agent-skill/${encodeURIComponent(name)}${suffix}`
+  if (managerId === 'ai-agents') return `pkg:generic/agent-instruction/${encodeURIComponent(name)}${suffix}`
   return undefined
 }
 
@@ -2383,51 +2390,6 @@ async function firstExisting(cwd: string, files: string[]): Promise<string | nul
   return null
 }
 
-async function existingPatternMatches(cwd: string, patterns: readonly string[]): Promise<string[]> {
-  const rootFiles = await readdirSafe(cwd)
-  const matches: string[] = []
-  for (const pattern of patterns) {
-    const normalizedPattern = pattern.replace(/\\/g, '/')
-    if (normalizedPattern.includes('/')) {
-      const separator = normalizedPattern.lastIndexOf('/')
-      const directory = normalizedPattern.slice(0, separator)
-      const filePattern = normalizedPattern.slice(separator + 1)
-      const directoryPath = join(cwd, ...directory.split('/'))
-
-      if (filePattern.includes('*')) {
-        const regex = wildcardToRegExp(filePattern)
-        matches.push(...(await readdirSafe(directoryPath))
-          .filter((file) => regex.test(file))
-          .map((file) => `${directory}/${file}`))
-        continue
-      }
-
-      try {
-        await access(join(directoryPath, filePattern))
-        matches.push(normalizedPattern)
-      } catch {
-      }
-      continue
-    }
-
-    if (pattern.includes('*')) {
-      const regex = wildcardToRegExp(pattern)
-      matches.push(...rootFiles.filter((file) => regex.test(file)))
-      continue
-    }
-    if (rootFiles.includes(pattern)) matches.push(pattern)
-  }
-  return [...new Set(matches)]
-}
-
-async function readdirSafe(path: string): Promise<string[]> {
-  try {
-    return await readdir(path)
-  } catch {
-    return []
-  }
-}
-
 function matches(content: string, regex: RegExp): RegExpExecArray[] {
   const results: RegExpExecArray[] = []
   let match: RegExpExecArray | null
@@ -2458,11 +2420,6 @@ function safeSpdxId(value: string): string {
 
 function timestampId(): string {
   return new Date().toISOString().replace(/[:.]/g, '-')
-}
-
-function wildcardToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
-  return new RegExp(`^${escaped}$`, 'i')
 }
 
 function escapeRegExp(value: string): string {

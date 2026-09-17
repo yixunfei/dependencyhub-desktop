@@ -1,6 +1,6 @@
 import { recoverCommandFailure } from './commandRecovery'
 import { createHash } from 'crypto'
-import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'fs/promises'
+import { access, mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import {
   MANAGER_DEFINITIONS,
@@ -30,7 +30,9 @@ import {
 import { isPythonWorkspaceManager } from '../managers/groups/python/pythonTypes'
 import { readPythonManagerInventory } from '../managers/groups/python/pythonInventory'
 import { readBackendManagerInventory } from '../managers/groups/backend/backendInventory'
+import { readAiManagerInventory } from '../managers/groups/ai/aiInventory'
 import { findWorkspaceFiles } from '../managers/workspaceFiles'
+import { existingPatternMatches, wildcardToRegExp } from '../managers/patternFiles'
 
 export interface ExtendedManagerDetection {
   id: DependencyManagerId
@@ -274,7 +276,7 @@ export class ExtendedManagerService {
       case 'nix':
         return await parseNixDependencies(cwd)
       default:
-        return await parseGenericManifestDependencies(cwd, manager)
+        return await parseUnmappedManagerDependencies(cwd, manager)
     }
   }
 
@@ -2452,7 +2454,9 @@ function stringValue(value: unknown): string | undefined {
   return undefined
 }
 
-async function parseGenericManifestDependencies(cwd: string, manager: DependencyManagerDefinition): Promise<ExtendedDependencyInfo[]> {
+async function parseUnmappedManagerDependencies(cwd: string, manager: DependencyManagerDefinition): Promise<ExtendedDependencyInfo[]> {
+  const aiInventory = await readAiManagerInventory(cwd, manager.id)
+  if (aiInventory) return aiInventory
   const files = await existingPatternMatches(cwd, manager.manifestFiles)
   return files.map((file) => ({
     managerId: manager.id,
@@ -2862,11 +2866,6 @@ function xmlAttribute(attrs: string | undefined, name: string): string | undefin
   return match?.[1]
 }
 
-function xmlElementValue(content: string | undefined, name: string): string | undefined {
-  const match = (content || '').match(new RegExp(`<${escapeRegExp(name)}\\b[^>]*>([^<]+)</${escapeRegExp(name)}>`, 'i'))
-  return match?.[1]?.trim()
-}
-
 function normalizeTomlValue(value: string): string {
   if (value === '*') return value
   if (value.startsWith('{')) return value
@@ -2938,46 +2937,6 @@ async function firstExisting(cwd: string, files: string[]): Promise<string | nul
   return null
 }
 
-async function existingPatternMatches(cwd: string, patterns: readonly string[]): Promise<string[]> {
-  const rootFiles = await readdirSafe(cwd)
-  const matches: string[] = []
-  for (const pattern of patterns) {
-    const normalizedPattern = pattern.replace(/\\/g, '/')
-    if (normalizedPattern.includes('/')) {
-      const separator = normalizedPattern.lastIndexOf('/')
-      const directory = normalizedPattern.slice(0, separator)
-      const filePattern = normalizedPattern.slice(separator + 1)
-      const directoryPath = join(cwd, ...directory.split('/'))
-
-      if (filePattern.includes('*')) {
-        const regex = wildcardToRegExp(filePattern)
-        matches.push(...(await readdirSafe(directoryPath))
-          .filter((file) => regex.test(file))
-          .map((file) => `${directory}/${file}`))
-        continue
-      }
-
-      try {
-        await access(join(directoryPath, filePattern))
-        matches.push(normalizedPattern)
-      } catch {
-      }
-      continue
-    }
-
-    if (pattern.includes('*')) {
-      const regex = wildcardToRegExp(pattern)
-      matches.push(...rootFiles.filter((file) => regex.test(file)))
-      continue
-    }
-
-    if (rootFiles.includes(pattern)) {
-      matches.push(pattern)
-    }
-  }
-  return [...new Set(matches)]
-}
-
 async function backupPatternMatches(cwd: string, patterns: readonly string[]): Promise<string[]> {
   const matchers = patterns.map((pattern) => {
     const normalized = pattern.replace(/\\/g, '/')
@@ -2989,14 +2948,6 @@ async function backupPatternMatches(cwd: string, patterns: readonly string[]): P
   return await findWorkspaceFiles(cwd, (fileName, relativePath) => (
     matchers.some(({ nested, expression }) => expression.test(nested ? relativePath : fileName))
   ), { maxDepth: 8, ignoredDirectories: ['.npmDesktopManager'] })
-}
-
-async function readdirSafe(path: string): Promise<string[]> {
-  try {
-    return await readdir(path)
-  } catch {
-    return []
-  }
 }
 
 function matches(content: string, regex: RegExp): RegExpExecArray[] {
@@ -3024,11 +2975,6 @@ function sha256(content: string): string {
 
 function timestampId(): string {
   return new Date().toISOString().replace(/[:.]/g, '-')
-}
-
-function wildcardToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
-  return new RegExp(`^${escaped}$`, 'i')
 }
 
 function escapeRegExp(value: string): string {

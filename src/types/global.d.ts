@@ -652,8 +652,6 @@ declare global {
     }
   }
 
-
-
   interface PipPackageInfo {
     name: string
     version: string
@@ -4346,6 +4344,7 @@ declare global {
     | 'cocoapods-project'
     | 'helm-chart'
     | 'docker-compose-project'
+    | 'ai-project'
 
   interface WorkspaceNode {
     id: string

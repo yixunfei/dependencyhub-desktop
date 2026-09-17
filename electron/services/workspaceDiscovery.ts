@@ -59,6 +59,7 @@ export type WorkspaceKind =
   | 'cocoapods-project'
   | 'helm-chart'
   | 'docker-compose-project'
+  | 'ai-project'
   | 'kustomize-project'
   | 'helmfile-project'
   | 'skaffold-project'
@@ -648,7 +649,21 @@ async function inferWorkspaceKind(directory: string, isRoot: boolean): Promise<W
   if (pyproject || await exists(join(directory, 'setup.py')) || await exists(join(directory, 'requirements.txt')) || await exists(join(directory, 'Pipfile')) || await exists(join(directory, 'environment.yml')) || await exists(join(directory, 'environment.yaml'))) {
     return 'python-package'
   }
+  if (await hasAiManifest(directory)) return 'ai-project'
   return 'python-package'
+}
+
+/**
+ * AI manifests declare agent tool servers, skills, and instruction sets. They are
+ * checked last so a directory that also ships a language manifest keeps that
+ * ecosystem as its primary kind, and they emit no kind-level manager hint because
+ * workspace inspection already detects the exact AI managers that are present.
+ */
+async function hasAiManifest(directory: string): Promise<boolean> {
+  return await exists(join(directory, '.mcp.json'))
+    || await exists(join(directory, 'mcp.json'))
+    || await exists(join(directory, 'skills.json'))
+    || await exists(join(directory, 'agents.json'))
 }
 
 async function readWorkspaceIdentity(directory: string): Promise<{ packageName?: string; version?: string }> {
