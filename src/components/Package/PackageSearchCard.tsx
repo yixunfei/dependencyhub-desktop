@@ -5,6 +5,7 @@ import {
   InfoCircleOutlined
 } from '@ant-design/icons'
 import { SearchResult } from '../../stores/searchStore'
+import { useT } from '../../i18n'
 import styles from './PackageSearchCard.module.css'
 
 interface PackageSearchCardProps {
@@ -18,6 +19,7 @@ export const PackageSearchCard: React.FC<PackageSearchCardProps> = ({
   onInstall,
   onView
 }) => {
+  const t = useT()
   return (
     <Card className={styles.card} hoverable>
       <div className={styles.header}>
@@ -26,7 +28,7 @@ export const PackageSearchCard: React.FC<PackageSearchCardProps> = ({
           <Tag color="blue">{pkg.version}</Tag>
         </div>
         <Space>
-          <Tooltip title="查看详情">
+          <Tooltip title={t('package.viewDetail')}>
             <Button
               type="text"
               size="small"
@@ -40,24 +42,24 @@ export const PackageSearchCard: React.FC<PackageSearchCardProps> = ({
             icon={<DownloadOutlined />}
             onClick={() => onInstall(pkg.name)}
           >
-            安装
+            {t('package.install')}
           </Button>
         </Space>
       </div>
       
       <p className={styles.description}>
-        {pkg.description || '暂无描述'}
+        {pkg.description || t('common.noDescription')}
       </p>
       
       <div className={styles.meta}>
         {pkg.author && (
           <span className={styles.metaItem}>
-            作者: {typeof pkg.author === 'string' ? pkg.author : (pkg.author as any).name || '未知'}
+            {t('package.author', { name: typeof pkg.author === 'string' ? pkg.author : (pkg.author as any).name || t('common.unknown') })}
           </span>
         )}
         {pkg.date && (
           <span className={styles.metaItem}>
-            更新: {new Date(pkg.date).toLocaleDateString()}
+            {t('package.updated', { date: new Date(pkg.date).toLocaleDateString() })}
           </span>
         )}
         {pkg.keywords && pkg.keywords.length > 0 && (

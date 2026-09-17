@@ -2,6 +2,7 @@ import React from 'react'
 import { Button, Space, Tabs, Typography } from 'antd'
 import { FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../stores/appStore'
+import { useT } from '../../i18n'
 import ProjectToolchainPanel from '../../components/Toolchain/ProjectToolchainPanel'
 import GlobalToolchainPanel from '../../components/Toolchain/GlobalToolchainPanel'
 import styles from './ToolVersions.module.css'
@@ -9,6 +10,7 @@ import styles from './ToolVersions.module.css'
 const { Text } = Typography
 
 const ToolVersionsPage: React.FC = () => {
+  const t = useT()
   const currentPath = useAppStore((state) => state.currentPath)
   const setCurrentPath = useAppStore((state) => state.setCurrentPath)
   const addNotification = useAppStore((state) => state.addNotification)
@@ -19,7 +21,7 @@ const ToolVersionsPage: React.FC = () => {
     setCurrentPath(path)
     addNotification({
       type: 'info',
-      message: '项目路径已切换',
+      message: t('toolchain.projectSwitched'),
       description: path
     })
   }
@@ -28,18 +30,16 @@ const ToolVersionsPage: React.FC = () => {
     <div className={styles.container}>
       <div className={styles.header}>
         <div>
-          <h2 className={styles.title}>环境与工具链</h2>
-          <Text type="secondary">
-            为不同项目绑定语言工具链版本，统一管理 npm、pip/Python、Maven、Cargo、Gradle、Go、Flutter 与 Native 构建工具；项目配置优先于全局默认，留空时使用系统 PATH。
-          </Text>
+          <h2 className={styles.title}>{t('toolchain.title')}</h2>
+          <Text type="secondary">{t('toolchain.description')}</Text>
         </div>
         <Space wrap>
           <span className={styles.pathInfo}>
-            <span className={styles.pathLabel}>当前项目:</span>
-            <span className={styles.pathValue}>{currentPath || '未选择'}</span>
+            <span className={styles.pathLabel}>{t('toolchain.currentProject')}</span>
+            <span className={styles.pathValue}>{currentPath || t('common.notSelected')}</span>
           </span>
           <Button icon={<FolderOpenOutlined />} onClick={chooseDirectory}>
-            选择目录
+            {t('toolchain.selectDirectory')}
           </Button>
         </Space>
       </div>
@@ -48,12 +48,12 @@ const ToolVersionsPage: React.FC = () => {
         items={[
           {
             key: 'project',
-            label: '项目工具版本',
+            label: t('toolchain.projectTitle'),
             children: <ProjectToolchainPanel projectPath={currentPath} />
           },
           {
             key: 'global',
-            label: '全局默认版本',
+            label: t('toolchain.globalDefaultVersion'),
             children: (
               <div className={styles.panel}>
                 <GlobalToolchainPanel />
@@ -64,7 +64,7 @@ const ToolVersionsPage: React.FC = () => {
         tabBarExtraContent={{
           right: (
             <Button icon={<ReloadOutlined />} onClick={chooseDirectory}>
-              切换项目
+              {t('toolchain.switchProject')}
             </Button>
           )
         }}

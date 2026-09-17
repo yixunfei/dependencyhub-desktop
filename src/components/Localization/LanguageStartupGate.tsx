@@ -90,13 +90,13 @@ export const LanguageStartupGate: FC = () => {
           <Space orientation="vertical" style={{ width: '100%' }}>
             <Radio value="en-US">
               <Space orientation="vertical" size={0}>
-                <Title level={5} style={{ margin: 0 }}>English</Title>
+                <Title level={5} style={{ margin: 0 }}>{t('startup.languageEnglish')}</Title>
                 <Text type="secondary">{t('startup.languageEnglishDescription')}</Text>
               </Space>
             </Radio>
             <Radio value="zh-CN">
               <Space orientation="vertical" size={0}>
-                <Title level={5} style={{ margin: 0 }}>简体中文</Title>
+                <Title level={5} style={{ margin: 0 }}>{t('startup.languageChinese')}</Title>
                 <Text type="secondary">{t('startup.languageChineseDescription')}</Text>
               </Space>
             </Radio>

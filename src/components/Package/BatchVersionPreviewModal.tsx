@@ -4,6 +4,7 @@ import { InfoCircleOutlined, SafetyCertificateOutlined, WarningOutlined } from '
 import { PackageInfo } from '../../stores/packageStore'
 import { resolvePackageUpdateTarget, resolveSmartPackageUpdateTarget, useSettingsStore } from '../../stores/settingsStore'
 import semver from 'semver'
+import { useT } from '../../i18n'
 
 const { Text } = Typography
 
@@ -27,6 +28,7 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
   onConfirm,
   onCancel
 }) => {
+  const t = useT()
   const [previewPackages, setPreviewPackages] = useState<PreviewPackage[]>([])
   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
   const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
@@ -76,26 +78,26 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
   const getUpdateTypeIcon = (type: string) => {
     switch (type) {
       case 'patch':
-        return <Tag color="green">补丁</Tag>
+        return <Tag color="green">{t('package.bumpPatch')}</Tag>
       case 'minor':
-        return <Tag color="blue">次要</Tag>
+        return <Tag color="blue">{t('package.bumpMinor')}</Tag>
       case 'major':
-        return <Tag color="orange">主要</Tag>
+        return <Tag color="orange">{t('package.bumpMajor')}</Tag>
       default:
-        return <Tag color="default">未知</Tag>
+        return <Tag color="default">{t('common.unknown')}</Tag>
     }
   }
 
   const getStrategyTag = () => {
     switch (updateStrategy) {
       case 'security':
-        return <Tag color="red" icon={<SafetyCertificateOutlined />}>安全优先</Tag>
+        return <Tag color="red" icon={<SafetyCertificateOutlined />}>{t('package.preferSecurity')}</Tag>
       case 'latest':
-        return <Tag color="purple">最新</Tag>
+        return <Tag color="purple">{t('package.strategyLatest')}</Tag>
       case 'smart':
-        return <Tag color="blue">智能</Tag>
+        return <Tag color="blue">{t('package.strategySmart')}</Tag>
       default:
-        return <Tag color="green">推荐</Tag>
+        return <Tag color="green">{t('package.strategyRecommended')}</Tag>
     }
   }
 
@@ -139,7 +141,7 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
       ),
     },
     {
-      title: '包名',
+      title: t('package.columnName'),
       dataIndex: 'name',
       key: 'name',
       width: 180,
@@ -147,7 +149,7 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
         <Space>
           <span>{text}</span>
           {record.outdated && (
-            <Tooltip title="有新版本">
+            <Tooltip title={t('package.updateAvailable')}>
               <WarningOutlined style={{ color: '#faad14' }} />
             </Tooltip>
           )}
@@ -155,14 +157,14 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
       ),
     },
     {
-      title: '当前版本',
+      title: t('package.columnCurrentVersion'),
       dataIndex: 'version',
       key: 'version',
       width: 100,
       render: (text: string) => <Tag>v{text}</Tag>,
     },
     {
-      title: '目标版本',
+      title: t('package.columnTargetVersion'),
       key: 'targetVersion',
       width: 100,
       render: (_: any, record: PreviewPackage) => (
@@ -172,25 +174,25 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
       ),
     },
     {
-      title: '更新类型',
+      title: t('package.columnUpdateType'),
       key: 'updateType',
       width: 100,
       render: (_: any, record: PreviewPackage) => getUpdateTypeIcon(record.updateType),
     },
     {
-      title: '策略',
+      title: t('package.columnStrategy'),
       key: 'strategy',
       width: 110,
       render: () => getStrategyTag(),
     },
     {
-      title: '类型',
+      title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
       width: 80,
       render: (text: string) => (
         <Tag color={text === 'dependencies' ? 'green' : 'orange'}>
-          {text === 'dependencies' ? '生产' : '开发'}
+          {text === 'dependencies' ? t('package.prodShort') : t('package.devShort')}
         </Tag>
       ),
     },
@@ -201,25 +203,24 @@ export const BatchVersionPreviewModal: React.FC<BatchVersionPreviewModalProps> =
       title={
         <Space>
           <InfoCircleOutlined />
-          <span>版本更新预览</span>
+          <span>{t('package.updatePreview')}</span>
           <Tag color="blue">{selectedCount} / {previewPackages.length}</Tag>
         </Space>
       }
       open={visible}
       onOk={handleConfirm}
       onCancel={onCancel}
-      okText={`更新选中 (${selectedCount})`}
-      cancelText="取消"
+      okText={t('package.updateSelected', { count: selectedCount })}
+      cancelText={t('common.cancel')}
       width={900}
       okButtonProps={{ disabled: selectedCount === 0 }}
     >
       <div style={{ marginBottom: 16 }}>
         {analysisErrors.length > 0 && (
-          <Text type="warning">智能分析失败：{analysisErrors.join('、')}，已回退到现有版本策略。</Text>
+          <Text type="warning">{t('package.analysisFailed', { errors: analysisErrors.join(t('common.enumerationSeparator')) })}</Text>
         )}
         <Text type="secondary">
-          请确认要更新的包，您可以取消勾选跳过特定包的更新。
-          {updateStrategy === 'security' ? ' 当前为安全优先策略，可能会选择更激进的目标版本。' : ''}
+          {t('package.confirmUpdatesHint')} {updateStrategy === 'security' ? t('package.securityStrategyHint') : ''}
         </Text>
       </div>
       

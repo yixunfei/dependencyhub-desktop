@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Modal, Card, Space, Tag, Typography, Alert, Radio } from 'antd'
 import { SafetyOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons'
+import { useT } from '../../i18n'
 
 const { Text } = Typography
 
@@ -23,6 +24,7 @@ export const PackageConflictModal: React.FC<PackageConflictModalProps> = ({
   onSelect,
   onCancel
 }) => {
+  const t = useT()
   const [selectedOption, setSelectedOption] = useState<string>('recommended')
 
   const handleConfirm = () => {
@@ -40,22 +42,22 @@ export const PackageConflictModal: React.FC<PackageConflictModalProps> = ({
       title={
         <Space>
           <WarningOutlined style={{ color: '#faad14' }} />
-          <span>版本冲突</span>
+          <span>{t('package.versionConflict')}</span>
         </Space>
       }
       open={visible}
       onOk={handleConfirm}
       onCancel={onCancel}
-      okText="确认选择"
-      cancelText="取消"
+      okText={t('package.confirmSelection')}
+      cancelText={t('common.cancel')}
       width={700}
     >
       <Alert
-        title="发现版本冲突"
+        title={t('package.conflictTitle')}
         description={
           <span>
-            包 <Text strong>{packageName}</Text> 有安全更新，但与推荐版本存在冲突。
-            请选择您希望使用的版本。
+            {t('package.conflictIntroPrefix')} <Text strong>{packageName}</Text> {t('package.conflictIntroSuffix')}
+            {t('package.conflictPrompt')}
           </span>
         }
         type="warning"
@@ -64,7 +66,7 @@ export const PackageConflictModal: React.FC<PackageConflictModalProps> = ({
       />
 
       <div style={{ marginBottom: 16 }}>
-        <Text type="secondary">当前版本：</Text>
+        <Text type="secondary">{t('package.currentVersionLabel')}</Text>
         <Tag style={{ marginLeft: 8 }}>v{currentVersion}</Tag>
       </div>
 
@@ -80,8 +82,8 @@ export const PackageConflictModal: React.FC<PackageConflictModalProps> = ({
                 <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 20 }} />
                 <div>
                   <div>
-                    <Text strong>推荐版本</Text>
-                    <Tag color="green" style={{ marginLeft: 8 }}>兼容性优先</Tag>
+                    <Text strong>{t('package.recommendedVersion')}</Text>
+                    <Tag color="green" style={{ marginLeft: 8 }}>{t('package.preferCompatibility')}</Tag>
                   </div>
                   <Text type="secondary">v{recommendedVersion}</Text>
                 </div>
@@ -95,9 +97,9 @@ export const PackageConflictModal: React.FC<PackageConflictModalProps> = ({
                 <SafetyOutlined style={{ color: '#faad14', fontSize: 20 }} />
                 <div>
                   <div>
-                    <Text strong>安全版本</Text>
-                    <Tag color="orange" style={{ marginLeft: 8 }}>安全性优先</Tag>
-                    <Tag color="red" style={{ marginLeft: 8 }}>有安全修复</Tag>
+                    <Text strong>{t('package.securityVersion')}</Text>
+                    <Tag color="orange" style={{ marginLeft: 8 }}>{t('package.preferSecurity')}</Tag>
+                    <Tag color="red" style={{ marginLeft: 8 }}>{t('package.hasSecurityFix')}</Tag>
                   </div>
                   <Text type="secondary">v{safeVersion}</Text>
                 </div>
@@ -110,10 +112,8 @@ export const PackageConflictModal: React.FC<PackageConflictModalProps> = ({
               <Space>
                 <div style={{ width: 20 }}></div>
                 <div>
-                  <div>
-                    <Text strong>跳过此包</Text>
-                  </div>
-                  <Text type="secondary">暂时不更新，保持当前版本</Text>
+                  <div><Text strong>{t('package.skipPackage')}</Text></div>
+                  <Text type="secondary">{t('package.skipPackageHint')}</Text>
                 </div>
               </Space>
             </Card>

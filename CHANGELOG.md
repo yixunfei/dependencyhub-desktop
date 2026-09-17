@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `npm run verify:i18n` now also runs a hardcoded-CJK ratchet backed by
+  `scripts/i18n-cjk-baseline.json`: no file may exceed its recorded count and no
+  new file may introduce hardcoded CJK, so the untranslated backlog can only
+  shrink. `--update` tightens the baseline and refuses to raise a value.
+- `shared/workspaceKinds.ts` becomes the single source of truth for the
+  `WorkspaceKind` union. The renderer previously declared 35 of the 57 kinds the
+  discovery service produces; the two lists are now one, so drift is impossible
+  rather than merely discouraged.
+- `translate()` and `useT()` accept `{name}` parameters. `useT()` is memoized on
+  the language, so `t` keeps a stable identity and can safely appear in a
+  dependency array.
+
 - AI dependency ecosystem group with three preview managers: **MCP Servers**,
   **Agent Skills**, and **Agent Rules & Prompts**, reachable from the new
   `/ai` workspace.
@@ -49,6 +61,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run in CI. `legacy` stays deliberately excluded as the full regression.
 
 ### Changed
+- The dictionary moved to `src/i18n/dictionaries.ts` and the literal fallback map
+  to `src/i18n/literals.ts`; `src/i18n.ts` keeps the API. The dictionary had
+  reached 1,522 lines and would have kept growing with every localization batch,
+  and the 1,500-line engineering-debt limit is enforced, so it had to be split
+  before any more keys could be added.
+- The toolchain screens (global panel, project panel, status modal, and the
+  `ToolVersions` page), the package modals (search card, list item, conflict,
+  batch preview, detail, dependency tree, dependency health, security audit,
+  version picker, tree viewer), the dependency-health reminder hook, and the
+  language gate now resolve their copy through the dictionary. 13 renderer files
+  cleared, 1,561 hardcoded CJK characters removed (9,100 -> 7,539).
+- `useT()` is memoized on the language, so `t` keeps a stable identity between
+  renders and can be listed in a dependency array without re-running the memo
+  every render.
 - Extended manager registry now declares 57 extended managers (was 54), and the
   AI managers are classified as declarative integrations.
 - `ExtendedManagerWorkspace` accepts `customCommands: false` to hide quick and
@@ -67,6 +93,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   history clearing work identically everywhere.
 
 ### Fixed
+- `channelLabel` returned the Chinese label `预览版` for an unknown prerelease
+  channel, so an English install showed Chinese inside the version picker
+  tooltip. It now resolves the generic channel through the dictionary.
+- `formatShortDate` hardcoded the `zh-CN` locale, so dates were formatted with
+  Chinese conventions regardless of the interface language. It takes a locale and
+  the two call sites pass the active language. `PackageDetailModal` did the same
+  with long month names and is fixed alongside it.
+- The renderer declared 35 of the 57 `WorkspaceKind` values the discovery service
+  can produce, so 22 kinds had no renderer-side representation. Both sides now
+  read the shared union.
 - The workspace landing page rendered the current directory as a raw absolute
   path with no truncation and no tooltip; it now uses the shared path bar.
 - Npm project actions (`install`, `check updates`, `update all`, `audit`,

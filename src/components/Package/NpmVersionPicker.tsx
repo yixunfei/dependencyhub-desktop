@@ -8,6 +8,8 @@ import {
   VERSION_PAGE_SIZE,
   visibleVersions
 } from '../../utils/npmVersions'
+import { useT } from '../../i18n'
+import { useSettingsStore } from '../../stores/settingsStore'
 import styles from './NpmVersionPicker.module.css'
 
 interface NpmVersionPickerProps {
@@ -33,15 +35,16 @@ export const NpmVersionPicker: React.FC<NpmVersionPickerProps> = ({
   onPrereleasePageChange,
   onSelect
 }) => {
+  const t = useT()
   if (stable.length === 0 && prerelease.length === 0) {
-    return <Empty description="未找到版本信息" />
+    return <Empty description={t('package.noVersionInfo')} />
   }
 
   return (
     <div className={styles.container}>
       <VersionSection
-        title="正式稳定版本"
-        hint="默认优先显示稳定版，避免预览/测试版占满候选列表。"
+        title={t('package.stableVersions')}
+        hint={t('package.stableHint')}
         icon={<CheckCircleOutlined />}
         color="green"
         items={stable}
@@ -52,8 +55,8 @@ export const NpmVersionPicker: React.FC<NpmVersionPickerProps> = ({
         onSelect={onSelect}
       />
       <VersionSection
-        title="预览 / 测试版本"
-        hint="包含 alpha、beta、rc、next、canary、experimental 等版本，确认需要时再选择。"
+        title={t('package.prereleaseVersions')}
+        hint={t('package.prereleaseHint')}
         icon={<ExperimentOutlined />}
         color="gold"
         items={prerelease}
@@ -92,6 +95,8 @@ const VersionSection: React.FC<VersionSectionProps> = ({
   onPageChange,
   onSelect
 }) => {
+  const t = useT()
+  const language = useSettingsStore((state) => state.language)
   const visible = visibleVersions(items, page)
   const hasMore = hasMoreVersions(items, page)
 
@@ -100,12 +105,12 @@ const VersionSection: React.FC<VersionSectionProps> = ({
       <div className={styles.sectionHeader}>
         <div className={styles.sectionTitle}>
           <Tag color={color} icon={icon}>{title}</Tag>
-          <span className={styles.emptySection}>共 {items.length} 个</span>
+          <span className={styles.emptySection}>{t('package.versionCount', { count: items.length })}</span>
         </div>
       </div>
       <p className={styles.sectionHint}>{hint}</p>
       {items.length === 0 ? (
-        <span className={styles.emptySection}>暂无版本</span>
+        <span className={styles.emptySection}>{t('package.noVersions')}</span>
       ) : (
         <>
           <div className={styles.versions}>
@@ -114,9 +119,9 @@ const VersionSection: React.FC<VersionSectionProps> = ({
                 key={item.version}
                 title={[
                   item.tags?.length ? `dist-tag: ${item.tags.join(', ')}` : '',
-                  item.date ? `发布于 ${formatShortDate(item.date)}` : '',
-                  item.prerelease ? `通道: ${channelLabel(item.channel)}` : ''
-                ].filter(Boolean).join('；')}
+                  item.date ? t('package.publishedAt', { date: formatShortDate(item.date, language) }) : '',
+                  item.prerelease ? t('package.channel', { channel: channelLabel(item.channel, t) }) : ''
+                ].filter(Boolean).join(t('common.detailSeparator'))}
               >
                 <Tag
                   className={styles.versionTag}
@@ -136,7 +141,7 @@ const VersionSection: React.FC<VersionSectionProps> = ({
           </div>
           {hasMore && (
             <Button className={styles.loadMore} onClick={() => onPageChange(page + 1)}>
-              加载更多，每次 {VERSION_PAGE_SIZE} 个
+              {t('package.loadMore', { count: VERSION_PAGE_SIZE })}
             </Button>
           )}
         </>

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
+import { useT } from '../i18n'
 
 const SCAN_TTL = 5 * 60 * 1000
 const lastScanAt = new Map<string, number>()
@@ -10,6 +11,7 @@ export function useDependencyHealthReminder(
   enabled: boolean
 ) {
   const addNotification = useAppStore((state) => state.addNotification)
+  const t = useT()
 
   useEffect(() => {
     if (!enabled || !cwd) return
@@ -27,8 +29,8 @@ export function useDependencyHealthReminder(
         if (important <= 0) return
         addNotification({
           type: 'warning',
-          message: `${manager} 依赖诊断提醒`,
-          description: `发现 ${important} 项循环依赖、版本冲突或配置问题，可打开“依赖诊断”查看修复建议。`
+          message: t('health.reminderTitle', { manager }),
+          description: t('health.reminderDescription', { count: important })
         })
       })
       .catch(() => {

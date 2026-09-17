@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Input, Modal, Space, Table, Tag, Tooltip } from 'antd'
 import { DownloadOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons'
 import { STARTUP_REQUIRED_TOOLS, TOOL_LABELS, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
+import { useT } from '../../i18n'
 
 const ToolchainStatusModal: React.FC = () => {
+  const t = useT()
   const [statuses, setStatuses] = useState<ToolStatus[]>([])
   const [paths, setPaths] = useState<Record<string, string>>({})
   const [visible, setVisible] = useState(false)
@@ -17,6 +19,7 @@ const ToolchainStatusModal: React.FC = () => {
     () => statuses.filter((item) => STARTUP_REQUIRED_TOOLS.includes(item.tool) && !item.available),
     [statuses]
   )
+  const unavailableLabels = unavailable.map((item) => TOOL_LABELS[item.tool]).join(t('common.enumerationSeparator'))
 
   const checkTools = async () => {
     if (!window.electronAPI?.system?.checkTools) return
@@ -60,18 +63,13 @@ const ToolchainStatusModal: React.FC = () => {
 
   return (
     <Modal
-      title={
-        <Space>
-          <SettingOutlined />
-          基础命令配置
-        </Space>
-      }
+      title={<Space><SettingOutlined />{t('toolchain.baseCommandTitle')}</Space>}
       open={visible && unavailable.length > 0}
       onCancel={() => setVisible(false)}
       footer={
         <Space>
-          <Button onClick={() => setVisible(false)}>稍后处理</Button>
-          <Button icon={<ReloadOutlined />} onClick={checkTools} loading={loading}>重新检测</Button>
+          <Button onClick={() => setVisible(false)}>{t('toolchain.later')}</Button>
+          <Button icon={<ReloadOutlined />} onClick={checkTools} loading={loading}>{t('toolchain.redetect')}</Button>
         </Space>
       }
       width={840}
@@ -79,8 +77,8 @@ const ToolchainStatusModal: React.FC = () => {
       <Alert
         type="warning"
         showIcon
-        title={`检测到 ${unavailable.map((item) => TOOL_LABELS[item.tool]).join('、')} 不可用`}
-        description="请选择命令所在目录，系统会自动查找对应可执行文件；也可以打开官方下载页面安装后重新检测。"
+        title={t('toolchain.unavailableDetected', { tools: unavailableLabels })}
+        description={t('toolchain.unavailableDescription')}
         style={{ marginBottom: 16 }}
       />
       <Table
@@ -90,24 +88,24 @@ const ToolchainStatusModal: React.FC = () => {
         pagination={false}
         columns={[
           {
-            title: '工具',
+            title: t('common.tool'),
             dataIndex: 'tool',
             key: 'tool',
             width: 130,
             render: (tool: ToolName) => TOOL_LABELS[tool]
           },
           {
-            title: '状态',
+            title: t('common.status'),
             key: 'status',
             width: 130,
             render: (_: any, record: ToolStatus) => (
               record.available
-                ? <Tag color="green">{record.version || '可用'}</Tag>
-                : <Tooltip title={record.message}><Tag color="red">不可用</Tag></Tooltip>
+                ? <Tag color="green">{record.version || t('common.available')}</Tag>
+                : <Tooltip title={record.message}><Tag color="red">{t('common.unavailable')}</Tag></Tooltip>
             )
           },
           {
-            title: '命令所在目录',
+            title: t('toolchain.commandDirectory'),
             key: 'path',
             render: (_: any, record: ToolStatus) => (
               <Input
@@ -118,19 +116,19 @@ const ToolchainStatusModal: React.FC = () => {
             )
           },
           {
-            title: '操作',
+            title: t('common.actions'),
             key: 'action',
             width: 260,
             render: (_: any, record: ToolStatus) => (
               <Space>
                 <Button size="small" icon={<FolderOpenOutlined />} onClick={() => chooseDirectory(record.tool)} loading={loading}>
-                  选择目录
+                  {t('toolchain.selectDirectory')}
                 </Button>
                 <Button size="small" icon={<SaveOutlined />} onClick={() => savePath(record.tool)} loading={loading}>
-                  保存
+                  {t('common.save')}
                 </Button>
                 <Button size="small" icon={<DownloadOutlined />} onClick={() => window.electronAPI.system.openToolDownload(record.tool)}>
-                  下载
+                  {t('common.download')}
                 </Button>
               </Space>
             )

@@ -1,4 +1,9 @@
+import type { TranslationKey, TranslationParams } from '../i18n'
+
 export const VERSION_PAGE_SIZE = 10
+
+/** The subset of `useT()`'s return type a pure helper needs to label a value. */
+export type LabelTranslator = (key: TranslationKey, params?: TranslationParams) => string
 
 export type VersionChannelFilter = 'stable' | 'prerelease' | 'all'
 
@@ -31,10 +36,10 @@ export function hasMoreVersions(items: NpmVersionInfo[], page: number): boolean 
   return visibleVersions(items, page).length < items.length
 }
 
-export function toVersionOptions(items: NpmVersionInfo[], page = 1): Array<{ value: string; label: string }> {
+export function toVersionOptions(items: NpmVersionInfo[], page = 1, t?: LabelTranslator): Array<{ value: string; label: string }> {
   return visibleVersions(items, page).map((item) => ({
     value: item.version,
-    label: formatVersionOption(item)
+    label: formatVersionOption(item, t)
   }))
 }
 
@@ -44,22 +49,27 @@ export function versionsForFilter(metadata: NpmVersionMetadata, filter: VersionC
   return metadata.versions
 }
 
-export function formatVersionOption(item: NpmVersionInfo): string {
+/**
+ * Builds a compact version label such as `1.2.3 [latest] [alpha]`. `t` is only
+ * needed for the generic prerelease sentinel; without it the raw channel token
+ * is used, which is what the literal npm dist-tags render as anyway.
+ */
+export function formatVersionOption(item: NpmVersionInfo, t?: LabelTranslator): string {
   const parts = [item.version]
   if (item.tags?.length) parts.push(`[${item.tags.join(', ')}]`)
-  if (item.prerelease) parts.push(`[${channelLabel(item.channel)}]`)
+  if (item.prerelease) parts.push(`[${channelLabel(item.channel, t)}]`)
   if (item.date) parts.push(formatShortDate(item.date))
   return parts.join(' ')
 }
 
-export function formatShortDate(date?: string): string {
+export function formatShortDate(date?: string, locale?: string): string {
   if (!date) return ''
   const timestamp = Date.parse(date)
   if (!Number.isFinite(timestamp)) return ''
-  return new Date(timestamp).toLocaleDateString('zh-CN')
+  return new Date(timestamp).toLocaleDateString(locale)
 }
 
-export function channelLabel(channel?: string): string {
+export function channelLabel(channel: string | undefined, t?: LabelTranslator): string {
   switch ((channel || '').toLowerCase()) {
     case 'alpha':
       return 'alpha'
@@ -82,7 +92,7 @@ export function channelLabel(channel?: string): string {
     case 'dev':
       return 'dev'
     default:
-      return '预览版'
+      return t ? t('versions.channelPrerelease') : 'prerelease'
   }
 }
 

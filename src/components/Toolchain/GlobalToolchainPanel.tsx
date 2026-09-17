@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Input, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { DeleteOutlined, DownloadOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { TOOL_LABELS, TOOL_ORDER, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
+import { useT } from '../../i18n'
 
 const { Text } = Typography
 
@@ -15,6 +16,7 @@ function pathsFromStatuses(statuses: ToolStatus[]): Record<ToolName, string> {
 }
 
 const GlobalToolchainPanel: React.FC = () => {
+  const t = useT()
   const [statuses, setStatuses] = useState<ToolStatus[]>([])
   const [paths, setPaths] = useState<Record<ToolName, string>>(emptyPaths)
   const [loading, setLoading] = useState(false)
@@ -61,9 +63,8 @@ const GlobalToolchainPanel: React.FC = () => {
       <Alert
         type="info"
         showIcon
-        title="全局工具版本"
-        description="这里配置跨生态全局默认工具链。项目页中的项目工具版本会优先覆盖这里的配置，避免把 npm 全局包管理和其他语言环境配置混在同一个入口。"
-      />
+        title={t('toolchain.globalTitle')}
+        description={t('toolchain.globalDescription')} />
       <Table
         dataSource={TOOL_ORDER.map((tool) => ({ tool }))}
         rowKey="tool"
@@ -72,14 +73,14 @@ const GlobalToolchainPanel: React.FC = () => {
         scroll={{ x: 1040 }}
         columns={[
           {
-            title: '工具',
+            title: t('common.tool'),
             dataIndex: 'tool',
             key: 'tool',
             width: 140,
             render: (tool: ToolName) => TOOL_LABELS[tool]
           },
           {
-            title: '全局默认路径',
+            title: t('toolchain.globalDefaultPath'),
             key: 'path',
             width: 380,
             render: (_: any, record: { tool: ToolName }) => (
@@ -91,50 +92,50 @@ const GlobalToolchainPanel: React.FC = () => {
             )
           },
           {
-            title: '当前版本',
+            title: t('common.currentVersion'),
             key: 'status',
             width: 260,
             render: (_: any, record: { tool: ToolName }) => {
               const status = statusMap[record.tool]
               if (!status) return '-'
               return status.available ? (
-                <Tooltip title={status.configuredPath || '系统 PATH'}>
+                <Tooltip title={status.configuredPath || t('common.systemPath')}>
                   <Tag color="green" style={{ maxWidth: 230, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle' }}>
-                    {status.version || '可用'}
+                    {status.version || t('common.available')}
                   </Tag>
                 </Tooltip>
               ) : (
                 <Tooltip title={status.message}>
-                  <Tag color="red">不可用</Tag>
+                  <Tag color="red">{t('common.unavailable')}</Tag>
                 </Tooltip>
               )
             }
           },
           {
-            title: '操作',
+            title: t('common.actions'),
             key: 'action',
             width: 330,
             render: (_: any, record: { tool: ToolName }) => (
               <Space>
                 <Button size="small" icon={<FolderOpenOutlined />} onClick={() => chooseDirectory(record.tool)} loading={loading}>
-                  选择
+                  {t('common.select')}
                 </Button>
                 <Button size="small" icon={<SaveOutlined />} onClick={() => savePath(record.tool)} loading={loading}>
-                  保存
+                  {t('common.save')}
                 </Button>
                 <Button size="small" danger icon={<DeleteOutlined />} onClick={() => savePath(record.tool, '')} loading={loading}>
-                  清除
+                  {t('common.clear')}
                 </Button>
                 <Button size="small" icon={<DownloadOutlined />} onClick={() => window.electronAPI.system.openToolDownload(record.tool)}>
-                  下载
+                  {t('common.download')}
                 </Button>
               </Space>
             )
           }
         ]}
       />
-      <Text type="secondary">可以填写工具目录，也可以直接填写可执行文件路径。</Text>
-      <Button icon={<ReloadOutlined />} onClick={loadTools} loading={loading}>重新检测</Button>
+      <Text type="secondary">{t('toolchain.pathHint')}</Text>
+      <Button icon={<ReloadOutlined />} onClick={loadTools} loading={loading}>{t('toolchain.redetect')}</Button>
     </Space>
   )
 }

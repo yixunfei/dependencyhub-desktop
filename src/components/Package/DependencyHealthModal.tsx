@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Empty, Modal, Space, Spin, Table, Tag, Tooltip, Typography } from 'antd'
 import { CopyOutlined, FileTextOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../stores/appStore'
+import { useT, type TranslationKey } from '../../i18n'
 
 const { Paragraph, Text } = Typography
 
@@ -21,18 +22,19 @@ const severityColor: Record<DependencyHealthSeverity, string> = {
   info: 'default'
 }
 
-const typeLabel: Record<DependencyHealthIssueType, string> = {
-  cycle: '循环依赖',
-  'version-conflict': '多版本/冲突',
-  'peer-conflict': 'Peer 冲突',
-  missing: '缺失依赖',
-  invalid: '无效依赖',
-  extraneous: '多余依赖',
-  outdated: '可升级',
-  tooling: '工具问题',
-  'native-linkage': '链接方式',
-  unmanaged: '未托管依赖',
-  configuration: '配置提醒'
+// Issue type -> dictionary key; module scope cannot call `useT`, so resolve at render time.
+const typeLabelKeys: Record<DependencyHealthIssueType, TranslationKey> = {
+  cycle: 'health.typeCycle',
+  'version-conflict': 'health.typeVersionConflict',
+  'peer-conflict': 'health.typePeerConflict',
+  missing: 'health.typeMissing',
+  invalid: 'health.typeInvalid',
+  extraneous: 'health.typeExtraneous',
+  outdated: 'health.typeOutdated',
+  tooling: 'health.typeTooling',
+  'native-linkage': 'health.typeNativeLinkage',
+  unmanaged: 'health.typeUnmanaged',
+  configuration: 'health.typeConfiguration'
 }
 
 export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
@@ -42,6 +44,7 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
   onClose,
   onScanned
 }) => {
+  const t = useT()
   const addNotification = useAppStore((state) => state.addNotification)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<DependencyHealthScanResult | null>(null)
@@ -59,11 +62,11 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
       onScanned?.(nextResult)
       addNotification({
         type: nextResult.summary.total > 0 ? 'warning' : 'success',
-        message: nextResult.summary.total > 0 ? '依赖诊断完成' : '未发现依赖问题',
-        description: nextResult.summary.total > 0 ? `${manager} 发现 ${nextResult.summary.total} 项提醒` : manager
+        message: nextResult.summary.total > 0 ? t('health.scanComplete') : t('health.noIssuesFound'),
+        description: nextResult.summary.total > 0 ? t('health.issuesFound', { manager, count: nextResult.summary.total }) : manager
       })
     } catch (error: any) {
-      addNotification({ type: 'error', message: '依赖诊断失败', description: error.message })
+      addNotification({ type: 'error', message: t('health.scanFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -78,20 +81,20 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
   const summaryText = useMemo(() => {
     if (!result) return ''
     const { summary } = result
-    if (summary.total === 0) return '当前依赖树没有发现循环依赖、冲突或重复版本提醒。'
+    if (summary.total === 0) return t('health.noIssuesSummary')
     return [
-      `共 ${summary.total} 项`,
+      t('health.totalCount', { count: summary.total }),
       summary.critical ? `Critical ${summary.critical}` : '',
       summary.high ? `High ${summary.high}` : '',
       summary.medium ? `Medium ${summary.medium}` : '',
       summary.low ? `Low ${summary.low}` : ''
     ].filter(Boolean).join(' / ')
-  }, [result])
+  }, [result, t])
 
   const runAction = async (issue: DependencyHealthIssue, action: DependencyHealthAction) => {
     if (action.kind === 'copy') {
       await navigator.clipboard.writeText(action.payload || issue.suggestion)
-      addNotification({ type: 'success', message: '修复建议已复制', description: issue.dependency || issue.title })
+      addNotification({ type: 'success', message: t('health.fixCopied'), description: issue.dependency || issue.title })
       return
     }
 
@@ -101,7 +104,7 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
     }
 
     if (action.kind !== 'command' && action.kind !== 'api') {
-      addNotification({ type: 'info', message: '请按建议手动处理', description: issue.suggestion })
+      addNotification({ type: 'info', message: t('health.applyManually'), description: issue.suggestion })
       return
     }
 
@@ -110,12 +113,12 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
     try {
       const actionOutput = await window.electronAPI.dependencyHealth.fix(cwd, action)
       setOutputTitle(action.label)
-      setOutput(actionOutput || '操作完成')
+      setOutput(actionOutput || t('health.actionComplete'))
       setOutputVisible(true)
-      addNotification({ type: 'success', message: '诊断操作完成', description: action.label })
+      addNotification({ type: 'success', message: t('health.actionDone'), description: action.label })
       await scan()
     } catch (error: any) {
-      addNotification({ type: 'error', message: '诊断操作失败', description: error.message })
+      addNotification({ type: 'error', message: t('health.actionFailed'), description: error.message })
     } finally {
       setActionRunning('')
     }
@@ -123,21 +126,21 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
 
   const columns = [
     {
-      title: '级别',
+      title: t('health.columnSeverity'),
       dataIndex: 'severity',
       key: 'severity',
       width: 100,
       render: (severity: DependencyHealthSeverity) => <Tag color={severityColor[severity]}>{severity.toUpperCase()}</Tag>
     },
     {
-      title: '类型',
+      title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
       width: 130,
-      render: (type: DependencyHealthIssueType) => <Tag>{typeLabel[type] || type}</Tag>
+      render: (type: DependencyHealthIssueType) => <Tag>{typeLabelKeys[type] ? t(typeLabelKeys[type]) : type}</Tag>
     },
     {
-      title: '依赖',
+      title: t('health.columnDependency'),
       dataIndex: 'dependency',
       key: 'dependency',
       width: 220,
@@ -145,7 +148,7 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
       render: (text: string) => text ? <Text code>{text}</Text> : '-'
     },
     {
-      title: '说明与建议',
+      title: t('health.columnDescription'),
       key: 'description',
       render: (_: unknown, issue: DependencyHealthIssue) => (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
@@ -161,7 +164,7 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
       )
     },
     {
-      title: '便捷处理',
+      title: t('health.columnActions'),
       key: 'actions',
       width: 230,
       render: (_: unknown, issue: DependencyHealthIssue) => (
@@ -194,7 +197,7 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
   return (
     <>
       <Modal
-        title={`${manager} 依赖诊断`}
+        title={t('health.modalTitle', { manager })}
         open={visible}
         onCancel={onClose}
         footer={null}
@@ -204,13 +207,12 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
           <Alert
             type={result?.summary.total ? 'warning' : 'info'}
             showIcon
-            message={summaryText || '正在检查依赖树'}
-            description="自动检查循环依赖、版本冲突、缺失/无效依赖、重复版本，以及 C/C++ 动态/静态链接混用等常见问题；修复按钮会先运行包管理器命令或打开相关文件。"
-            action={<Button icon={<ReloadOutlined />} onClick={scan} loading={loading}>重新扫描</Button>}
-          />
+            message={summaryText || t('health.checkingTree')}
+            description={t('health.description')}
+            action={<Button icon={<ReloadOutlined />} onClick={scan} loading={loading}>{t('health.rescan')}</Button>} />
           <Spin spinning={loading}>
             {!result || result.issues.length === 0 ? (
-              <Empty description={loading ? '正在扫描依赖问题' : '暂无依赖诊断提醒'} />
+              <Empty description={loading ? t('health.scanning') : t('health.noNotices')} />
             ) : (
               <Table
                 dataSource={result.issues}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, Tree, Spin, Input, Card, Tag, Empty, Space, Typography, Select, Button, Pagination, Tooltip } from 'antd'
 import { ApartmentOutlined, GlobalOutlined, FolderOutlined, ExpandOutlined, CompressOutlined, LinkOutlined } from '@ant-design/icons'
+import { useT } from '../../i18n'
 
 const { Text } = Typography
 const { Search } = Input
@@ -20,20 +21,21 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
   packageName,
   onClose
 }) => {
+  const t = useT()
   const [loading, setLoading] = useState(false)
   const [treeData, setTreeData] = useState<any>(null)
   const [searchText, setSearchText] = useState('')
   const [searchMode, setSearchMode] = useState<'fuzzy' | 'exact'>('fuzzy')
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
   const [allKeys, setAllKeys] = useState<string[]>([])
-  const [pageSize, setPageSize] = useState<number>(0) // 0 表示显示全部
+  const [pageSize, setPageSize] = useState<number>(0) // 0 means show every row
   const [currentPage, setCurrentPage] = useState(1)
   
   useEffect(() => {
     if (visible) {
       loadDependencyTree()
     } else {
-      // 重置状态
+      // Reset state
       setSearchText('')
       setExpandedKeys([])
       setCurrentPage(1)
@@ -55,7 +57,7 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
       
       setTreeData(result)
       
-      // 收集所有 key 用于展开
+      // Collect every key so the tree can expand fully
       const keys = collectAllKeys(result)
       setAllKeys(keys)
     } catch (error) {
@@ -120,7 +122,7 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
               {name}
             </Tag>
             <Text type="secondary">v{depInfo.version}</Text>
-            <Tooltip title="查看包详情">
+            <Tooltip title={t('package.viewPackageDetail')}>
               <Button 
                 type="link" 
                 size="small" 
@@ -193,7 +195,7 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
   const treeNodes = treeData ? convertToAntdTree(treeData) : []
   const filteredTree = filterTreeData(treeNodes, searchText, searchMode)
   
-  // 分页处理
+  // Pagination
   const totalPackages = filteredTree.length
   const showPagination = pageSize > 0 && totalPackages > pageSize
   const startIndex = showPagination ? (currentPage - 1) * pageSize : 0
@@ -215,9 +217,9 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
     <Modal
       title={
         <Space>
-          {type === 'project' && <><FolderOutlined /> 项目依赖树</>}
-          {type === 'global' && <><GlobalOutlined /> 全局依赖树</>}
-          {type === 'package' && <><ApartmentOutlined /> {packageName} 依赖树</>}
+          {type === 'project' && <><FolderOutlined /> {t('package.projectTree')}</>}
+          {type === 'global' && <><GlobalOutlined /> {t('package.globalTree')}</>}
+          {type === 'package' && <><ApartmentOutlined /> {t('package.packageTree', { name: packageName ?? '' })}</>}
         </Space>
       }
       open={visible}
@@ -230,15 +232,15 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
           <>
             <Card size="small" style={{ marginBottom: 16 }}>
               <Space separator={<span style={{ color: '#999' }}>|</span>}>
-                <span>直接依赖: <Tag color="blue">{totalPackages}</Tag></span>
-                <span>全部依赖: <Tag color="green">{totalDeps}</Tag></span>
+                <span>{t('package.directDependencies')} <Tag color="blue">{totalPackages}</Tag></span>
+                <span>{t('package.allDependencies')} <Tag color="green">{totalDeps}</Tag></span>
               </Space>
             </Card>
             
             <Space style={{ marginBottom: 16, width: '100%' }} orientation="vertical">
               <Space wrap>
                 <Search
-                  placeholder={searchMode === 'exact' ? '精确搜索包名...' : '模糊搜索包名...'}
+                  placeholder={searchMode === 'exact' ? t('package.exactSearchPlaceholder') : t('package.fuzzySearchPlaceholder')}
                   value={searchText}
                   onChange={(e) => {
                     setSearchText(e.target.value)
@@ -252,20 +254,20 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
                   onChange={setSearchMode}
                   style={{ width: 120 }}
                   options={[
-                    { value: 'fuzzy', label: '模糊匹配' },
-                    { value: 'exact', label: '精确匹配' }
+                    { value: 'fuzzy', label: t('package.fuzzyMatch') },
+                    { value: 'exact', label: t('package.exactMatch') }
                   ]}
                 />
                 <Button icon={<ExpandOutlined />} onClick={handleExpandAll}>
-                  全部展开
+                  {t('common.expandAll')}
                 </Button>
                 <Button icon={<CompressOutlined />} onClick={handleCollapseAll}>
-                  全部折叠
+                  {t('common.collapseAll')}
                 </Button>
               </Space>
               
               <Space>
-                <Text type="secondary">分页:</Text>
+                <Text type="secondary">{t('package.pagination')}</Text>
                 <Select 
                   value={pageSize} 
                   onChange={(val) => {
@@ -274,15 +276,15 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
                   }}
                   style={{ width: 150 }}
                   options={[
-                    { value: 0, label: '显示全部' },
-                    { value: 20, label: '每页20条' },
-                    { value: 50, label: '每页50条' },
-                    { value: 100, label: '每页100条' }
+                    { value: 0, label: t('package.showAll') },
+                    { value: 20, label: t('package.perPage', { count: 20 }) },
+                    { value: 50, label: t('package.perPage', { count: 50 }) },
+                    { value: 100, label: t('package.perPage', { count: 100 }) }
                   ]}
                 />
                 {showPagination && (
                   <Text type="secondary">
-                    显示 {startIndex + 1}-{Math.min(endIndex, totalPackages)} / 共 {totalPackages} 条
+                    {t('package.showingRange', { from: startIndex + 1, to: Math.min(endIndex, totalPackages), total: totalPackages })}
                   </Text>
                 )}
               </Space>
@@ -315,14 +317,12 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
                 )}
               </>
             ) : (
-              <Empty description={searchText ? "没有找到匹配的依赖" : "暂无依赖数据"} />
+              <Empty description={searchText ? t('package.noMatchingDeps') : t('package.noTreeData')} />
             )}
           </>
         )}
         
-        {!treeData && !loading && (
-          <Empty description="暂无依赖数据" />
-        )}
+        {!treeData && !loading && <Empty description={t('package.noTreeData')} />}
       </Spin>
     </Modal>
   )

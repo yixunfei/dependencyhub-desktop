@@ -1,0 +1,70 @@
+/**
+ * Canonical workspace kinds produced by `WorkspaceDiscoveryService`.
+ *
+ * This union used to be duplicated by hand: the Electron service declared all of
+ * its members while the renderer's ambient declaration in `src/types/global.d.ts`
+ * carried a stale subset. The renderer silently lost 22 kinds (the Systems and
+ * Runtime ecosystems plus the Kustomize/Helmfile/Skaffold/Argo CD/Flux cloud
+ * kinds), so narrowing on those values was impossible in the UI.
+ *
+ * Both `tsconfig.json` and `tsconfig.electron.json` include `shared/`, so this is
+ * the single source of truth. Do not redeclare the union anywhere else.
+ */
+export type WorkspaceKind =
+  | 'root'
+  | 'npm-workspace'
+  | 'pnpm-workspace'
+  | 'yarn-workspace'
+  | 'cargo-member'
+  | 'maven-module'
+  | 'gradle-project'
+  | 'sbt-project'
+  | 'leiningen-project'
+  | 'mix-project'
+  | 'rebar3-project'
+  | 'cabal-project'
+  | 'stack-project'
+  | 'renv-project'
+  | 'julia-project'
+  | 'terraform-project'
+  | 'ansible-project'
+  | 'automation-project'
+  | 'bazel-workspace'
+  | 'pants-project'
+  | 'buck-project'
+  | 'opam-project'
+  | 'cpan-project'
+  | 'luarocks-project'
+  | 'shards-project'
+  | 'zig-project'
+  | 'homebrew-bundle'
+  | 'chocolatey-packages'
+  | 'scoop-packages'
+  | 'winget-packages'
+  | 'runtime-tool-versions'
+  | 'mise-project'
+  | 'sdkman-project'
+  | 'apt-packages'
+  | 'rpm-packages'
+  | 'apk-packages'
+  | 'pacman-packages'
+  | 'nix-project'
+  | 'go-work-module'
+  | 'poetry-package'
+  | 'python-package'
+  | 'flutter-package'
+  | 'native-project'
+  | 'deno-project'
+  | 'nuget-project'
+  | 'composer-package'
+  | 'ruby-package'
+  | 'swiftpm-package'
+  | 'cocoapods-project'
+  | 'helm-chart'
+  | 'docker-compose-project'
+  | 'ai-project'
+  | 'kustomize-project'
+  | 'helmfile-project'
+  | 'skaffold-project'
+  | 'argocd-project'
+  | 'flux-project'

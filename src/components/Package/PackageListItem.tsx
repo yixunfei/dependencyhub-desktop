@@ -6,6 +6,7 @@ import {
   WarningOutlined
 } from '@ant-design/icons'
 import { PackageInfo } from '../../stores/packageStore'
+import { useT } from '../../i18n'
 import styles from './PackageListItem.module.css'
 
 interface PackageListItemProps {
@@ -21,48 +22,49 @@ export const PackageListItem: React.FC<PackageListItemProps> = ({
   onUninstall,
   showType = false
 }) => {
+  const t = useT()
   return (
     <div className={styles.item}>
       <div className={styles.info}>
         <div className={styles.nameRow}>
           <span className={styles.name}>{pkg.name}</span>
           {pkg.outdated && (
-            <Tooltip title="有新版本可用">
+            <Tooltip title={t('package.updateAvailable')}>
               <WarningOutlined className={styles.warning} />
             </Tooltip>
           )}
           {showType && pkg.type && (
             <Tag color={pkg.type === 'dependencies' ? 'green' : 'orange'}>
-              {pkg.type === 'dependencies' ? '生产依赖' : '开发依赖'}
+              {pkg.type === 'dependencies' ? t('package.prodDependency') : t('package.devDependency')}
             </Tag>
           )}
         </div>
         <div className={styles.versionRow}>
-          <span className={styles.version}>当前: v{pkg.version}</span>
+          <span className={styles.version}>{t('package.currentVersionShort', { version: pkg.version })}</span>
           {pkg.latest && pkg.latest !== pkg.version && (
-            <span className={styles.latest}>最新: v{pkg.latest}</span>
+            <span className={styles.latest}>{t('package.latestVersionShort', { version: pkg.latest })}</span>
           )}
         </div>
       </div>
       
       <Space className={styles.actions}>
         {pkg.outdated && (
-          <Tooltip title="更新到最新版本">
+          <Tooltip title={t('package.updateToLatest')}>
             <Button
               type="default"
               size="small"
               icon={<SyncOutlined />}
               onClick={() => onUpdate(pkg.name)}
             >
-              更新
+              {t('common.update')}
             </Button>
           </Tooltip>
         )}
         <Popconfirm
-          title="确认卸载此包吗？"
+          title={t('package.confirmUninstall')}
           onConfirm={() => onUninstall(pkg.name)}
-          okText="确认"
-          cancelText="取消"
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
         >
           <Button
             type="text"
@@ -70,7 +72,7 @@ export const PackageListItem: React.FC<PackageListItemProps> = ({
             size="small"
             icon={<DeleteOutlined />}
           >
-            卸载
+            {t('package.uninstall')}
           </Button>
         </Popconfirm>
       </Space>

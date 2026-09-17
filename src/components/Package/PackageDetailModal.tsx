@@ -5,6 +5,8 @@ import {
   FileTextOutlined, ApartmentOutlined, DownloadOutlined,
   CheckCircleOutlined
 } from '@ant-design/icons'
+import { useT } from '../../i18n'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 const { Panel } = Collapse
 const { Text } = Typography
@@ -37,6 +39,8 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
   onClose,
   onInstall
 }) => {
+  const t = useT()
+  const language = useSettingsStore((state) => state.language)
   const [loading, setLoading] = useState(false)
   const [packageInfo, setPackageInfo] = useState<PackageInfo | null>(null)
   const [sizeInfo, setSizeInfo] = useState<any>(null)
@@ -95,7 +99,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
   
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-'
-    return new Date(dateStr).toLocaleDateString('zh-CN', {
+    return new Date(dateStr).toLocaleDateString(language, {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -120,7 +124,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
   const TabItems = [
     {
       key: 'info',
-      label: '基本信息',
+      label: t('package.tabInfo'),
       icon: <InfoCircleOutlined />,
       children: (
         <Spin spinning={loading}>
@@ -128,8 +132,8 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
             <Col span={12}>
               <Card size="small">
                 <Statistic
-                  title="安装大小"
-                  value={sizeInfo?.prettySize || '未知'}
+                  title={t('package.installSize')}
+                  value={sizeInfo?.prettySize || t('common.unknown')}
                   prefix={<DownloadOutlined />}
                 />
               </Card>
@@ -137,9 +141,9 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
             <Col span={12}>
               <Card size="small">
                 <Statistic
-                  title="文件数量"
+                  title={t('package.fileCount')}
                   value={sizeInfo?.fileCount || 0}
-                  suffix="个文件"
+                  suffix={t('package.filesSuffix')}
                 />
               </Card>
             </Col>
@@ -149,7 +153,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
             <Col span={12}>
               <Card size="small">
                 <Statistic
-                  title="周下载量"
+                  title={t('package.weeklyDownloads')}
                   value={downloads?.downloads || 0}
                   prefix={<CloudDownloadOutlined />}
                 />
@@ -158,44 +162,44 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
             <Col span={12}>
               <Card size="small">
                 <Statistic
-                  title="被依赖次数"
+                  title={t('package.dependentCount')}
                   value={dependents}
-                  suffix="个项目"
+                  suffix={t('package.projectsSuffix')}
                 />
               </Card>
             </Col>
           </Row>
           
           <Descriptions bordered column={1} style={{ marginTop: 16 }} size="small">
-            <Descriptions.Item label="包名">{packageInfo?.name}</Descriptions.Item>
-            <Descriptions.Item label="当前版本">
+            <Descriptions.Item label={t('package.columnName')}>{packageInfo?.name}</Descriptions.Item>
+            <Descriptions.Item label={t('package.columnCurrentVersion')}>
               <Space>
                 <Tag color="blue">v{packageInfo?.version}</Tag>
                 <Text type="secondary">
-                  发布于 {formatDate(packageInfo?.time?.[packageInfo?.version || ''] || '')}
+                  {t('package.publishedAt', { date: formatDate(packageInfo?.time?.[packageInfo?.version || ''] || '') })}
                 </Text>
               </Space>
             </Descriptions.Item>
-            <Descriptions.Item label="描述">
-              {packageInfo?.description || '暂无描述'}
+            <Descriptions.Item label={t('package.descriptionLabel')}>
+              {packageInfo?.description || t('common.noDescription')}
             </Descriptions.Item>
-            <Descriptions.Item label="作者">
+            <Descriptions.Item label={t('package.authorLabel')}>
               {typeof packageInfo?.author === 'string' 
                 ? packageInfo.author 
-                : packageInfo?.author?.name || '未知'}
+                : packageInfo?.author?.name || t('common.unknown')}
             </Descriptions.Item>
-            <Descriptions.Item label="许可证">
-              <Tag>{packageInfo?.license || '未知'}</Tag>
+            <Descriptions.Item label={t('package.licenseLabel')}>
+              <Tag>{packageInfo?.license || t('common.unknown')}</Tag>
             </Descriptions.Item>
             {packageInfo?.homepage && (
-              <Descriptions.Item label="主页">
+              <Descriptions.Item label={t('package.homepageLabel')}>
                 <a onClick={() => window.electronAPI.openExternal(packageInfo.homepage!)}>
                   {packageInfo.homepage}
                 </a>
               </Descriptions.Item>
             )}
             {packageInfo?.repository && (
-              <Descriptions.Item label="仓库">
+              <Descriptions.Item label={t('package.repositoryLabel')}>
                 <a onClick={() => {
                   const url = typeof packageInfo.repository === 'string' 
                     ? packageInfo.repository 
@@ -209,7 +213,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
               </Descriptions.Item>
             )}
             {packageInfo?.keywords && packageInfo.keywords.length > 0 && (
-              <Descriptions.Item label="关键词">
+              <Descriptions.Item label={t('package.keywordsLabel')}>
                 <Space wrap>
                   {packageInfo.keywords.map((keyword) => (
                     <Tag key={keyword}>{keyword}</Tag>
@@ -217,7 +221,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
                 </Space>
               </Descriptions.Item>
             )}
-            <Descriptions.Item label="维护者">
+            <Descriptions.Item label={t('package.maintainersLabel')}>
               <Space wrap>
                 {packageInfo?.maintainers?.map((m, index) => (
                   <Tag key={index} color="green">{m.name || m}</Tag>
@@ -226,19 +230,19 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
             </Descriptions.Item>
           </Descriptions>
           
-          {renderDependencies(packageInfo?.dependencies, '运行时依赖')}
-          {renderDependencies(packageInfo?.devDependencies, '开发依赖')}
+          {renderDependencies(packageInfo?.dependencies, t('package.runtimeDependencies'))}
+          {renderDependencies(packageInfo?.devDependencies, t('package.devDependenciesLabel'))}
         </Spin>
       )
     },
     {
       key: 'versions',
-      label: '版本历史',
+      label: t('package.tabVersionHistory'),
       icon: <FileTextOutlined />,
       children: (
         <Spin spinning={loading}>
           <div style={{ marginBottom: 16 }}>
-            <Text>共 {versions.length} 个版本</Text>
+            <Text>{t('package.totalVersions', { count: versions.length })}</Text>
           </div>
           <Collapse accordion>
             {versions.slice(0, 20).map((version) => (
@@ -258,16 +262,16 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
                 key={version}
               >
                 <Space orientation="vertical" style={{ width: '100%' }}>
-                  <Text>版本: {version}</Text>
+                  <Text>{t('package.versionLabel', { version })}</Text>
                   <Text type="secondary">
-                    发布时间: {formatDate(packageInfo?.time?.[version] || '')}
+                    {t('package.publishedAtLabel', { date: formatDate(packageInfo?.time?.[version] || '') })}
                   </Text>
                   <Button 
                     type="primary" 
                     size="small"
                     onClick={() => onInstall?.(version)}
                   >
-                    安装此版本
+                    {t('package.installThisVersion')}
                   </Button>
                 </Space>
               </Panel>
@@ -278,14 +282,14 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
     },
     {
       key: 'dependencies',
-      label: '依赖树',
+      label: t('package.tabDependencyTree'),
       icon: <ApartmentOutlined />,
       children: (
         <Spin spinning={loading}>
           {dependencyTree?.dependencies?.length > 0 ? (
             <>
               <Alert
-                title={`此包有 ${dependencyTree.dependencies.length} 个直接依赖`}
+                title={t('package.directDependencyCount', { count: dependencyTree.dependencies.length })}
                 type="info"
                 showIcon
                 style={{ marginBottom: 16 }}
@@ -298,7 +302,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
             </>
           ) : (
             <Alert
-              title="此包没有运行时依赖"
+              title={t('package.noRuntimeDependencies')}
               type="success"
               showIcon
               icon={<CheckCircleOutlined />}
@@ -345,12 +349,9 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
       onCancel={onClose}
       footer={
         <Space>
-          <Button onClick={onClose}>关闭</Button>
-          <Button 
-            type="primary" 
-            onClick={() => onInstall?.()}
-          >
-            安装最新版
+          <Button onClick={onClose}>{t('common.close')}</Button>
+          <Button type="primary" onClick={() => onInstall?.()}>
+            {t('package.installLatest')}
           </Button>
         </Space>
       }

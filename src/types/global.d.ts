@@ -12,6 +12,7 @@ import type {
   ManagerSearchQuery,
   ManagerSearchResult
 } from '../../shared/managerWorkspace'
+import type { WorkspaceKind as SharedWorkspaceKind } from '../../shared/workspaceKinds'
 
 declare global {
   interface Window {
@@ -4309,42 +4310,9 @@ declare global {
     summary: PolicyAsCodeSummary
   }
 
-  type WorkspaceKind =
-    | 'root'
-    | 'npm-workspace'
-    | 'pnpm-workspace'
-    | 'yarn-workspace'
-    | 'cargo-member'
-    | 'maven-module'
-    | 'gradle-project'
-    | 'sbt-project'
-    | 'leiningen-project'
-    | 'mix-project'
-    | 'rebar3-project'
-    | 'cabal-project'
-    | 'stack-project'
-    | 'renv-project'
-    | 'julia-project'
-    | 'terraform-project'
-    | 'ansible-project'
-    | 'automation-project'
-    | 'bazel-workspace'
-    | 'pants-project'
-    | 'buck-project'
-    | 'go-work-module'
-    | 'poetry-package'
-    | 'python-package'
-    | 'flutter-package'
-    | 'native-project'
-    | 'deno-project'
-    | 'nuget-project'
-    | 'composer-package'
-    | 'ruby-package'
-    | 'swiftpm-package'
-    | 'cocoapods-project'
-    | 'helm-chart'
-    | 'docker-compose-project'
-    | 'ai-project'
+  // Single source of truth: shared/workspaceKinds.ts. This union used to be
+  // hand-duplicated here and had fallen 22 kinds behind the discovery service.
+  type WorkspaceKind = SharedWorkspaceKind
 
   interface WorkspaceNode {
     id: string

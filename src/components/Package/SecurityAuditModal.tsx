@@ -5,6 +5,7 @@ import {
   SecurityScanOutlined, InfoCircleOutlined
 } from '@ant-design/icons'
 import { localizedMessage as message } from '../../utils/localizedFeedback'
+import { useT, type TranslationKey } from '../../i18n'
 
 const { Text, Title, Paragraph } = Typography
 
@@ -49,6 +50,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   scope = 'project',
   onClose
 }) => {
+  const t = useT()
   const [loading, setLoading] = useState(false)
   const [auditResult, setAuditResult] = useState<any>(null)
   const [fixing, setFixing] = useState(false)
@@ -72,7 +74,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
         message.warning(result.error)
       }
     } catch (error: any) {
-      message.error(error.message || '安全审计失败')
+      message.error(error.message || t('security.auditFailed'))
     } finally {
       setLoading(false)
     }
@@ -80,17 +82,17 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   
   const handleFix = async () => {
     if (isGlobal) {
-      message.info('npm 不支持可靠的全局 audit fix，请在对应项目中修复依赖版本')
+      message.info(t('security.globalFixUnsupported'))
       return
     }
 
     setFixing(true)
     try {
       const output = await window.electronAPI.npm.auditFix(projectPath)
-      message.success(output ? '自动修复命令已执行，请查看终端日志确认结果' : '自动修复完成')
+      message.success(output ? t('security.fixCommandRun') : t('security.fixComplete'))
       await runAudit()
     } catch (error: any) {
-      message.error(error.message || '自动修复失败')
+      message.error(error.message || t('security.fixFailed'))
     } finally {
       setFixing(false)
     }
@@ -109,7 +111,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   
   const vulnerabilities: Vulnerability[] = auditResult?.vulnerabilities
     ? Object.entries(auditResult.vulnerabilities).map(([name, data]: [string, any]) => {
-        const advisories = normalizeAdvisories(data.via)
+        const advisories = normalizeAdvisories(data.via, t)
         const fixAvailable = typeof data.fixAvailable === 'object' ? data.fixAvailable : null
         const firstAdvisory = advisories[0]
         return {
@@ -117,7 +119,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
           severity: data.severity,
           version: data.version || data.range || '-',
           via: advisories.map((item) => item.title).join(', ') || stringifyVia(data.via),
-          description: firstAdvisory?.title || data.title || '该依赖存在已知安全风险，建议查看详情并升级到修复版本。',
+          description: firstAdvisory?.title || data.title || t('security.knownRisk'),
           range: data.range || firstAdvisory?.range,
           nodes: data.nodes || [],
           effects: data.effects || [],
@@ -137,14 +139,14 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   
   const columns = [
     {
-      title: '包名',
+      title: t('package.columnName'),
       dataIndex: 'name',
       key: 'name',
       width: 150,
       render: (text: string) => <Tag color="blue">{text}</Tag>
     },
     {
-      title: '严重程度',
+      title: t('health.columnSeverity'),
       dataIndex: 'severity',
       key: 'severity',
       width: 120,
@@ -159,43 +161,43 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
       )
     },
     {
-      title: '影响范围',
+      title: t('security.columnRange'),
       dataIndex: 'version',
       key: 'version',
       width: 130
     },
     {
-      title: '问题说明',
+      title: t('security.columnDescription'),
       dataIndex: 'description',
       key: 'description',
       ellipsis: true
     },
     {
-      title: '修复',
+      title: t('security.columnFix'),
       key: 'fix',
       width: 170,
       render: (_: any, record: Vulnerability) => (
         record.fixAvailable ? (
           <Tag color={record.isSemverMajor ? 'orange' : 'green'} icon={<CheckCircleOutlined />}>
-            {record.fixVersion ? `可修复到 v${record.fixVersion}` : '可修复'}
+            {record.fixVersion ? t('security.fixableTo', { version: record.fixVersion }) : t('security.fixable')}
           </Tag>
         ) : (
-          <Tag color="red">暂无自动修复</Tag>
+          <Tag color="red">{t('security.noAutomaticFix')}</Tag>
         )
       )
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'action',
       width: 170,
       render: (_: any, record: Vulnerability) => (
         <Space>
           <Button size="small" icon={<InfoCircleOutlined />} onClick={() => setSelectedIssue(record)}>
-            详情
+            {t('security.details')}
           </Button>
           {record.url && (
             <Button size="small" type="link" onClick={() => window.electronAPI.openExternal(record.url!)}>
-              公告
+              {t('security.advisory')}
             </Button>
           )}
         </Space>
@@ -209,21 +211,17 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
         title={
           <Space>
             <SecurityScanOutlined />
-            {isGlobal ? '全局依赖安全审计' : '项目安全审计'}
+            {isGlobal ? t('security.globalAuditTitle') : t('security.projectAuditTitle')}
           </Space>
         }
         open={visible}
         onCancel={onClose}
         footer={
           <Space>
-            <Button onClick={onClose}>关闭</Button>
-            <Button onClick={runAudit} loading={loading}>
-              重新扫描
-            </Button>
+            <Button onClick={onClose}>{t('common.close')}</Button>
+            <Button onClick={runAudit} loading={loading}>{t('security.rescan')}</Button>
             {totalVulnerabilities > 0 && (
-              <Button type="primary" onClick={handleFix} loading={fixing} disabled={isGlobal}>
-                自动修复
-              </Button>
+              <Button type="primary" onClick={handleFix} loading={fixing} disabled={isGlobal}>{t('security.autoFix')}</Button>
             )}
           </Space>
         }
@@ -238,7 +236,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
                     <Title level={2} style={{ margin: 0, color: '#52c41a' }}>
                       {metadata.vulnerabilities?.info || 0}
                     </Title>
-                    <Text type="secondary">信息</Text>
+                    <Text type="secondary">{t('security.severityInfo')}</Text>
                   </div>
                 </Card>
               </Col>
@@ -248,7 +246,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
                     <Title level={2} style={{ margin: 0, color: '#faad14' }}>
                       {metadata.vulnerabilities?.low || 0}
                     </Title>
-                    <Text type="secondary">低危</Text>
+                    <Text type="secondary">{t('security.severityLow')}</Text>
                   </div>
                 </Card>
               </Col>
@@ -258,7 +256,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
                     <Title level={2} style={{ margin: 0, color: '#fa8c16' }}>
                       {metadata.vulnerabilities?.moderate || 0}
                     </Title>
-                    <Text type="secondary">中危</Text>
+                    <Text type="secondary">{t('security.severityModerate')}</Text>
                   </div>
                 </Card>
               </Col>
@@ -268,7 +266,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
                     <Title level={2} style={{ margin: 0, color: '#f5222d' }}>
                       {(metadata.vulnerabilities?.high || 0) + (metadata.vulnerabilities?.critical || 0)}
                     </Title>
-                    <Text type="secondary">高/严重</Text>
+                    <Text type="secondary">{t('security.severityHigh')}</Text>
                   </div>
                 </Card>
               </Col>
@@ -277,8 +275,8 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
 
           {totalVulnerabilities === 0 ? (
             <Alert
-              title="未发现安全漏洞"
-              description={isGlobal ? '当前全局依赖没有返回已知安全漏洞' : '您的项目依赖没有已知的安全漏洞'}
+              title={t('security.noVulnerabilities')}
+              description={isGlobal ? t('security.noVulnerabilitiesGlobal') : t('security.noVulnerabilitiesProject')}
               type="success"
               showIcon
               icon={<CheckCircleOutlined />}
@@ -286,8 +284,8 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
           ) : (
             <>
               <Alert
-                title={`发现 ${totalVulnerabilities} 个安全漏洞`}
-                description={isGlobal ? '全局审计结果依赖 npm 当前版本支持情况；建议优先在具体项目中修复依赖。' : '建议先查看详情，再执行自动修复或手动升级关键依赖。'}
+                title={t('security.vulnerabilitiesFound', { count: totalVulnerabilities })}
+                description={isGlobal ? t('security.globalAuditHint') : t('security.projectAuditHint')}
                 type="warning"
                 showIcon
                 icon={<WarningOutlined />}
@@ -306,42 +304,42 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
       </Modal>
 
       <Modal
-        title="安全问题详情"
+        title={t('security.detailTitle')}
         open={!!selectedIssue}
         onCancel={() => setSelectedIssue(null)}
-        footer={<Button onClick={() => setSelectedIssue(null)}>关闭</Button>}
+        footer={<Button onClick={() => setSelectedIssue(null)}>{t('common.close')}</Button>}
         width={760}
       >
         {selectedIssue && (
           <Space orientation="vertical" style={{ width: '100%' }} size={16}>
             <Descriptions bordered column={1} size="small">
-              <Descriptions.Item label="包名">{selectedIssue.name}</Descriptions.Item>
-              <Descriptions.Item label="严重程度">
+              <Descriptions.Item label={t('package.columnName')}>{selectedIssue.name}</Descriptions.Item>
+              <Descriptions.Item label={t('health.columnSeverity')}>
                 <Tag color={getSeverityColor(selectedIssue.severity)}>{selectedIssue.severity.toUpperCase()}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="影响范围">{selectedIssue.range || selectedIssue.version || '-'}</Descriptions.Item>
-              <Descriptions.Item label="影响路径">
+              <Descriptions.Item label={t('security.columnRange')}>{selectedIssue.range || selectedIssue.version || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('security.columnAffectedPath')}>
                 {selectedIssue.nodes?.length ? selectedIssue.nodes.join(', ') : '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="影响依赖">
+              <Descriptions.Item label={t('security.columnAffectedDependency')}>
                 {selectedIssue.effects?.length ? selectedIssue.effects.join(', ') : '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="自动修复">
+              <Descriptions.Item label={t('security.autoFix')}>
                 {selectedIssue.fixAvailable
-                  ? `${selectedIssue.fixVersion ? `升级到 ${selectedIssue.fixVersion}` : '可修复'}${selectedIssue.isSemverMajor ? '（可能包含破坏性变更）' : ''}`
-                  : '暂无自动修复方案'}
+                  ? `${selectedIssue.fixVersion ? t('security.upgradeTo', { version: selectedIssue.fixVersion }) : t('security.fixable')}${selectedIssue.isSemverMajor ? t('security.mayIncludeBreakingChanges') : ''}`
+                  : t('security.noAutomaticFixPlan')}
               </Descriptions.Item>
             </Descriptions>
             {selectedIssue.advisories.map((advisory, index) => (
-              <Card key={`${advisory.title}-${index}`} size="small" title={advisory.title || '安全公告'}>
+              <Card key={`${advisory.title}-${index}`} size="small" title={advisory.title || t('security.securityAdvisory')}>
                 <Paragraph>
-                  影响范围: {advisory.range || selectedIssue.range || '-'}
+                  {t('security.affectedRangeLabel', { range: advisory.range || selectedIssue.range || '-' })}
                 </Paragraph>
                 {advisory.cwe?.length ? <Paragraph>CWE: {advisory.cwe.join(', ')}</Paragraph> : null}
                 {advisory.cvss?.score ? <Paragraph>CVSS: {advisory.cvss.score}</Paragraph> : null}
                 {advisory.url ? (
                   <Button size="small" type="link" onClick={() => window.electronAPI.openExternal(advisory.url!)}>
-                    查看公告原文
+                    {t('security.viewAdvisory')}
                   </Button>
                 ) : null}
               </Card>
@@ -353,12 +351,12 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   )
 }
 
-function normalizeAdvisories(via: any): AuditAdvisory[] {
+function normalizeAdvisories(via: any, t: (key: TranslationKey) => string): AuditAdvisory[] {
   if (!Array.isArray(via)) return []
   return via
     .filter((item) => typeof item === 'object' && item !== null)
     .map((item) => ({
-      title: item.title || item.name || '安全问题',
+      title: item.title || item.name || t('security.securityIssue'),
       severity: item.severity,
       range: item.range,
       url: item.url,

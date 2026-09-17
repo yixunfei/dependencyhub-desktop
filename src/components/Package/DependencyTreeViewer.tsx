@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Button, Empty, Input, Modal, Space, Tag, Tree, Typography } from 'antd'
 import { CompressOutlined, EditOutlined, ExpandOutlined, SearchOutlined } from '@ant-design/icons'
+import { useT } from '../../i18n'
 
 const { Text } = Typography
 
@@ -29,11 +30,12 @@ export const DependencyTreeViewer: React.FC<DependencyTreeViewerProps> = ({
   canNodeAction,
   onNodeAction
 }) => {
+  const t = useT()
   const [searchText, setSearchText] = useState('')
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
 
   const roots = useMemo(() => normalizeRoots(data), [data])
-  const treeData = useMemo(() => convertTree(roots, 'root', actionLabel, onNodeAction, canNodeAction), [roots, actionLabel, onNodeAction, canNodeAction])
+  const treeData = useMemo(() => convertTree(roots, 'root', actionLabel || t('common.modify'), onNodeAction, canNodeAction), [roots, actionLabel, onNodeAction, canNodeAction, t])
   const allKeys = useMemo(() => collectKeys(treeData), [treeData])
   const filteredTree = useMemo(() => filterTree(treeData, searchText), [treeData, searchText])
   const totalCount = useMemo(() => countNodes(roots), [roots])
@@ -57,21 +59,21 @@ export const DependencyTreeViewer: React.FC<DependencyTreeViewerProps> = ({
       width={960}
     >
       {roots.length === 0 ? (
-        <Empty description="暂无依赖树数据" />
+        <Empty description={t('package.noTreeData')} />
       ) : (
         <>
           <Space wrap style={{ marginBottom: 16 }}>
             <Input
               allowClear
               prefix={<SearchOutlined />}
-              placeholder="搜索包名"
+              placeholder={t('package.searchPackageName')}
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
               style={{ width: 260 }}
             />
-            <Button icon={<ExpandOutlined />} onClick={handleExpandAll}>全部展开</Button>
-            <Button icon={<CompressOutlined />} onClick={handleCollapseAll}>全部折叠</Button>
-            <Text type="secondary">总节点: {totalCount}</Text>
+            <Button icon={<ExpandOutlined />} onClick={handleExpandAll}>{t('common.expandAll')}</Button>
+            <Button icon={<CompressOutlined />} onClick={handleCollapseAll}>{t('common.collapseAll')}</Button>
+            <Text type="secondary">{t('package.totalNodes', { count: totalCount })}</Text>
           </Space>
           <div style={{ maxHeight: 560, overflow: 'auto', border: '1px solid var(--border-color, #3c3c3c)', borderRadius: 8, padding: 12 }}>
             {filteredTree.length > 0 ? (
@@ -83,7 +85,7 @@ export const DependencyTreeViewer: React.FC<DependencyTreeViewerProps> = ({
                 showLine
               />
             ) : (
-              <Empty description="没有找到匹配的依赖" />
+              <Empty description={t('package.noMatchingDeps')} />
             )}
           </div>
         </>
@@ -124,7 +126,7 @@ function convertTree(
                 onNodeAction(node)
               }}
             >
-              {actionLabel || '修改'}
+              {actionLabel}
             </Button>
           )}
         </Space>

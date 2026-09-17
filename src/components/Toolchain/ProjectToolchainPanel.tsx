@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, Input, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { DeleteOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { TOOL_LABELS, TOOL_ORDER, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
+import { useT } from '../../i18n'
 
 const { Text } = Typography
 
@@ -20,6 +21,7 @@ interface ProjectToolchainPanelProps {
 }
 
 const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPath, compact = false }) => {
+  const t = useT()
   const [statuses, setStatuses] = useState<ToolStatus[]>([])
   const [paths, setPaths] = useState<Record<ToolName, string>>(emptyPaths)
   const [loading, setLoading] = useState(false)
@@ -83,7 +85,7 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
       <Alert
         type="info"
         showIcon
-        title="选择项目目录后可为该项目单独绑定跨语言工具链版本"
+        title={t('toolchain.projectSelectHint')}
       />
     )
   }
@@ -91,13 +93,11 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
   return (
     <Card
       size="small"
-      title="项目工具版本"
-      extra={<Button size="small" icon={<ReloadOutlined />} onClick={loadProjectToolchain} loading={loading}>检测</Button>}
+      title={t('toolchain.projectTitle')}
+      extra={<Button size="small" icon={<ReloadOutlined />} onClick={loadProjectToolchain} loading={loading}>{t('toolchain.detect')}</Button>}
       style={{ marginBottom: compact ? 12 : 16 }}
     >
-      <Text type="secondary">
-        这里保存的是当前项目的工具版本覆盖。留空时使用全局配置或系统 PATH。
-      </Text>
+      <Text type="secondary">{t('toolchain.projectOverrideHint')}</Text>
       <Table
         style={{ marginTop: 12 }}
         dataSource={TOOL_ORDER.map((tool) => ({ tool }))}
@@ -107,14 +107,14 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
         scroll={{ x: 980 }}
         columns={[
           {
-            title: '工具',
+            title: t('common.tool'),
             dataIndex: 'tool',
             key: 'tool',
             width: 130,
             render: (tool: ToolName) => TOOL_LABELS[tool]
           },
           {
-            title: '项目绑定路径',
+            title: t('toolchain.projectBoundPath'),
             key: 'path',
             width: 360,
             render: (_: any, record: { tool: ToolName }) => (
@@ -126,39 +126,39 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
             )
           },
           {
-            title: '有效版本',
+            title: t('toolchain.effectiveVersion'),
             key: 'status',
             width: 260,
             render: (_: any, record: { tool: ToolName }) => {
               const status = statusMap[record.tool]
               if (!status) return '-'
               return status.available ? (
-                <Tooltip title={status.configuredPath || '系统 PATH'}>
+                <Tooltip title={status.configuredPath || t('common.systemPath')}>
                   <Tag color="green" style={{ maxWidth: 230, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle' }}>
-                    {status.version || '可用'}
+                    {status.version || t('common.available')}
                   </Tag>
                 </Tooltip>
               ) : (
                 <Tooltip title={status.message}>
-                  <Tag color="red">不可用</Tag>
+                  <Tag color="red">{t('common.unavailable')}</Tag>
                 </Tooltip>
               )
             }
           },
           {
-            title: '操作',
+            title: t('common.actions'),
             key: 'action',
             width: 250,
             render: (_: any, record: { tool: ToolName }) => (
               <Space>
                 <Button size="small" icon={<FolderOpenOutlined />} onClick={() => chooseDirectory(record.tool)} loading={loading}>
-                  选择
+                  {t('common.select')}
                 </Button>
                 <Button size="small" icon={<SaveOutlined />} onClick={() => savePath(record.tool)} loading={loading}>
-                  保存
+                  {t('common.save')}
                 </Button>
                 <Button size="small" danger icon={<DeleteOutlined />} onClick={() => clearPath(record.tool)} loading={loading}>
-                  清除
+                  {t('common.clear')}
                 </Button>
               </Space>
             )
