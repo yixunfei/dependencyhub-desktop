@@ -802,6 +802,9 @@ export type FuturePackageManagerId =
   | 'apk'
   | 'pacman'
   | 'nix'
+  | 'mcp'
+  | 'skills'
+  | 'ai-agents'
 export type DependencyManagerId = PackageManagerId | FuturePackageManagerId
 export type DependencyHealthManager = PackageManagerId
 export type DependencyHealthSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info'

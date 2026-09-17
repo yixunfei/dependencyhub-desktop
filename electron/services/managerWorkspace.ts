@@ -21,6 +21,7 @@ import { createPlatformManagerAdapters } from '../managers/groups/platform/platf
 import { createInfraManagerAdapters } from '../managers/groups/infra/infraAdapters'
 import { createNodeManagerAdapters } from '../managers/groups/node/nodeAdapters'
 import { createPythonManagerAdapters } from '../managers/groups/python/pythonAdapters'
+import { createAiManagerAdapters } from '../managers/groups/ai/aiAdapters'
 import { createLegacyManagerAdapters } from '../managers/legacyAdapter'
 import { MANAGER_DEFINITIONS } from '../../shared/managerRegistry'
 import { ExtendedManagerService } from './extendedManager'
@@ -49,6 +50,7 @@ export class ManagerWorkspaceService {
     for (const adapter of createHelmfileManagerAdapters(this.legacyService)) this.registry.replace(adapter)
     for (const adapter of createPlatformManagerAdapters(this.legacyService)) this.registry.replace(adapter)
     for (const adapter of createInfraManagerAdapters(this.legacyService)) this.registry.replace(adapter)
+    for (const adapter of createAiManagerAdapters(this.legacyService)) this.registry.replace(adapter)
     for (const adapter of options.adapters || []) this.registry.replace(adapter)
   }
 

@@ -1105,7 +1105,7 @@ declare global {
     | 'dnf'
     | 'apk'
     | 'pacman'
-    | 'nix'
+    | 'nix' | 'mcp' | 'skills' | 'ai-agents'
   type DependencyManagerId = PackageManagerId | FuturePackageManagerId
   type ManagerImplementationStatus = 'stable' | 'preview' | 'planned'
   type ManagerScope = 'project' | 'environment' | 'global' | 'repository' | 'publish'

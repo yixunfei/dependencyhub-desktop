@@ -53,6 +53,20 @@ DependencyHub Desktop 已从最初的 npm 依赖小工具升级为**项目依赖
 | Dart | Flutter pub | `pubspec.yaml` / `pubspec.lock` | `pub outdated`、依赖树、OSV 审计、发布前检查 |
 | C / C++ | CMake / vcpkg / Conan | `CMakeLists.txt`、`vcpkg.json`、`conanfile.*` | 原生库搜索、构建任务、工具链与锁文件 |
 
+#### AI 依赖（MCP / Skills / Agents）
+
+AI 工具链本身也是依赖面：MCP 服务器、Agent Skills 和 Agent 指令文件都会影响运行时的行为与权限，因此和包管理器一样需要清单、锁证据和漂移检查。本页把它们作为一等生态接入：
+
+| 生态 | 管理器 | 清单/配置 | 锁证据 | 重点能力 |
+| --- | --- | --- | --- | --- |
+| MCP | MCP Servers | `.mcp.json`、`mcp.json`、`.cursor/mcp.json`、`.vscode/mcp.json`、`.workbuddy-ai/mcp.json`、`claude_desktop_config.json` | `mcp-lock.json` | 服务器清单、传输方式、版本固定、明文凭据与 HTTP 端点检查、声明增删 |
+| Agent Skills | Skills | `skills.json` 声明 + 任意位置的 `SKILL.md` | `skills.lock.json` | frontmatter 校验、描述长度、脚本与 allowed-tools 一致性、重名与来源漂移 |
+| Agent 指令 | Agents | `agents.json` 声明 + `AGENTS.md`、`CLAUDE.md`、`.cursor/rules/*.mdc`、`.github/copilot-instructions.md` 等 | `agents.lock.json` | 指令/规则/子代理清单、空文件与缺失 frontmatter、工具权限声明、锁漂移 |
+
+- 操作集为 `sync`、`install`、`remove`、`audit`、`tree`、`list`、`lock`。这些生态没有统一的包管理器 CLI，因此操作由 DependencyHub 本地引擎执行：只读操作重新扫描工程并输出清单或审计结果，写操作以原子写入修改清单/锁文件，并先生成可恢复的备份；不支持任意自定义命令，避免伪装成外部 CLI 成功。
+- 健康检查会报告未固定版本、`http://` 远程端点、配置中的明文凭据、重复/冲突声明、声明与本地文件不一致、锁证据缺失或漂移。
+- 锁文件由 DependencyHub 管理（记录来源、版本与内容哈希），可提交到仓库用于复现；`npm run verify:ai-managers` 覆盖清单解析、计划、锁写入、dry-run 不写、增删变更、失败回滚与恢复。
+
 #### 搜索、发布与供应链
 
 - 聚合 npm、PyPI、Maven Central、crates.io、Go/GitHub 模块和 pub.dev 元数据，展示版本、README/变更日志、下载量、依赖者和包大小。
@@ -69,7 +83,7 @@ DependencyHub Desktop 已从最初的 npm 依赖小工具升级为**项目依赖
 
 ### 预览能力与扩展路线
 
-pnpm、Yarn、Bun、uv、Poetry、Pipenv、Conda、NuGet、Composer 与 Bundler 已进入 `preview`。Node 组提供工作区/锁文件库存与 npm Registry 搜索；Python 和后端组提供结构化清单及传递依赖解析、PyPI/Anaconda/NuGet/Packagist/RubyGems 搜索、专项健康检查、操作计划、可用时的原生命令 dry-run，以及变更前备份和恢复。共享注册表仍预留 Deno、Docker、Helm、Terraform、Ansible、GitHub Actions、Bazel、Homebrew、Scoop、winget 等入口；`planned` 仅表示检测模型和页面骨架已预留，不代表完整读写能力。
+pnpm、Yarn、Bun、uv、Poetry、Pipenv、Conda、NuGet、Composer 与 Bundler 已进入 `preview`。Node 组提供工作区/锁文件库存与 npm Registry 搜索；Python 和后端组提供结构化清单及传递依赖解析、PyPI/Anaconda/NuGet/Packagist/RubyGems 搜索、专项健康检查、操作计划、可用时的原生命令 dry-run，以及变更前备份和恢复。AI 组（MCP / Skills / Agents）同样为 `preview`，提供清单解析、健康检查、本地锁证据与可回滚的声明变更。共享注册表仍预留 Deno、Docker、Helm、Terraform、Ansible、GitHub Actions、Bazel、Homebrew、Scoop、winget 等入口；`planned` 仅表示检测模型和页面骨架已预留，不代表完整读写能力。
 
 ### 界面演示
 
@@ -161,6 +175,7 @@ npm test
 npm run verify:ipc
 npm run verify:engineering-debt
 npm run verify:framework
+npm run verify:ai-managers
 npm run verify:release-integrity
 npm run verify:release-signature
 npm run verify:release-trust
@@ -211,8 +226,9 @@ DependencyHub Desktop is a cross-platform Electron workspace for project depende
 - **Security and health**: npm audit, pip-audit, cargo-audit, govulncheck, OWASP dependency-check, OSV, lockfile drift, registry reachability, license and supply-chain policies.
 - **Release governance**: package validation, readiness gates, CI evidence, approvals, exceptions, rollback snapshots, integrity/signature/provenance reports.
 - **Toolchains and UX**: project/global executable paths, English/Simplified Chinese localization, dark/light themes, lazy-loaded routes, and a secure Electron preload boundary.
+- **AI dependency workspace**: MCP servers (`.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.workbuddy-ai/mcp.json`, `claude_desktop_config.json`), Agent Skills (`SKILL.md` + `skills.json`), and agent instructions/rules (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/*.mdc`, `.github/copilot-instructions.md`, `agents.json`) with pinning, transport and plaintext-credential findings, duplicate/declaration drift, and DependencyHub-managed lock evidence (`mcp-lock.json`, `skills.lock.json`, `agents.lock.json`). Because these ecosystems have no package-manager CLI, operations run in a local engine: read-only operations re-scan the project, mutations rewrite the manifest or lock file atomically behind a restorable backup, and arbitrary shell commands are refused instead of faked.
 
-pnpm, Yarn, Bun, uv, Poetry, Pipenv, Conda, NuGet, Composer, and Bundler are available as preview adapters. Node managers provide workspace/lockfile inventory and npm Registry search. Python and backend managers add structured manifest and transitive lock parsing, PyPI/Anaconda/NuGet/Packagist/RubyGems search, manager-specific health diagnostics, operation plans, native dry-runs where supported, and manifest backup/restore. Deno, Docker, Helm, Terraform, Ansible, CI managers, Bazel, Homebrew, Scoop, winget, and other entries remain planned roadmap metadata rather than a claim of full read/write support.
+pnpm, Yarn, Bun, uv, Poetry, Pipenv, Conda, NuGet, Composer, and Bundler are available as preview adapters. Node managers provide workspace/lockfile inventory and npm Registry search. Python and backend managers add structured manifest and transitive lock parsing, PyPI/Anaconda/NuGet/Packagist/RubyGems search, manager-specific health diagnostics, operation plans, native dry-runs where supported, and manifest backup/restore. The AI managers (MCP, Skills, Agents) are preview adapters with the same inventory, health, lock evidence, and reversible declaration mutations. Deno, Docker, Helm, Terraform, Ansible, CI managers, Bazel, Homebrew, Scoop, winget, and other entries remain planned roadmap metadata rather than a claim of full read/write support.
 
 ### Screenshots
 

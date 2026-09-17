@@ -3,6 +3,7 @@ import type {
   DependencyManagerId,
   ImplementedPackageManagerId
 } from './managerRegistryTypes'
+import { AI_MANAGER_DEFINITIONS } from './managerRegistryAi'
 
 export type {
   DependencyManagerDefinition,
@@ -1421,7 +1422,8 @@ export const MANAGER_DEFINITIONS: readonly DependencyManagerDefinition[] = [
     status: 'planned',
     searchable: false,
     healthSupported: false
-  }
+  },
+  ...AI_MANAGER_DEFINITIONS
 ]
 
 export const IMPLEMENTED_MANAGER_IDS = MANAGER_DEFINITIONS

@@ -31,7 +31,10 @@ const DECLARATIVE_MANAGERS = new Set<DependencyManagerId>([
   'flux',
   'terraform',
   'opentofu',
-  'ansible'
+  'ansible',
+  'mcp',
+  'skills',
+  'ai-agents'
 ])
 
 const RUNTIME_MANAGERS = new Set<DependencyManagerId>([

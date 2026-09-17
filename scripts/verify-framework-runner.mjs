@@ -57,6 +57,11 @@ const GROUPS = {
     script: 'scripts/verify-helmfile-manager.mjs',
     timeoutMs: 60_000
   },
+  ai: {
+    description: 'MCP, agent skills, and agent instruction dependency behavior',
+    script: 'scripts/verify-ai-managers.mjs',
+    timeoutMs: 60_000
+  },
   core: {
     description: 'core F1-F4 behavior and recovery regression scenarios',
     script: 'scripts/verify-core-behaviors.mjs',

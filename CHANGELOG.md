@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- AI dependency ecosystem group with three preview managers: **MCP Servers**,
+  **Agent Skills**, and **Agent Rules & Prompts**, reachable from the new
+  `/ai` workspace.
+  - MCP inventory reads `.mcp.json`, `mcp.json`, `.cursor/mcp.json`,
+    `.vscode/mcp.json`, `.workbuddy-ai/mcp.json`, `.claude/mcp.json`, and
+    `claude_desktop_config.json`, including JSON-with-comments support.
+  - Skills inventory scans `SKILL.md` files in every skill root and validates
+    frontmatter, description length, duplicate names, and script/`allowed-tools`
+    consistency.
+  - Agent inventory classifies `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/*.mdc`,
+    `.github/copilot-instructions.md`, `.github/instructions/*`, and
+    `*/agents/*.md` files, and reports empty or frontmatter-less definitions.
+- DependencyHub-managed lock evidence for AI dependencies (`mcp-lock.json`,
+  `skills.lock.json`, `agents.lock.json`) recording source, version, and content
+  hash, plus drift and stale-entry detection.
+- Local AI dependency engine: `sync`, `install`, `remove`, `audit`, `tree`,
+  `list`, and `lock` run without a package-manager CLI. Read-only operations
+  re-scan the project; mutations rewrite manifests or lock files atomically
+  behind a restorable backup and roll back on failure. AI managers refuse
+  arbitrary custom commands instead of reporting a faked success.
+- `npm run verify:ai-managers` covering inventory, plans, health findings, lock
+  writes, dry-run no-write, declaration mutations, backup restore, and failure
+  rollback; wired into the framework verification runner as the `ai` group.
+
+### Changed
+- Extended manager registry now declares 57 extended managers (was 54), and the
+  AI managers are classified as declarative integrations.
+- `ExtendedManagerWorkspace` accepts `customCommands: false` to hide quick and
+  custom command affordances for managers that are executed locally.
+
 ## [1.0.3] - 2026-09-17
 
 ### Fixed

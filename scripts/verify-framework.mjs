@@ -959,6 +959,7 @@ async function main() {
   assert(['bazel', 'pants', 'buck'].every((id) => MANAGER_DEFINITIONS.find((manager) => manager.id === id)?.route === '/build'), 'build system managers route to the dedicated Build workspace')
   assert(['opam', 'cpan', 'luarocks', 'shards', 'zig'].every((id) => MANAGER_DEFINITIONS.find((manager) => manager.id === id)?.route === '/systems'), 'systems and scripting managers route to the dedicated Systems workspace')
   assert(['homebrew', 'chocolatey', 'scoop', 'winget', 'asdf', 'mise', 'sdkman', 'apt', 'dnf', 'apk', 'pacman', 'nix'].every((id) => MANAGER_DEFINITIONS.find((manager) => manager.id === id)?.route === '/runtime'), 'system package, Linux, Nix, and runtime managers route to the dedicated Runtime workspace')
+  assert(['mcp', 'skills', 'ai-agents'].every((id) => MANAGER_DEFINITIONS.find((manager) => manager.id === id)?.route === '/ai'), 'AI dependency managers route to the dedicated AI workspace')
   const appSource = await readFile(join(process.cwd(), 'src', 'App.tsx'), 'utf-8')
   const layoutSource = await readFile(join(process.cwd(), 'src', 'components', 'Layout', 'MainLayout.tsx'), 'utf-8')
   const hubSource = await readFile(join(process.cwd(), 'src', 'features', 'workspace', 'ManagerHub.tsx'), 'utf-8')

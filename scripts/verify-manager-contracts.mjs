@@ -18,7 +18,7 @@ const selected = requestedManagerId
   ? extended.filter((definition) => definition.id === requestedManagerId)
   : extended
 
-assert(extended.length === 54, 'registry contains exactly 54 extended manager definitions')
+assert(extended.length === 57, 'registry contains exactly 57 extended manager definitions')
 assert(new Set(extended.map((definition) => definition.id)).size === extended.length, 'extended manager IDs are unique')
 assert(!requestedManagerId || selected.length === 1, 'requested manager exists and is extended')
 
@@ -57,6 +57,19 @@ for (const managerId of ['pnpm', 'yarn', 'bun', 'uv', 'poetry', 'pipenv', 'conda
   const definition = extended.find((item) => item.id === managerId)
   assert(definition?.status === 'preview', managerId + ' is promoted to preview')
   assert(definition?.searchable && definition?.healthSupported, managerId + ' declares search and health support')
+}
+
+for (const managerId of ['mcp', 'skills', 'ai-agents']) {
+  const definition = extended.find((item) => item.id === managerId)
+  assert(definition?.status === 'preview', managerId + ' is promoted to preview')
+  assert(definition?.route === '/ai', managerId + ' routes to the dedicated AI workspace')
+  assert(definition?.category === 'ai', managerId + ' is grouped under the AI category')
+  assert(definition?.healthSupported === true, managerId + ' declares health support')
+  assert(definition?.searchable === false, managerId + ' does not claim package search')
+  assert(definition?.capabilities.includes('lockfile'), managerId + ' declares lock evidence support')
+  assert(definition?.capabilities.includes('install') && definition?.capabilities.includes('uninstall'), managerId + ' declares declaration mutations')
+  const operations = createManagerDescriptor(definition).capabilities.operations
+  assert(operations.join(',') === 'list,sync,install,remove,audit,tree,lock', managerId + ' exposes only locally executable operations')
 }
 
 console.log('manager contract verification passed (' + selected.length + ' manager' + (selected.length === 1 ? '' : 's') + ')')

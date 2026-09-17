@@ -5,11 +5,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Checkbox, Empty, Form, Input, Segmented, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import {
   BranchesOutlined,
-  ExportOutlined,
   FolderOpenOutlined,
-  PlayCircleOutlined,
   ReloadOutlined,
-  RollbackOutlined,
   SafetyCertificateOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -26,6 +23,7 @@ import type {
   ManagerOperationPlan
 } from '@shared/managerWorkspace'
 import ManagerDiagnosticsPanel from './ManagerDiagnosticsPanel'
+import WorkspaceCommandSection from './WorkspaceCommandSection'
 import { ManagerWorkspaceCoordinator } from './managerWorkspaceCoordinator'
 import styles from './ExtendedManagerWorkspace.module.css'
 
@@ -48,6 +46,8 @@ export interface ExtendedManagerWorkspaceConfig {
   detectionHint: string
   operationOptions: Array<{ value: ManagerOperation; label: string }>
   quickCommands: Partial<Record<DependencyManagerId, string[]>>
+  /** Managers executed locally by the AI dependency engine do not accept arbitrary shell commands. */
+  customCommands?: boolean
   packageLabel?: string
   packagePlaceholder?: string
   versionPlaceholder?: string
@@ -507,36 +507,21 @@ const ExtendedManagerWorkspace: React.FC<ExtendedManagerWorkspaceProps> = ({ con
             </div>
           )}
 
-          <div className={styles.quickCommands}>
-            <Text strong>Quick commands</Text>
-            <Space wrap>
-              {(config.quickCommands[activeManager] || []).map((command) => (
-                <Button key={command} size="small" onClick={() => executeCommand(command)} loading={running}>
-                  {activeManager} {command}
-                </Button>
-              ))}
-            </Space>
-          </div>
-
-          <Form form={commandForm} layout="vertical" onFinish={(values) => executeCommand(values.commandLine)}>
-            <Form.Item name="commandLine" label="Custom command">
-              <Input placeholder={commandPlaceholder} />
-            </Form.Item>
-            <Space wrap>
-              <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} loading={running} disabled={!currentPath}>
-                Run command
-              </Button>
-              {running && activeOperationId && (
-                <Button danger onClick={cancelRunningOperation}>Cancel</Button>
-              )}
-              {lastBackup && (
-                <>
-                  <Button icon={<ExportOutlined />} onClick={() => window.electronAPI.system.openFile(lastBackup.path)}>Open backup</Button>
-                  <Button danger icon={<RollbackOutlined />} onClick={restoreLastBackup} loading={restoring}>Restore backup</Button>
-                </>
-              )}
-            </Space>
-          </Form>
+          <WorkspaceCommandSection
+            customCommands={config.customCommands !== false}
+            activeManager={activeManager}
+            quickCommands={config.quickCommands[activeManager] || []}
+            commandPlaceholder={commandPlaceholder}
+            form={commandForm}
+            running={running}
+            currentPath={currentPath}
+            activeOperationId={activeOperationId}
+            lastBackup={lastBackup}
+            restoring={restoring}
+            onRun={executeCommand}
+            onCancel={cancelRunningOperation}
+            onRestore={restoreLastBackup}
+          />
 
           {commandOutput && <pre className={styles.output}>{commandOutput}</pre>}
         </section>

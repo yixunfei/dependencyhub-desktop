@@ -30,6 +30,7 @@
     "verify:deno": "node scripts/verify-deno-manager.mjs",
     "verify:cocoapods": "node scripts/verify-cocoapods-manager.mjs",
     "verify:ansible": "node scripts/verify-ansible-manager.mjs",
+    "verify:ai-managers": "node scripts/verify-ai-managers.mjs",
     "verify:terraform": "node scripts/verify-terraform-managers.mjs",
     "verify:helmfile": "node scripts/verify-helmfile-manager.mjs",
     "verify:release-integrity": "node scripts/verify-release-integrity.mjs",

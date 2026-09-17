@@ -1,0 +1,233 @@
+import { build } from 'esbuild'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { pathToFileURL } from 'url'
+
+const workDir = await mkdtemp(join(tmpdir(), 'dependencyhub-ai-verifier-'))
+const outputFile = join(workDir, 'ai-verifier.mjs')
+
+const runner = String.raw`
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { ManagerWorkspaceService } from './electron/services/managerWorkspace'
+
+const roots = []
+const checks = []
+const assert = (value, message) => { if (!value) throw new Error(message); checks.push(message) }
+const fixture = async () => { const cwd = await mkdtemp(join(tmpdir(), 'dependencyhub-ai-')); roots.push(cwd); return cwd }
+const exists = async (path) => { try { await readFile(path, 'utf-8'); return true } catch { return false } }
+const read = async (path) => await readFile(path, 'utf-8')
+
+const main = async () => {
+  const service = new ManagerWorkspaceService()
+
+  // --- descriptors -------------------------------------------------------
+  for (const id of ['mcp', 'skills', 'ai-agents']) {
+    const descriptor = service.descriptors().find((item) => item.managerId === id)
+    assert(descriptor && descriptor.status === 'preview', id + ' is served by a preview adapter')
+    assert(descriptor.capabilities.health === true, id + ' exposes health capability')
+    assert(descriptor.capabilities.search === false, id + ' does not expose package search')
+    assert(descriptor.capabilities.customCommands === false, id + ' rejects arbitrary shell commands')
+    assert(descriptor.capabilities.operations.join(',') === 'sync,install,remove,audit,tree,list,lock', id + ' exposes the local AI operation set')
+  }
+  assert(service.diagnostics().length === 0, 'AI adapters match their registry declarations')
+
+  // --- MCP inventory and health -----------------------------------------
+  const mcp = await fixture()
+  await writeFile(join(mcp, '.mcp.json'), JSON.stringify({
+    mcpServers: {
+      filesystem: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem@1.2.3'] },
+      git: { command: 'uvx', args: ['mcp-server-git'] },
+      remote: { type: 'sse', url: 'http://tools.example.test/sse' },
+      leaky: { command: 'npx', args: ['-y', 'leaky-server@1.0.0'], env: { API_TOKEN: 'sk-live-1234567890' } },
+      broken: { description: 'no command or url' },
+      local: { command: 'node', args: ['./server.js'] }
+    }
+  }, null, 2))
+
+  const inventory = await service.inventory(mcp, 'mcp')
+  assert(inventory.length === 6, 'MCP inventory lists every declared server')
+  assert(inventory.find((item) => item.name === 'filesystem')?.version === '1.2.3', 'MCP inventory reads the pinned npx version')
+  assert(inventory.find((item) => item.name === 'filesystem')?.metadata.pinned === true, 'MCP inventory marks a pinned server')
+  assert(inventory.find((item) => item.name === 'git')?.metadata.pinned === false, 'MCP inventory marks an unpinned uvx server')
+  assert(inventory.find((item) => item.name === 'remote')?.type === 'sse', 'MCP inventory keeps the remote transport')
+  assert(inventory.find((item) => item.name === 'broken')?.status === 'invalid', 'MCP inventory flags an incomplete server definition')
+  assert(inventory.find((item) => item.name === 'local')?.status === 'installed', 'MCP inventory accepts a local script server')
+
+  const mcpHealth = await service.health(mcp, 'mcp')
+  assert(mcpHealth.findings.some((item) => item.id === 'mcp-unpinned:git'), 'MCP health reports unpinned servers')
+  assert(!mcpHealth.findings.some((item) => item.id === 'mcp-unpinned:local'), 'MCP health does not ask a local script server to pin a registry version')
+  assert(mcpHealth.findings.some((item) => item.id === 'mcp-insecure:remote'), 'MCP health reports insecure HTTP endpoints')
+  assert(mcpHealth.findings.some((item) => item.id === 'mcp-secret:leaky:API_TOKEN'), 'MCP health reports literal credentials')
+  assert(mcpHealth.findings.some((item) => item.id === 'mcp-invalid:broken'), 'MCP health reports incomplete definitions')
+  assert(mcpHealth.findings.some((item) => item.id === 'lockfile-missing'), 'MCP health reports missing lock evidence')
+  assert(mcpHealth.status === 'error', 'MCP health escalates to error when blocking findings exist')
+
+  for (const [operation, command] of [['sync', 'mcp sync'], ['list', 'mcp list'], ['tree', 'mcp tree'], ['audit', 'mcp audit'], ['lock', 'mcp lock']]) {
+    const plan = await service.plan(mcp, 'mcp', { operation })
+    assert(plan.command === command, 'MCP ' + operation + ' plans ' + command)
+  }
+  const missingInstall = await service.plan(mcp, 'mcp', { operation: 'install' })
+  assert(missingInstall.requirements.length === 1 && missingInstall.mutating, 'MCP install without a package spec requires input')
+  const installPlan = await service.plan(mcp, 'mcp', { operation: 'install', packageName: '@modelcontextprotocol/server-memory', version: '0.6.3' })
+  assert(installPlan.mutating && installPlan.dryRunSupported && installPlan.requirements.length === 0, 'MCP install with a pinned package spec plans a reversible mutation')
+
+  // --- MCP lock evidence -------------------------------------------------
+  const dryLock = await service.execute(mcp, 'mcp', { operation: 'lock' }, { dryRun: true })
+  assert(dryLock.dryRun === true && !(await exists(join(mcp, 'mcp-lock.json'))), 'MCP lock dry-run writes nothing')
+  const locked = await service.execute(mcp, 'mcp', { operation: 'lock' })
+  const lockDocument = JSON.parse(await read(join(mcp, 'mcp-lock.json')))
+  assert(lockDocument.servers.length === 6 && lockDocument.servers.every((entry) => typeof entry.hash === 'string' && entry.hash.length === 64), 'MCP lock records a hash per server')
+  assert(Boolean(locked.backup && locked.backup.files.some((file) => file.file === 'mcp-lock.json')), 'MCP lock keeps a restorable backup')
+  const lockedInventory = await service.inventory(mcp, 'mcp')
+  assert(lockedInventory.find((item) => item.name === 'filesystem')?.integrity === lockDocument.servers.find((entry) => entry.name === 'filesystem').hash, 'MCP inventory merges lock integrity')
+
+  // --- MCP install / remove / restore ------------------------------------
+  const installed = await service.execute(mcp, 'mcp', { operation: 'install', packageName: '@modelcontextprotocol/server-memory', version: '0.6.3' })
+  const installedDocument = JSON.parse(await read(join(mcp, '.mcp.json')))
+  assert(installedDocument.mcpServers['server-memory'].args.join(' ') === '-y @modelcontextprotocol/server-memory@0.6.3', 'MCP install writes a pinned stdio entry')
+  assert(Boolean(installed.backup), 'MCP install keeps a restorable backup')
+  const afterInstall = await service.inventory(mcp, 'mcp')
+  assert(afterInstall.some((item) => item.name === 'server-memory'), 'MCP install is visible in the inventory')
+
+  const removed = await service.execute(mcp, 'mcp', { operation: 'remove', packageName: 'server-memory' })
+  const removedDocument = JSON.parse(await read(join(mcp, '.mcp.json')))
+  assert(!('server-memory' in removedDocument.mcpServers), 'MCP remove deletes the server definition')
+  assert(Boolean(removed.backup), 'MCP remove keeps a restorable backup')
+  const restored = await service.restoreBackup(mcp, removed.backup.path)
+  assert(restored.restoredCount > 0 && JSON.parse(await read(join(mcp, '.mcp.json'))).mcpServers['server-memory'], 'MCP backup restore brings the removed server back')
+
+  const missingRemove = await service.plan(mcp, 'mcp', { operation: 'remove', packageName: 'does-not-exist' })
+  assert(missingRemove.requirements.length === 0 && missingRemove.mutating, 'MCP remove plans without requiring extra input')
+
+  // --- MCP failure rollback ---------------------------------------------
+  const blocked = await fixture()
+  await writeFile(join(blocked, '.mcp.json'), JSON.stringify({ mcpServers: { keep: { command: 'npx', args: ['-y', 'keep@1.0.0'] } } }, null, 2))
+  await writeFile(join(blocked, 'mcp-lock.json'), '{"version":1,"servers":[]}\n')
+  await mkdir(join(blocked, 'mcp-lock.json.dependencyhub-tmp'), { recursive: true })
+  let failure = null
+  try {
+    await service.execute(blocked, 'mcp', { operation: 'lock' })
+  } catch (error) {
+    failure = error
+  }
+  assert(failure !== null, 'MCP lock surfaces a write failure instead of reporting success')
+  assert(failure.restore?.restored === true, 'MCP lock restores the previous lock file after a failure')
+  assert((await read(join(blocked, 'mcp-lock.json'))).includes('"servers":[]'), 'MCP lock failure leaves the original lock file intact')
+
+  // --- skills ------------------------------------------------------------
+  const skills = await fixture()
+  await mkdir(join(skills, '.workbuddy-ai', 'skills', 'code-review', 'scripts'), { recursive: true })
+  await writeFile(join(skills, '.workbuddy-ai', 'skills', 'code-review', 'SKILL.md'), [
+    '---',
+    'name: code-review',
+    'description: Review a change set for defects before merge.',
+    'version: 2.1.0',
+    'allowed-tools: Read, Grep',
+    '---',
+    '',
+    'Follow the review checklist.'
+  ].join('\n'))
+  await mkdir(join(skills, 'skills', 'draft'), { recursive: true })
+  await writeFile(join(skills, 'skills', 'draft', 'SKILL.md'), '# Draft skill without frontmatter\n')
+
+  const skillInventory = await service.inventory(skills, 'skills')
+  assert(skillInventory.some((item) => item.name === 'code-review' && item.version === '2.1.0' && item.status === 'installed'), 'skills inventory parses SKILL.md frontmatter')
+  assert(skillInventory.some((item) => item.name === 'draft' && item.status === 'invalid'), 'skills inventory flags a SKILL.md without frontmatter')
+  assert(skillInventory.find((item) => item.name === 'code-review')?.metadata.hasScripts === true, 'skills inventory records the scripts directory')
+
+  const skillsHealth = await service.health(skills, 'skills')
+  assert(skillsHealth.findings.some((item) => item.id.startsWith('skills-frontmatter-missing:')), 'skills health reports missing frontmatter')
+  assert(skillsHealth.findings.some((item) => item.id === 'skills-description-missing:skills/draft/SKILL.md'), 'skills health reports a missing description')
+  assert(skillsHealth.findings.some((item) => item.id === 'skills-lock-missing-entry:code-review' || item.id === 'lockfile-missing'), 'skills health reports missing lock evidence')
+
+  const declared = await service.execute(skills, 'skills', { operation: 'install', packageName: 'code-review' })
+  const skillsManifest = JSON.parse(await read(join(skills, 'skills.json')))
+  assert(skillsManifest.skills[0].name === 'code-review' && skillsManifest.skills[0].source === '.workbuddy-ai/skills/code-review', 'skills install declares the skill with its default source')
+  assert(Boolean(declared.backup && declared.backup.files[0].file === 'skills.json'), 'skills install backs up the declaration manifest')
+  await service.execute(skills, 'skills', { operation: 'lock' })
+  const skillsLock = JSON.parse(await read(join(skills, 'skills.lock.json')))
+  assert(skillsLock.skills.length === 2 && skillsLock.skills.every((entry) => entry.hash.length === 64), 'skills lock records every local skill hash')
+  const driftHealth = await service.health(skills, 'skills')
+  assert(!driftHealth.findings.some((item) => item.id.startsWith('skills-lock-drift:')), 'skills health is clean immediately after locking')
+  await service.execute(skills, 'skills', { operation: 'remove', packageName: 'code-review' })
+  assert(JSON.parse(await read(join(skills, 'skills.json'))).skills.length === 0, 'skills remove deletes the declaration only')
+
+  const duplicate = await fixture()
+  await mkdir(join(duplicate, '.claude', 'skills', 'lint'), { recursive: true })
+  await writeFile(join(duplicate, '.claude', 'skills', 'lint', 'SKILL.md'), '---\nname: lint\ndescription: Lint rules.\n---\n')
+  await mkdir(join(duplicate, 'skills', 'lint'), { recursive: true })
+  await writeFile(join(duplicate, 'skills', 'lint', 'SKILL.md'), '---\nname: lint\ndescription: Lint rules.\n---\n')
+  const duplicateHealth = await service.health(duplicate, 'skills')
+  assert(duplicateHealth.findings.some((item) => item.id === 'skills-duplicate:lint'), 'skills health reports duplicate skill names')
+
+  // --- agent rules and prompts ------------------------------------------
+  const agents = await fixture()
+  await writeFile(join(agents, 'AGENTS.md'), '# Project agent instructions\n\nAlways run the type check.\n')
+  await mkdir(join(agents, '.cursor', 'rules'), { recursive: true })
+  await writeFile(join(agents, '.cursor', 'rules', 'style.mdc'), '---\nname: style\ndescription: House style rules.\ntools: Read\n---\n\nPrefer explicit types.\n')
+  await writeFile(join(agents, 'CLAUDE.md'), '')
+
+  const agentInventory = await service.inventory(agents, 'ai-agents')
+  assert(agentInventory.some((item) => item.name === 'AGENTS' && item.type === 'instructions'), 'agents inventory classifies instruction files')
+  assert(agentInventory.some((item) => item.name === 'style' && item.type === 'rule'), 'agents inventory reads rule frontmatter')
+  const instructionEntry = agentInventory.find((item) => item.name === 'AGENTS')
+  assert(instructionEntry?.metadata.versionSource === 'content-hash' && instructionEntry.version.length === 12, 'agents inventory gives unversioned instruction files a content-addressed version')
+  const agentsHealth = await service.health(agents, 'ai-agents')
+  assert(agentsHealth.findings.some((item) => item.id === 'agents-empty:CLAUDE.md'), 'agents health reports an empty context file')
+  assert(!agentsHealth.findings.some((item) => item.id.startsWith('agents-frontmatter-missing:')), 'agents health accepts a rule with frontmatter')
+
+  const agentDeclared = await service.execute(agents, 'ai-agents', { operation: 'install', packageName: 'style' })
+  const agentsManifest = JSON.parse(await read(join(agents, 'agents.json')))
+  assert(agentsManifest.agents[0].name === 'style' && agentsManifest.agents[0].source === '.workbuddy-ai/agents/style.md', 'agents install declares the dependency')
+  assert(Boolean(agentDeclared.backup), 'agents install backs up the declaration manifest')
+  const agentsLockResult = await service.execute(agents, 'ai-agents', { operation: 'lock' })
+  assert(JSON.parse(await read(join(agents, 'agents.lock.json'))).agents.length === 3, 'agents lock records every instruction file')
+  assert(Boolean(agentsLockResult.backup), 'agents lock keeps a restorable backup')
+  const agentsAudit = await service.execute(agents, 'ai-agents', { operation: 'audit' })
+  assert(agentsAudit.stdout.includes('ai-agents audit'), 'agents audit returns local findings as command output')
+
+  // --- unsupported surfaces ---------------------------------------------
+  let customRejected = false
+  try { await service.runCustom(mcp, 'mcp', 'npx -y anything') } catch { customRejected = true }
+  assert(customRejected, 'AI managers reject arbitrary custom commands')
+  let unsupportedRejected = false
+  try { await service.plan(mcp, 'mcp', { operation: 'outdated' }) } catch { unsupportedRejected = true }
+  assert(unsupportedRejected, 'AI managers reject operations outside their declared set')
+
+  console.log('AI dependency verification passed (' + checks.length + ' checks)')
+}
+
+try { await main() } finally { await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))) }
+`
+
+try {
+  await build({
+    stdin: { contents: runner, resolveDir: process.cwd(), sourcefile: 'ai-verifier.ts', loader: 'ts' },
+    outfile: outputFile,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node20',
+    logLevel: 'silent',
+    banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" },
+    plugins: [{
+      name: 'ai-stubs',
+      setup(api) {
+        api.onResolve({ filter: /^\.\/(toolchain|commandRunner)$/ }, (args) => (
+          args.importer.endsWith('extendedManager.ts') ? { path: args.path, namespace: 'ai-stub' } : undefined
+        ))
+        api.onLoad({ filter: /.*/, namespace: 'ai-stub' }, (args) => (
+          args.path === './toolchain'
+            ? { loader: 'ts', contents: 'export type ToolName=string; export async function resolveToolBin(tool:string){return tool;}' }
+            : { loader: 'js', contents: "export async function runLoggedCommand(){return {stdout:'',stderr:''}}" }
+        ))
+      }
+    }]
+  })
+  await import(pathToFileURL(outputFile).href)
+} finally {
+  await rm(workDir, { recursive: true, force: true })
+}

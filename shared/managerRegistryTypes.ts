@@ -63,6 +63,9 @@ export type FuturePackageManagerId =
   | 'apk'
   | 'pacman'
   | 'nix'
+  | 'mcp'
+  | 'skills'
+  | 'ai-agents'
 
 export type DependencyManagerId = ImplementedPackageManagerId | FuturePackageManagerId
 export type ManagerImplementationStatus = 'stable' | 'preview' | 'planned'

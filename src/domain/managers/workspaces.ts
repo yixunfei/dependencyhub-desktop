@@ -100,6 +100,15 @@ export const MANAGER_WORKSPACE_GROUPS: readonly ManagerWorkspaceGroup[] = [
     managerIds: ['deno', 'swiftpm', 'cocoapods']
   },
   {
+    key: 'ai',
+    route: '/ai',
+    label: 'AI Dependencies',
+    shortLabel: 'AI',
+    description: 'MCP servers, agent skills, and agent instruction dependencies with pinning, provenance, and lock evidence.',
+    iconManagerId: 'mcp',
+    managerIds: ['mcp', 'skills', 'ai-agents']
+  },
+  {
     key: 'polyglot',
     route: '/polyglot',
     label: 'Polyglot+ Packages',
