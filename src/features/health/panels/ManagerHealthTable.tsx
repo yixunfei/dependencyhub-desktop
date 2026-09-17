@@ -41,7 +41,7 @@ function buildColumns(t: LabelTranslator, { toolStatusMap, scanManager, scanning
       width: 110,
       render: (_: unknown, record) => record.detected
         ? <Tag color="success">{t('health.detectedInProject')}</Tag>
-        : <Tag>{t('health.notDetected')}</Tag>
+        : <Tag>{t('common.notDetected')}</Tag>
     },
     {
       title: t('health.columnToolchain'),

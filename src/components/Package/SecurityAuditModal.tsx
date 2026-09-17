@@ -146,7 +146,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
       render: (text: string) => <Tag color="blue">{text}</Tag>
     },
     {
-      title: t('health.columnSeverity'),
+      title: t('common.severity'),
       dataIndex: 'severity',
       key: 'severity',
       width: 120,
@@ -314,7 +314,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
           <Space orientation="vertical" style={{ width: '100%' }} size={16}>
             <Descriptions bordered column={1} size="small">
               <Descriptions.Item label={t('package.columnName')}>{selectedIssue.name}</Descriptions.Item>
-              <Descriptions.Item label={t('health.columnSeverity')}>
+              <Descriptions.Item label={t('common.severity')}>
                 <Tag color={getSeverityColor(selectedIssue.severity)}>{selectedIssue.severity.toUpperCase()}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label={t('security.columnRange')}>{selectedIssue.range || selectedIssue.version || '-'}</Descriptions.Item>

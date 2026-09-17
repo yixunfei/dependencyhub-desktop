@@ -37,7 +37,7 @@ function DependencyPolicyPanelTable({ policyEvaluation }: Pick<PanelValues, 'pol
     locale={{ emptyText: <Empty description={t('health.policyPassed')} /> }}
     columns={[
       {
-        title: t('health.columnSeverity'),
+        title: t('common.severity'),
         dataIndex: 'severity',
         key: 'severity',
         width: 90,

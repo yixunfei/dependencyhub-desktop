@@ -19,6 +19,7 @@ import RuntimeManagerSwitch from '../../../components/ManagerSwitch/RuntimeManag
 import { DependencyHealthModal } from '../../../components/Package/DependencyHealthModal'
 import { DependencyTreeViewer, TreeLikeNode } from '../../../components/Package/DependencyTreeViewer'
 import { useDependencyHealthReminder } from '../../../hooks/useDependencyHealthReminder'
+import { useT, type LabelTranslator } from '../../../i18n'
 import styles from './Flutter.module.css'
 
 const DEPENDENCY_TYPE_OPTIONS: Array<{ value: FlutterDependencyType; label: string }> = [
@@ -119,7 +120,28 @@ function stripDrive(path: string): string {
   return path.replace(/^[A-Za-z]:/, '')
 }
 
+/**
+ * Builds the security-audit notification. Kept outside the component because
+ * FlutterPage is already at its size budget, and this is the one notification whose
+ * message and description both branch.
+ */
+function securityNotification(
+  result: FlutterSecurityAuditResult,
+  t: LabelTranslator
+): { type: 'warning' | 'success'; message: string; description: string } {
+  const issues = result.issues.length
+  return {
+    type: issues > 0 ? 'warning' : 'success',
+    message: issues > 0 ? t('flutter.securityRisksFound') : t('flutter.noSecurityRisks'),
+    description:
+      issues > 0
+        ? t('flutter.vulnerableDependencies', { count: result.vulnerableCount })
+        : t('flutter.checkedDependencies', { count: result.dependencyCount })
+  }
+}
+
 const FlutterPage: React.FC = () => {
+  const t = useT()
   const currentPath = useAppStore((state) => state.currentPath)
   const setCurrentPath = useAppStore((state) => state.setCurrentPath)
   const addNotification = useAppStore((state) => state.addNotification)
@@ -167,13 +189,13 @@ const FlutterPage: React.FC = () => {
     const dev = dependencies.filter((item) => item.type === 'dev_dependencies').length
     const overrides = dependencies.filter((item) => item.type === 'dependency_overrides').length
     return [
-      { label: '清单', value: projectInfo?.hasPubspec ? 'pubspec.yaml' : '未检测到' },
-      { label: '依赖', value: String(regular) },
-      { label: '开发依赖', value: String(dev) },
-      { label: '覆盖', value: String(overrides) },
-      { label: '资源', value: String(assets.length) }
+      { label: t('common.manifest'), value: projectInfo?.hasPubspec ? 'pubspec.yaml' : t('common.notDetected') },
+      { label: t('common.dependencies'), value: String(regular) },
+      { label: t('package.devDependenciesLabel'), value: String(dev) },
+      { label: t('flutter.overrides'), value: String(overrides) },
+      { label: t('flutter.assets'), value: String(assets.length) }
     ]
-  }, [dependencies, assets.length, projectInfo?.hasPubspec])
+  }, [dependencies, assets.length, projectInfo?.hasPubspec, t])
 
   useDependencyHealthReminder('flutter', currentPath, !!currentPath && !!projectInfo?.hasPubspec && dependencies.length > 0)
 
@@ -185,7 +207,7 @@ const FlutterPage: React.FC = () => {
     const path = await window.electronAPI.selectDirectory()
     if (!path) return
     setCurrentPath(path)
-    addNotification({ type: 'info', message: '工作目录已切换', description: path })
+    addNotification({ type: 'info', message: t('common.workdirSwitched'), description: path })
   }
 
   const loadFlutterProject = async () => {
@@ -227,7 +249,7 @@ const FlutterPage: React.FC = () => {
     } catch (error: any) {
       setDependencies([])
       setAssets([])
-      addNotification({ type: 'error', message: '加载 Flutter 项目失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.loadProjectFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -238,7 +260,7 @@ const FlutterPage: React.FC = () => {
     try {
       await window.electronAPI.system.openFile(projectInfo.path)
     } catch (error: any) {
-      addNotification({ type: 'error', message: '打开 pubspec.yaml 失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.openPubspecFailed'), description: error.message })
     }
   }
 
@@ -287,11 +309,11 @@ const FlutterPage: React.FC = () => {
       const versions = await window.electronAPI.flutter.versions(packageName)
       setVersionOptions(versions.map((version) => ({ value: version, label: version })))
       if (versions.length === 0) {
-        addNotification({ type: 'info', message: '未找到版本信息', description: packageName })
+        addNotification({ type: 'info', message: t('package.noVersionInfo'), description: packageName })
       }
     } catch (error: any) {
       setVersionOptions([])
-      addNotification({ type: 'error', message: '加载 pub.dev 版本失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.loadVersionsFailed'), description: error.message })
     }
   }
 
@@ -305,7 +327,7 @@ const FlutterPage: React.FC = () => {
 
   const addDependency = async (values: FlutterDependencyArgs) => {
     if (!currentPath) {
-      addNotification({ type: 'warning', message: '请先选择 Flutter 项目目录' })
+      addNotification({ type: 'warning', message: t('flutter.selectProjectFirst') })
       return
     }
 
@@ -318,9 +340,9 @@ const FlutterPage: React.FC = () => {
       setDependencyVisible(false)
       dependencyForm.resetFields()
       await loadFlutterProject()
-      addNotification({ type: 'success', message: 'Flutter 依赖已保存', description: values.packageName })
+      addNotification({ type: 'success', message: t('flutter.dependencySaved'), description: values.packageName })
     } catch (error: any) {
-      addNotification({ type: 'error', message: '保存 Flutter 依赖失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.saveDependencyFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -336,9 +358,9 @@ const FlutterPage: React.FC = () => {
         type: record.type
       })
       await loadFlutterProject()
-      addNotification({ type: 'success', message: 'Flutter 依赖已更新', description: record.name })
+      addNotification({ type: 'success', message: t('flutter.dependencyUpdated'), description: record.name })
     } catch (error: any) {
-      addNotification({ type: 'error', message: '更新 Flutter 依赖失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.updateDependencyFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -353,9 +375,9 @@ const FlutterPage: React.FC = () => {
       setOutputTitle('flutter pub upgrade --major-versions')
       setOutput(result || 'Completed')
       setOutputVisible(true)
-      addNotification({ type: 'success', message: 'Flutter 依赖批量升级完成' })
+      addNotification({ type: 'success', message: t('flutter.upgradeAllComplete') })
     } catch (error: any) {
-      addNotification({ type: 'error', message: 'Flutter 批量升级失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.upgradeAllFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -371,9 +393,9 @@ const FlutterPage: React.FC = () => {
         type: record.type
       })
       await loadFlutterProject()
-      addNotification({ type: 'success', message: 'Flutter 依赖已移除', description: record.name })
+      addNotification({ type: 'success', message: t('flutter.dependencyRemoved'), description: record.name })
     } catch (error: any) {
-      addNotification({ type: 'error', message: '移除 Flutter 依赖失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.removeDependencyFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -388,7 +410,7 @@ const FlutterPage: React.FC = () => {
       const versions = await window.electronAPI.flutter.versions(record.name)
       setVersionOptions(versions.map((version) => ({ value: version, label: version })))
     } catch (error: any) {
-      addNotification({ type: 'error', message: '加载 Flutter 版本失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.loadVersionsFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -410,9 +432,9 @@ const FlutterPage: React.FC = () => {
       })
       setVersionVisible(false)
       await loadFlutterProject()
-      addNotification({ type: 'success', message: 'Flutter 版本已切换', description: `${selectedDependency.name}@${version}` })
+      addNotification({ type: 'success', message: t('flutter.versionSwitched'), description: `${selectedDependency.name}@${version}` })
     } catch (error: any) {
-      addNotification({ type: 'error', message: '切换 Flutter 版本失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.switchVersionFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -428,7 +450,7 @@ const FlutterPage: React.FC = () => {
       setOutputVisible(true)
       await loadFlutterProject()
     } catch (error: any) {
-      addNotification({ type: 'error', message: 'flutter pub get 失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.pubGetFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -442,7 +464,7 @@ const FlutterPage: React.FC = () => {
       setDependencyTree(result)
       setTreeVisible(true)
     } catch (error: any) {
-      addNotification({ type: 'error', message: '生成 Flutter 依赖图失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.dependencyGraphFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -477,7 +499,7 @@ const FlutterPage: React.FC = () => {
       setOutput(JSON.stringify(result, null, 2))
       setOutputVisible(true)
     } catch (error: any) {
-      addNotification({ type: 'error', message: '检查 Flutter 过期依赖失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.checkOutdatedFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -490,13 +512,9 @@ const FlutterPage: React.FC = () => {
       const result = await window.electronAPI.flutter.securityAudit(currentPath)
       setSecurityAudit(result)
       setSecurityVisible(true)
-      addNotification({
-        type: result.issues.length > 0 ? 'warning' : 'success',
-        message: result.issues.length > 0 ? '发现 Flutter 安全风险' : '未发现公开披露安全风险',
-        description: result.issues.length > 0 ? `${result.vulnerableCount} 个依赖受影响` : `已检查 ${result.dependencyCount} 个依赖`
-      })
+      addNotification(securityNotification(result, t))
     } catch (error: any) {
-      addNotification({ type: 'error', message: 'Flutter 安全审计失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.securityAuditFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -518,7 +536,7 @@ const FlutterPage: React.FC = () => {
       setCommandVisible(false)
       await loadFlutterProject()
     } catch (error: any) {
-      addNotification({ type: 'error', message: 'Flutter 命令执行失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.commandFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -528,7 +546,7 @@ const FlutterPage: React.FC = () => {
     try {
       await window.electronAPI.openExternal(`https://pub.dev/packages/${encodeURIComponent(packageName)}`)
     } catch (error: any) {
-      addNotification({ type: 'error', message: '打开 pub.dev 失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.openPubDevFailed'), description: error.message })
     }
   }
 
@@ -544,9 +562,9 @@ const FlutterPage: React.FC = () => {
       await window.electronAPI.flutter.addAsset({ cwd: currentPath, path: values.path })
       setAssetVisible(false)
       await loadFlutterProject()
-      addNotification({ type: 'success', message: 'Flutter 资源已添加', description: values.path })
+      addNotification({ type: 'success', message: t('flutter.assetAdded'), description: values.path })
     } catch (error: any) {
-      addNotification({ type: 'error', message: '添加 Flutter 资源失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.addAssetFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -558,9 +576,9 @@ const FlutterPage: React.FC = () => {
     try {
       await window.electronAPI.flutter.removeAsset({ cwd: currentPath, path: record.path })
       await loadFlutterProject()
-      addNotification({ type: 'success', message: 'Flutter 资源已移除', description: record.path })
+      addNotification({ type: 'success', message: t('flutter.assetRemoved'), description: record.path })
     } catch (error: any) {
-      addNotification({ type: 'error', message: '移除 Flutter 资源失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.removeAssetFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -571,11 +589,11 @@ const FlutterPage: React.FC = () => {
     setLoading(true)
     try {
       const result = await window.electronAPI.flutter.checkPublish(currentPath)
-      setOutputTitle('pub.dev 发布检查')
+      setOutputTitle(t('flutter.publishCheckTitle'))
       setOutput(JSON.stringify(result, null, 2))
       setOutputVisible(true)
     } catch (error: any) {
-      addNotification({ type: 'error', message: '发布检查失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.publishCheckFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -602,9 +620,9 @@ const FlutterPage: React.FC = () => {
       setOutputTitle(values.dryRun === false ? 'flutter pub publish' : 'flutter pub publish --dry-run')
       setOutput(result || 'Completed')
       setOutputVisible(true)
-      addNotification({ type: 'success', message: 'Flutter 发布命令完成' })
+      addNotification({ type: 'success', message: t('flutter.publishComplete') })
     } catch (error: any) {
-      addNotification({ type: 'error', message: 'Flutter 发布失败', description: error.message })
+      addNotification({ type: 'error', message: t('flutter.publishFailed'), description: error.message })
     } finally {
       setLoading(false)
     }
@@ -624,7 +642,7 @@ const FlutterPage: React.FC = () => {
       )
     },
     {
-      title: '版本约束',
+      title: t('flutter.versionConstraint'),
       dataIndex: 'version',
       key: 'version',
       width: 160,
@@ -638,45 +656,45 @@ const FlutterPage: React.FC = () => {
       render: (text: string) => text || '-'
     },
     {
-      title: '分组',
+      title: t('common.group'),
       dataIndex: 'type',
       key: 'type',
       width: 180,
       render: (text: FlutterDependencyType) => <Tag color={dependencyTypeColor[text]}>{text}</Tag>
     },
     {
-      title: '来源',
+      title: t('common.source'),
       key: 'source',
       ellipsis: true,
       render: (_: unknown, record: FlutterDependencyInfo) => dependencySourceText(record)
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 340,
       render: (_: unknown, record: FlutterDependencyInfo) => (
         <Space wrap size={6}>
-          <Button size="small" onClick={() => showDependencyVersions(record)}>版本</Button>
-          <Button size="small" icon={<SyncOutlined />} onClick={() => updateDependency(record)}>更新</Button>
-          <Tooltip title="打开 pub.dev">
+          <Button size="small" onClick={() => showDependencyVersions(record)}>{t('common.version')}</Button>
+          <Button size="small" icon={<SyncOutlined />} onClick={() => updateDependency(record)}>{t('common.update')}</Button>
+          <Tooltip title={t('flutter.openPubDev')}>
             <Button size="small" icon={<ExportOutlined />} onClick={() => openPackagePage(record.name)} />
           </Tooltip>
           <Popconfirm
-            title="确认移除此 Flutter 依赖？"
-            okText="移除"
+            title={t('flutter.confirmRemoveDependency')}
+            okText={t('common.remove')}
             okButtonProps={{ danger: true }}
             onConfirm={() => removeDependency(record)}
           >
-            <Button size="small" danger icon={<DeleteOutlined />}>移除</Button>
+            <Button size="small" danger icon={<DeleteOutlined />}>{t('common.remove')}</Button>
           </Popconfirm>
         </Space>
       )
     }
-  ], [currentPath, outdatedMap])
+  ], [currentPath, outdatedMap, t])
 
   const assetColumns = useMemo<any[]>(() => [
     {
-      title: '资源路径',
+      title: t('flutter.assetPath'),
       dataIndex: 'path',
       key: 'path',
       render: (text: string, record: FlutterAssetInfo) => (
@@ -687,25 +705,25 @@ const FlutterPage: React.FC = () => {
       )
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 120,
       render: (_: unknown, record: FlutterAssetInfo) => (
         <Popconfirm
-          title="确认移除此资源声明？"
-          okText="移除"
+          title={t('flutter.confirmRemoveAsset')}
+          okText={t('common.remove')}
           okButtonProps={{ danger: true }}
           onConfirm={() => removeAsset(record)}
         >
-          <Button size="small" danger icon={<DeleteOutlined />}>移除</Button>
+          <Button size="small" danger icon={<DeleteOutlined />}>{t('common.remove')}</Button>
         </Popconfirm>
       )
     }
-  ], [currentPath])
+  ], [currentPath, t])
 
   const securityColumns = useMemo<any[]>(() => [
     {
-      title: '依赖',
+      title: t('common.dependencies'),
       dataIndex: 'packageName',
       key: 'packageName',
       width: 180,
@@ -717,7 +735,7 @@ const FlutterPage: React.FC = () => {
       )
     },
     {
-      title: '严重程度',
+      title: t('common.severity'),
       dataIndex: 'severity',
       key: 'severity',
       width: 120,
@@ -726,7 +744,7 @@ const FlutterPage: React.FC = () => {
       )
     },
     {
-      title: '公告',
+      title: t('security.advisory'),
       dataIndex: 'id',
       key: 'id',
       width: 150,
@@ -737,19 +755,19 @@ const FlutterPage: React.FC = () => {
       )
     },
     {
-      title: '影响与修复',
+      title: t('flutter.impactAndFix'),
       key: 'summary',
       render: (_: unknown, record: FlutterSecurityIssue) => (
         <Space orientation="vertical" size={2} style={{ width: '100%' }}>
           <strong>{record.summary}</strong>
-          <span>{record.affectedRange || '影响范围以公告为准'}</span>
-          <span>{record.fixedVersion ? `建议升级到 ${record.fixedVersion} 或更高版本` : '暂未在公告中找到明确修复版本'}</span>
+          <span>{record.affectedRange || t('flutter.affectedRangeFromAdvisory')}</span>
+          <span>{record.fixedVersion ? t('flutter.upgradeSuggested', { version: record.fixedVersion }) : t('flutter.noFixedVersionInAdvisory')}</span>
           {record.aliases.length > 0 && <span>{record.aliases.join(', ')}</span>}
         </Space>
       )
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 170,
       render: (_: unknown, record: FlutterSecurityIssue) => (
@@ -761,12 +779,12 @@ const FlutterPage: React.FC = () => {
               void showDependencyVersions(dep)
             }
           }}>
-            升级
+            {t('common.upgrade')}
           </Button>
         </Space>
       )
     }
-  ], [dependencies])
+  ], [dependencies, t])
 
   const renderSourceFields = () => (
     <Form.Item shouldUpdate noStyle>
@@ -781,17 +799,17 @@ const FlutterPage: React.FC = () => {
         }
         if (source === 'path') {
           return (
-            <Form.Item name="path" label="Path" rules={[{ required: true, message: '请输入本地依赖路径' }]}>
+            <Form.Item name="path" label="Path" rules={[{ required: true, message: t('flutter.enterLocalPath') }]}>
               <Space.Compact style={{ width: '100%' }}>
                 <Input placeholder="../local_package" />
-                <Button icon={<FolderOpenOutlined />} onClick={chooseLocalDependencyPath}>选择</Button>
+                <Button icon={<FolderOpenOutlined />} onClick={chooseLocalDependencyPath}>{t('common.select')}</Button>
               </Space.Compact>
             </Form.Item>
           )
         }
         if (source === 'git') {
           return (
-            <Form.Item name="git" label="Git URL" rules={[{ required: true, message: '请输入 Git URL' }]}>
+            <Form.Item name="git" label="Git URL" rules={[{ required: true, message: t('flutter.enterGitUrl') }]}>
               <Input placeholder="https://github.com/org/package.git" />
             </Form.Item>
           )
@@ -809,14 +827,14 @@ const FlutterPage: React.FC = () => {
       <div className={styles.header}>
         <div className={styles.titleRow}>
           <div>
-            <h2 className={styles.title}>Flutter pub 管理</h2>
-            <div className={styles.subtitle}>管理 pubspec.yaml 依赖、assets 资源声明、pub get/outdated/deps 以及 pub.dev 发布。</div>
+            <h2 className={styles.title}>{t('flutter.title')}</h2>
+            <div className={styles.subtitle}>{t('flutter.subtitle')}</div>
           </div>
           <RuntimeManagerSwitch active="flutter" />
         </div>
         <Space className={styles.actions} wrap>
-          <span className={styles.pathValue}>{currentPath || '未选择目录'}</span>
-          <Button icon={<FolderOpenOutlined />} onClick={chooseDirectory}>选择目录</Button>
+          <span className={styles.pathValue}>{currentPath || t('common.noDirectorySelected')}</span>
+          <Button icon={<FolderOpenOutlined />} onClick={chooseDirectory}>{t('common.selectDirectory')}</Button>
         </Space>
       </div>
 
@@ -830,14 +848,14 @@ const FlutterPage: React.FC = () => {
       </div>
 
       {!currentPath && (
-        <Alert type="info" showIcon title="选择 Flutter 项目目录以加载 pubspec.yaml。" />
+        <Alert type="info" showIcon title={t('flutter.selectProjectHint')} />
       )}
       {currentPath && projectInfo && !projectInfo.hasPubspec && (
         <Alert
           type="warning"
           showIcon
-          title="所选目录未检测到 pubspec.yaml。"
-          description="添加或更新 Flutter/Dart 依赖前，请选择 Flutter 项目根目录。"
+          title={t('flutter.noPubspecDetected')}
+          description={t('flutter.selectProjectRootHint')}
         />
       )}
 
@@ -846,38 +864,38 @@ const FlutterPage: React.FC = () => {
           items={[
             {
               key: 'dependencies',
-              label: '依赖',
+              label: t('common.dependencies'),
               children: (
                 <>
                   <div className={styles.sectionHeader}>
                     <Space>
                       <CodeOutlined />
-                      <strong>pubspec.yaml 依赖</strong>
+                      <strong>{t('flutter.pubspecDependencies')}</strong>
                     </Space>
                     <Space wrap>
-                      <Button icon={<ReloadOutlined />} onClick={loadFlutterProject} loading={loading} disabled={!currentPath}>刷新</Button>
-                      <Button icon={<FileTextOutlined />} onClick={openPubspec} disabled={!hasPubspec}>打开 pubspec.yaml</Button>
-                      <Button type="primary" icon={<PlusOutlined />} onClick={openDependencyModal} disabled={actionsDisabled}>添加依赖</Button>
-                      <Button icon={<SyncOutlined />} onClick={updateAllDependencies} loading={loading} disabled={actionsDisabled || dependencies.length === 0}>更新全部</Button>
+                      <Button icon={<ReloadOutlined />} onClick={loadFlutterProject} loading={loading} disabled={!currentPath}>{t('common.refresh')}</Button>
+                      <Button icon={<FileTextOutlined />} onClick={openPubspec} disabled={!hasPubspec}>{t('flutter.openPubspec')}</Button>
+                      <Button type="primary" icon={<PlusOutlined />} onClick={openDependencyModal} disabled={actionsDisabled}>{t('common.addDependency')}</Button>
+                      <Button icon={<SyncOutlined />} onClick={updateAllDependencies} loading={loading} disabled={actionsDisabled || dependencies.length === 0}>{t('common.updateAll')}</Button>
                       <Button icon={<PlayCircleOutlined />} onClick={runPubGet} loading={loading} disabled={actionsDisabled}>pub get</Button>
-                      <Button icon={<BranchesOutlined />} onClick={showDependencyGraph} loading={loading} disabled={actionsDisabled}>依赖图</Button>
-                      <Button icon={<WarningOutlined />} onClick={runSecurityAudit} loading={loading} disabled={actionsDisabled}>安全审计</Button>
-                      <Button icon={<WarningOutlined />} onClick={() => setHealthVisible(true)} disabled={actionsDisabled}>依赖诊断</Button>
+                      <Button icon={<BranchesOutlined />} onClick={showDependencyGraph} loading={loading} disabled={actionsDisabled}>{t('flutter.dependencyGraph')}</Button>
+                      <Button icon={<WarningOutlined />} onClick={runSecurityAudit} loading={loading} disabled={actionsDisabled}>{t('common.securityAudit')}</Button>
+                      <Button icon={<WarningOutlined />} onClick={() => setHealthVisible(true)} disabled={actionsDisabled}>{t('common.dependencyDiagnostics')}</Button>
                     </Space>
                   </div>
 
                   {hasPubspec && (
                     <Descriptions bordered size="small" column={1} className={styles.manifestInfo}>
-                      <Descriptions.Item label="清单">{projectInfo?.path}</Descriptions.Item>
-                      <Descriptions.Item label="包名">{projectInfo?.name || '-'}</Descriptions.Item>
-                      <Descriptions.Item label="版本">{projectInfo?.version || '-'}</Descriptions.Item>
+                      <Descriptions.Item label={t('common.manifest')}>{projectInfo?.path}</Descriptions.Item>
+                      <Descriptions.Item label={t('package.columnName')}>{projectInfo?.name || '-'}</Descriptions.Item>
+                      <Descriptions.Item label={t('common.version')}>{projectInfo?.version || '-'}</Descriptions.Item>
                       <Descriptions.Item label="Dart SDK">{projectInfo?.environmentSdk || '-'}</Descriptions.Item>
                     </Descriptions>
                   )}
 
                   <Spin spinning={loading}>
                     {dependencies.length === 0 ? (
-                      <Empty description={hasPubspec ? '暂无 Flutter 依赖' : '未加载 Flutter 项目'} />
+                      <Empty description={hasPubspec ? t('flutter.noDependencies') : t('flutter.noProjectLoaded')} />
                     ) : (
                       <Table
                         dataSource={dependencyRows}
@@ -894,26 +912,26 @@ const FlutterPage: React.FC = () => {
             },
             {
               key: 'assets',
-              label: '资源与发布',
+              label: t('flutter.assetsAndPublish'),
               children: (
                 <>
                   <div className={styles.sectionHeader}>
                     <Space>
                       <FileTextOutlined />
-                      <strong>Flutter assets / 发布</strong>
+                      <strong>{t('flutter.assetsPublishSection')}</strong>
                     </Space>
                     <Space wrap>
-                      <Button icon={<PlusOutlined />} onClick={openAssetModal} disabled={actionsDisabled}>添加资源</Button>
+                      <Button icon={<PlusOutlined />} onClick={openAssetModal} disabled={actionsDisabled}>{t('flutter.addAsset')}</Button>
                       <Button icon={<WarningOutlined />} onClick={showOutdated} loading={loading} disabled={actionsDisabled}>Outdated</Button>
-                      <Button icon={<PlayCircleOutlined />} onClick={openCommandModal} disabled={actionsDisabled}>运行命令</Button>
-                      <Button icon={<CloudUploadOutlined />} onClick={checkPublish} loading={loading} disabled={actionsDisabled}>发布检查</Button>
-                      <Button type="primary" icon={<CloudUploadOutlined />} onClick={openPublishModal} disabled={actionsDisabled}>发布</Button>
+                      <Button icon={<PlayCircleOutlined />} onClick={openCommandModal} disabled={actionsDisabled}>{t('flutter.runCommand')}</Button>
+                      <Button icon={<CloudUploadOutlined />} onClick={checkPublish} loading={loading} disabled={actionsDisabled}>{t('flutter.publishCheck')}</Button>
+                      <Button type="primary" icon={<CloudUploadOutlined />} onClick={openPublishModal} disabled={actionsDisabled}>{t('common.publish')}</Button>
                     </Space>
                   </div>
 
                   <Spin spinning={loading}>
                     {assets.length === 0 ? (
-                      <Empty description={hasPubspec ? '暂无 assets 资源声明' : '未加载 Flutter 项目'} />
+                      <Empty description={hasPubspec ? t('flutter.noAssets') : t('flutter.noProjectLoaded')} />
                     ) : (
                       <Table
                         dataSource={assets}
@@ -932,15 +950,15 @@ const FlutterPage: React.FC = () => {
       </div>
 
       <Modal
-        title="添加 Flutter 依赖"
+        title={t('flutter.addDependencyTitle')}
         open={dependencyVisible}
         onCancel={() => setDependencyVisible(false)}
         onOk={() => dependencyForm.submit()}
-        okText="保存"
+        okText={t('common.save')}
         forceRender
       >
         <Form form={dependencyForm} layout="vertical" onFinish={addDependency}>
-          <Form.Item name="packageName" label="Package" rules={[{ required: true, message: '请输入包名' }]}>
+          <Form.Item name="packageName" label="Package" rules={[{ required: true, message: t('flutter.enterPackageName') }]}>
             <AutoComplete
               options={searchOptions}
               onSearch={searchPackages}
@@ -948,18 +966,18 @@ const FlutterPage: React.FC = () => {
               placeholder="provider"
             />
           </Form.Item>
-          <Form.Item name="source" label="来源">
+          <Form.Item name="source" label={t('common.source')}>
             <Select options={SOURCE_OPTIONS} />
           </Form.Item>
-          <Form.Item label="版本">
+          <Form.Item label={t('common.version')}>
             <Space.Compact style={{ width: '100%' }}>
               <Form.Item name="version" noStyle>
-                <AutoComplete options={versionOptions} placeholder="留空使用 pub.dev 最新版本" style={{ width: '100%' }} />
+                <AutoComplete options={versionOptions} placeholder={t('flutter.versionPlaceholder')} style={{ width: '100%' }} />
               </Form.Item>
-              <Button onClick={loadInstallVersions}>版本</Button>
+              <Button onClick={loadInstallVersions}>{t('common.version')}</Button>
             </Space.Compact>
           </Form.Item>
-          <Form.Item name="type" label="分组">
+          <Form.Item name="type" label={t('common.group')}>
             <Select options={DEPENDENCY_TYPE_OPTIONS} />
           </Form.Item>
           {renderSourceFields()}
@@ -967,15 +985,15 @@ const FlutterPage: React.FC = () => {
       </Modal>
 
       <Modal
-        title="添加 Flutter 资源"
+        title={t('flutter.addAssetTitle')}
         open={assetVisible}
         onCancel={() => setAssetVisible(false)}
         onOk={() => assetForm.submit()}
-        okText="添加"
+        okText={t('common.add')}
         forceRender
       >
         <Form form={assetForm} layout="vertical" onFinish={addAsset}>
-          <Form.Item name="path" label="Asset path" rules={[{ required: true, message: '请输入资源路径' }]}>
+          <Form.Item name="path" label="Asset path" rules={[{ required: true, message: t('flutter.enterAssetPath') }]}>
             <AutoComplete
               options={[
                 { value: 'assets/' },
@@ -990,32 +1008,32 @@ const FlutterPage: React.FC = () => {
       </Modal>
 
       <Modal
-        title="运行 Flutter 命令"
+        title={t('flutter.runCommandTitle')}
         open={commandVisible}
         onCancel={() => setCommandVisible(false)}
         onOk={() => commandForm.submit()}
-        okText="运行"
+        okText={t('common.run')}
         forceRender
       >
         <Form form={commandForm} layout="vertical" onFinish={runCommand}>
-          <Form.Item name="command" label="flutter 参数" rules={[{ required: true, message: '请输入 flutter 命令参数' }]}>
+          <Form.Item name="command" label={t('flutter.commandArgs')} rules={[{ required: true, message: t('flutter.enterCommandArgs') }]}>
             <AutoComplete options={FLUTTER_COMMAND_OPTIONS} placeholder="pub get" />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={`版本 - ${selectedDependency?.name || ''}`}
+        title={t('flutter.versionTitle', { name: selectedDependency?.name || '' })}
         open={versionVisible}
         onCancel={() => setVersionVisible(false)}
         footer={null}
         width={620}
       >
         <Space orientation="vertical" style={{ width: '100%' }}>
-          <span>当前版本约束: <Tag color="cyan">{selectedDependency?.version || '-'}</Tag></span>
+          <span>{t('flutter.currentVersionConstraint')} <Tag color="cyan">{selectedDependency?.version || '-'}</Tag></span>
           <div className={styles.versions}>
             {versionOptions.length === 0 ? (
-              <Empty description="未找到版本信息" />
+              <Empty description={t('package.noVersionInfo')} />
             ) : (
               versionOptions.map((item) => (
                 <Tag
@@ -1033,22 +1051,22 @@ const FlutterPage: React.FC = () => {
       </Modal>
 
       <Modal
-        title="发布到 pub.dev"
+        title={t('flutter.publishToPubDev')}
         open={publishVisible}
         onCancel={() => setPublishVisible(false)}
         onOk={() => publishForm.submit()}
-        okText="执行"
+        okText={t('common.execute')}
         forceRender
       >
         <Form form={publishForm} layout="vertical" onFinish={publishPackage} initialValues={{ dryRun: true, force: false, overrideReadinessGate: false }}>
           <Form.Item name="dryRun" valuePropName="checked">
-            <Checkbox>Dry run，仅执行发布预检</Checkbox>
+            <Checkbox>{t('flutter.dryRunHint')}</Checkbox>
           </Form.Item>
           <Form.Item name="force" valuePropName="checked">
-            <Checkbox>Force，跳过交互确认</Checkbox>
+            <Checkbox>{t('flutter.forceHint')}</Checkbox>
           </Form.Item>
           <Form.Item name="server" label="Server">
-            <Input placeholder="留空使用 pub.dev；可填自定义 pub server" />
+            <Input placeholder={t('flutter.serverPlaceholder')} />
           </Form.Item>
           <Alert
             type="warning"
@@ -1074,17 +1092,17 @@ const FlutterPage: React.FC = () => {
       </Modal>
 
       <DependencyTreeViewer
-        title="Flutter 依赖树"
+        title={t('flutter.dependencyTreeTitle')}
         visible={treeVisible}
         data={dependencyTree}
-        actionLabel="修改"
+        actionLabel={t('common.modify')}
         canNodeAction={(node) => node.name !== projectInfo?.name}
         onNodeAction={modifyTreeNode}
         onClose={() => setTreeVisible(false)}
       />
 
       <Modal
-        title="Flutter 安全审计"
+        title={t('flutter.securityAuditTitle')}
         open={securityVisible}
         onCancel={() => setSecurityVisible(false)}
         footer={null}
@@ -1094,17 +1112,17 @@ const FlutterPage: React.FC = () => {
           <Alert
             type={securityAudit?.issues.length ? 'warning' : 'success'}
             showIcon
-            title={securityAudit?.issues.length ? `发现 ${securityAudit.issues.length} 条公开披露风险` : '未发现公开披露安全风险'}
+            title={securityAudit?.issues.length ? t('flutter.securityRisksFoundCount', { count: securityAudit.issues.length }) : t('flutter.noSecurityRisks')}
             description={[
-              securityAudit ? `数据源: ${securityAudit.source}` : '',
-              securityAudit ? `检查依赖: ${securityAudit.dependencyCount}` : '',
-              securityAudit?.skipped.length ? `跳过未锁定版本: ${securityAudit.skipped.join(', ')}` : '',
+              securityAudit ? t('flutter.dataSource', { source: securityAudit.source }) : '',
+              securityAudit ? t('flutter.dependenciesChecked', { count: securityAudit.dependencyCount }) : '',
+              securityAudit?.skipped.length ? t('flutter.skippedUnpinned', { list: securityAudit.skipped.join(', ') }) : '',
               securityAudit?.error || ''
-            ].filter(Boolean).join('；')}
-            action={<Button onClick={runSecurityAudit} loading={loading}>重新审计</Button>}
+            ].filter(Boolean).join(t('common.detailSeparator'))}
+            action={<Button onClick={runSecurityAudit} loading={loading}>{t('security.rescan')}</Button>}
           />
           {!securityAudit || securityAudit.issues.length === 0 ? (
-            <Empty description="暂无安全风险结果" />
+            <Empty description={t('flutter.noSecurityResults')} />
           ) : (
             <Table
               dataSource={securityAudit.issues}

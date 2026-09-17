@@ -126,7 +126,7 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
 
   const columns = [
     {
-      title: t('health.columnSeverity'),
+      title: t('common.severity'),
       dataIndex: 'severity',
       key: 'severity',
       width: 100,

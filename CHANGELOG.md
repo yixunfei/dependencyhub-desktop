@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `scripts/cjk-characters.mjs` holds the one definition of what counts as CJK, shared
+  by the ratchet and the coverage report so the two cannot disagree. It also exports an
+  identity hash, which the baseline records: the ratchet refuses to compare counts across
+  a definition change and asks for `--rebaseline` instead, printing the per-file delta.
+- `node scripts/i18n-coverage.mjs --file <path>` lists one file's CJK literals in source
+  order with line numbers, marking the ones the runtime literal map already handles. That
+  is the first step of a localization batch, and it was a throwaway script twice over.
 - `npm run verify:i18n` now also runs a hardcoded-CJK ratchet backed by
   `scripts/i18n-cjk-baseline.json`: no file may exceed its recorded count and no
   new file may introduce hardcoded CJK, so the untranslated backlog can only
@@ -19,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `translate()` and `useT()` accept `{name}` parameters. `useT()` is memoized on
   the language, so `t` keeps a stable identity and can safely appear in a
   dependency array.
-
 - AI dependency ecosystem group with three preview managers: **MCP Servers**,
   **Agent Skills**, and **Agent Rules & Prompts**, reachable from the new
   `/ai` workspace.
@@ -66,15 +72,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   close and swallows the rest of the file, or strips comments first and corrupts
   every string containing `//`. Every bucket reconciles against the per-file
   totals the ratchet uses, so a gap in the parser cannot silently under-report.
-- `scripts/i18n-coverage.mjs` (`npm run i18n:coverage`, not a gate) splits the
-  remaining hardcoded-CJK backlog by whether an English user can still see it, so
-  work can be ranked by real impact instead of by raw character count. It parses
-  with the TypeScript AST: a regex-based scanner either treats `=>` as a JSX tag
-  close and swallows the rest of the file, or strips comments first and corrupts
-  every string containing `//`. Every bucket reconciles against the per-file
-  totals the ratchet uses, so a gap in the parser cannot silently under-report.
 
 ### Changed
+- The Flutter manager page resolves all of its copy through the dictionary. It held the
+  largest user-visible block left (627 hardcoded CJK characters) and is now clear of the
+  ratchet entirely. 100 new keys: 17 `common.*` shared with the other manager pages
+  (`refresh`, `securityAudit`, `dependencyDiagnostics`, `updateAll`, `addDependency`,
+  `noDirectorySelected`, `workdirSwitched`, and the action verbs) and 83 `flutter.*`.
+  The dictionary reaches 631 keys.
+- Two places where localizing Flutter would have added a second key for something the
+  dictionary already said, so the shared key is used instead and the near-duplicate is
+  gone:
+  - The security table's severity column hardcoded 严重程度. It now resolves through
+    `common.severity` (级别), matching the health table. That reuse exposed
+    `common.severity` and `health.columnSeverity` as identical in both languages, so the
+    health-only key is gone and its four call sites use the shared one.
+  - The Flutter security-audit rescan button runs the same action as the package
+    security-audit rescan, so it uses `security.rescan`. `flutter.rescanAudit` had the same
+    English with a different Chinese and is gone.
+- `FlutterPage`'s security-audit notification moved to a module-scope helper. The
+  component sits at its recorded size budget, and this is the one notification whose
+  message and description both branch, so translating it in place would have pushed the
+  function over. Extracting it is the direction the debt gate wants anyway.
 - The dictionary moved to `src/i18n/dictionaries.ts` and the literal fallback map
   to `src/i18n/literals.ts`; `src/i18n.ts` keeps the API. The dictionary had
   reached 1,522 lines and would have kept growing with every localization batch,
@@ -125,28 +144,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/verify-framework.mjs` asserts the nine health workflow groups by
   dictionary key plus dictionary value rather than by source literal, so the
   grouping guarantee survives localization.
-- The health feature and the dependency policy editor resolve their copy through
-  the dictionary. 20 product files and 4 test files, 1,289 hardcoded CJK
-  characters removed (7,539 -> 6,250); the dictionary grows from 460 to 534 keys.
-- `HealthReportBlock` carries `labelKey: TranslationKey` instead of a resolved
-  `label`, and `useHealthReportLoader` resolves it at render. A label captured at
-  load time would keep the old language after a switch until the next refresh,
-  which means re-running 39 report loads to relabel a failure panel.
-- `LabelTranslator` moved from `src/utils/npmVersions.ts` to `src/i18n.ts`. It is
-  the subset of `useT()`'s return type a pure helper needs, and the health
-  presentation helpers need it too.
-- The hardcoded-CJK ratchet skips test files. A test that asserts localized copy
-  has to contain that copy, so counting it made the ratchet report progress it
-  could never measure; the suite's own assertions are guarded by the suite.
-- The health center header reuses the shared `ProjectPathBar` instead of its own
-  directory picker, which deletes `chooseDirectoryAction` (it duplicated the
-  shared handler and carried a hardcoded string that already had a dictionary key)
-  and the three now-dead `pathInfo` / `pathLabel` / `pathValue` styles.
-- `scripts/verify-framework.mjs` asserts the nine health workflow groups by
-  dictionary key plus dictionary value rather than by source literal, so the
-  grouping guarantee survives localization.
 
 ### Fixed
+- `health.notDetected` rendered 未识别 ("unrecognized") where the English said "Not
+  detected", so the manager health table showed a different concept in Chinese than in
+  English. Aligning it made the key identical to `common.notDetected`, so the shared key is
+  used and the health-only one is gone.
+- The hardcoded-CJK ratchet could not see Chinese punctuation: its class was
+  `[\u4e00-\u9fff]` alone, so 207 occurrences of `，、。（）；？：` and `“”` across 15 files were
+  invisible. The failure mode was worse than an undercount — a file whose only remaining
+  Chinese was `；` scored zero, dropped out of the ratchet, and would never be flagged
+  again. An independent AST census confirmed the 207 before the class changed.
+- The ratchet reported failures by throwing, which printed a stack trace and buried the
+  message. It now ends with `[i18n] failed` and exits 1, which is what the framework
+  runner reads.
+- The baseline `note` was corrupted. It had been generated through a bash double-quoted
+  string, so the backticks around the command were read as command substitution: the text
+  lost the command name, and bash ran `node scripts/verify-i18n.mjs --update` as a side
+  effect. That was the stray output seen when the baseline was first created.
 - `channelLabel` returned the Chinese label `预览版` for an unknown prerelease
   channel, so an English install showed Chinese inside the version picker
   tooltip. It now resolves the generic channel through the dictionary.
@@ -165,19 +180,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the empty state points at the select-directory action instead.
 - Removed the duplicated directory-selection handler and the now-unused
   `pathLabel`/`pathValue` styles from the workspace landing page.
-- The 39 health report-block labels were shown to English users in Chinese. None
-  of them was covered by the runtime literal map, and `HealthReportFailures`
-  renders the label whenever a report fails, so the failure panel — the one place
-  a user needs to read carefully — was the one place that stayed Chinese.
-- The health action layer builds ~80 notification messages and the runtime literal
-  map covered exactly one of them, so most user-facing feedback from the health
-  center showed Chinese regardless of the interface language.
-- The health metric cards were half translated in both directions: 8 titles were
-  Chinese, which an English user saw, and 32 were English, which a zh-CN user saw.
-  All 40 now resolve through the dictionary.
-- `HealthCenter.test.tsx`, `HealthReportFailures.test.tsx`, and
-  `reportLoading.test.tsx` asserted Chinese UI text, which passed only because the
-  copy was hardcoded. They pin the language and assert the dictionary value now.
 - The 39 health report-block labels were shown to English users in Chinese. None
   of them was covered by the runtime literal map, and `HealthReportFailures`
   renders the label whenever a report fails, so the failure panel — the one place
