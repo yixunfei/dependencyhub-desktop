@@ -2,6 +2,7 @@ import { ExportOutlined, HistoryOutlined } from '@ant-design/icons'
 import { Button, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { managerColor } from '../../../domain/managers/presentation'
 import styles from '../HealthCenter.module.css'
+import { useT } from '../../../i18n'
 import { formatDuration, operationKindColor, operationKindLabel } from '../healthPresentation'
 import type { HealthCenterModel } from '../useHealthCenterModel'
 const { Text } = Typography
@@ -13,19 +14,20 @@ type Props = Pick<HealthCenterModel,
 >
 
 export function OperationHistoryPanel({ operationHistory, filteredOperations, historyManagerFilter, setHistoryManagerFilter, operationManagerOptions, historyStatusFilter, setHistoryStatusFilter, historyChangeFilter, setHistoryChangeFilter, operationStats, exportOperationHistory, reporting, recentOperations }: Props) {
+  const t = useT()
   return (operationHistory.length > 0 && (
     <div className={styles.historyPanel}>
       <div className={styles.policyHeader}>
         <Space wrap>
           <HistoryOutlined />
-          <Text strong>最近操作</Text>
-          <Tag>{operationHistory.length} 条记录</Tag>
+          <Text strong>{t('health.recentOperations')}</Text>
+          <Tag>{t('health.recordCount', { count: operationHistory.length })}</Tag>
         </Space>
-        <Text type="secondary">CLI 命令会持久记录到当前项目的 `.npmDesktopManager/operations`。</Text>
+        <Text type="secondary">{t('health.operationHint')}</Text>
       </div>
       <div className={styles.historyControls}>
         <Text type="secondary">
-          {filteredOperations.length}/{operationHistory.length} 条记录
+          {t('health.filteredRecords', { shown: filteredOperations.length, total: operationHistory.length })}
         </Text>
         <Select
           size="small"
@@ -39,9 +41,9 @@ export function OperationHistoryPanel({ operationHistory, filteredOperations, hi
           value={historyStatusFilter}
           onChange={(value: 'all' | OperationHistoryStatus) => setHistoryStatusFilter(value)}
           options={[
-            { value: 'all', label: '全部状态' },
-            { value: 'success', label: '成功' },
-            { value: 'error', label: '失败' }
+            { value: 'all', label: t('health.allStatuses') },
+            { value: 'success', label: t('common.success') },
+            { value: 'error', label: t('common.failure') }
           ]}
           style={{ width: 112 }}
         />
@@ -50,16 +52,16 @@ export function OperationHistoryPanel({ operationHistory, filteredOperations, hi
           value={historyChangeFilter}
           onChange={(value: 'all' | 'mutating' | 'readonly') => setHistoryChangeFilter(value)}
           options={[
-            { value: 'all', label: '全部类型' },
-            { value: 'mutating', label: '变更' },
-            { value: 'readonly', label: '只读' }
+            { value: 'all', label: t('health.allTypes') },
+            { value: 'mutating', label: t('health.mutatingTag') },
+            { value: 'readonly', label: t('health.readonlyTag') }
           ]}
           style={{ width: 112 }}
         />
-        <Tag color="orange">{operationStats.mutating} 变更</Tag>
-        <Tag color={operationStats.errors > 0 ? 'red' : 'green'}>{operationStats.errors} 失败</Tag>
+        <Tag color="orange">{t('health.mutatingCount', { count: operationStats.mutating })}</Tag>
+        <Tag color={operationStats.errors > 0 ? 'red' : 'green'}>{t('health.errorCount', { count: operationStats.errors })}</Tag>
         <Button size="small" icon={<ExportOutlined />} onClick={() => exportOperationHistory('markdown')} loading={reporting}>
-          导出
+          {t('common.export')}
         </Button>
       </div>
       <OperationHistoryPanelTable recentOperations={recentOperations} />
@@ -70,6 +72,7 @@ export function OperationHistoryPanel({ operationHistory, filteredOperations, hi
 type PanelValues = { [Key in keyof Props]: NonNullable<Props[Key]> }
 
 function OperationHistoryPanelTable({ recentOperations }: Pick<PanelValues, 'recentOperations'>) {
+  const t = useT()
   return (<Table
     dataSource={recentOperations}
     rowKey="id"
@@ -77,23 +80,23 @@ function OperationHistoryPanelTable({ recentOperations }: Pick<PanelValues, 'rec
     pagination={false}
     columns={[
       {
-        title: '完成时间',
+        title: t('health.columnCompletedAt'),
         dataIndex: 'finishedAt',
         key: 'finishedAt',
         width: 190,
         render: (value: string) => new Date(value).toLocaleString()
       },
       {
-        title: '状态',
+        title: t('common.status'),
         dataIndex: 'status',
         key: 'status',
         width: 90,
         render: (status: OperationHistoryStatus) => (
-          <Tag color={status === 'success' ? 'green' : 'red'}>{status === 'success' ? '成功' : '失败'}</Tag>
+          <Tag color={status === 'success' ? 'green' : 'red'}>{status === 'success' ? t('common.success') : t('common.failure')}</Tag>
         )
       },
       {
-        title: '命令',
+        title: t('health.columnCommand'),
         dataIndex: 'command',
         key: 'command',
         ellipsis: true,
@@ -104,10 +107,10 @@ function OperationHistoryPanelTable({ recentOperations }: Pick<PanelValues, 'rec
                 {record.classification?.managerId || record.classification?.tool || 'unknown'}
               </Tag>
               <Tag color={operationKindColor(record.classification?.operation)}>
-                {operationKindLabel(record.classification?.operation)}
+                {operationKindLabel(record.classification?.operation, t)}
               </Tag>
               <Tag color={record.classification?.mutating ? 'orange' : 'blue'}>
-                {record.classification?.mutating ? '变更' : '只读'}
+                {record.classification?.mutating ? t('health.mutatingTag') : t('health.readonlyTag')}
               </Tag>
             </Space>
             <Text code>{command}</Text>
@@ -115,14 +118,14 @@ function OperationHistoryPanelTable({ recentOperations }: Pick<PanelValues, 'rec
         )
       },
       {
-        title: '耗时',
+        title: t('health.columnDuration'),
         dataIndex: 'durationMs',
         key: 'durationMs',
         width: 90,
         render: (durationMs: number) => formatDuration(durationMs)
       },
       {
-        title: '摘要',
+        title: t('health.columnSummary'),
         key: 'summary',
         width: 220,
         ellipsis: true,

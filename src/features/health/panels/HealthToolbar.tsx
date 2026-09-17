@@ -3,6 +3,7 @@ import {
   RollbackOutlined, SafetyCertificateOutlined, SettingOutlined, ToolOutlined, WarningOutlined
 } from '@ant-design/icons'
 import { Button, Typography } from 'antd'
+import { useT } from '../../../i18n'
 import styles from '../HealthCenter.module.css'
 import type { HealthCenterModel } from '../useHealthCenterModel'
 const { Text } = Typography
@@ -62,17 +63,18 @@ function InventorySBOMActions({ scanDetectedManagers, scanning, exportInventory,
   'refreshReportArtifactIndex' | 'exportReportArtifactIndex' | 'refreshFrameworkCoverage' |
   'exportFrameworkCoverage'
 >) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <SafetyCertificateOutlined />
-      <Text className={styles.toolGroupTitle}>Inventory & SBOM</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupInventorySbom')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button type="primary" icon={<SafetyCertificateOutlined />} onClick={scanDetectedManagers} loading={!!scanning}>
-        扫描已识别生态
+        {t('health.actionScanDetected')}
       </Button>
       <Button icon={<ExportOutlined />} onClick={exportInventory}>
-        导出项目依赖清单
+        {t('health.actionExportInventory')}
       </Button>
       <Button icon={<ExportOutlined />} onClick={() => exportSupplyChain('cyclonedx')} loading={reporting}>
         CycloneDX SBOM
@@ -81,7 +83,7 @@ function InventorySBOMActions({ scanDetectedManagers, scanning, exportInventory,
         SPDX SBOM
       </Button>
       <Button icon={<ExportOutlined />} onClick={() => exportSupplyChain('markdown')} loading={reporting}>
-        Markdown 报告
+        {t('health.actionMarkdownReport')}
       </Button>
       <Button icon={<ExportOutlined />} onClick={() => exportLicenseCompliance('markdown')} loading={reporting}>
         License matrix
@@ -96,7 +98,7 @@ function InventorySBOMActions({ scanDetectedManagers, scanning, exportInventory,
         Notices JSON
       </Button>
       <Button icon={<ExportOutlined />} onClick={() => exportOperationHistory('markdown')} loading={reporting}>
-        导出操作历史
+        {t('health.actionExportOperationHistory')}
       </Button>
       <Button icon={<ReloadOutlined />} onClick={refreshReportArtifactIndex} loading={reporting}>
         Refresh reports
@@ -118,10 +120,11 @@ function EvidenceIntakeActions({ importCiEvidence, reporting, recordManualCiEvid
   'importCiEvidence' | 'reporting' | 'recordManualCiEvidence' | 'exportCiEvidence' | 'importAuditEvidence' |
   'exportAuditEvidence' | 'exportVulnerabilityRemediationPlan'
 >) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <HistoryOutlined />
-      <Text className={styles.toolGroupTitle}>Evidence Intake</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupEvidenceIntake')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button onClick={importCiEvidence} loading={reporting}>
@@ -159,10 +162,11 @@ function ReleaseDecisionsActions({ recordReleaseApproval, reporting, exportRelea
   'recordReleaseApproval' | 'reporting' | 'exportReleaseApprovals' | 'recordReleaseException' |
   'exportReleaseExceptions'
 >) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <SafetyCertificateOutlined />
-      <Text className={styles.toolGroupTitle}>Release Decisions</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupReleaseDecisions')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button onClick={() => recordReleaseApproval('approved')} loading={reporting}>
@@ -188,10 +192,11 @@ function RegistryCredentialsActions({ checkRegistries, reporting, exportRegistry
   'checkRegistries' | 'reporting' | 'exportRegistryReachability' | 'exportCredentialUsage' |
   'exportCredentialRotationPlan'
 >) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <WarningOutlined />
-      <Text className={styles.toolGroupTitle}>Registry & Credentials</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupRegistryCredentials')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button onClick={checkRegistries} loading={reporting}>
@@ -216,10 +221,11 @@ function ReproducibilityReportsActions({ exportLockfileDrift, reporting, exportR
   'exportDependencyChangeApprovalPacket' | 'exportDependencyChangeCalendar' |
   'exportDependencyChangeExecutionRecord' | 'exportReleaseRiskProfile'
 >) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <RollbackOutlined />
-      <Text className={styles.toolGroupTitle}>Reproducibility Reports</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupReproducibilityReports')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button icon={<ExportOutlined />} onClick={() => exportLockfileDrift('markdown')} loading={reporting}>
@@ -281,10 +287,11 @@ function AutomationOwnershipActions({ exportCiIntegrationPlan, reporting, export
   'exportCiIntegrationPlan' | 'reporting' | 'exportDependencyAutomationPlan' | 'exportAutomationSafetyPlan' |
   'exportDependencyOwnershipPlan' | 'exportDependencyUpgradePlaybook' | 'exportPolicyAsCodePack'
 >) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <ExperimentOutlined />
-      <Text className={styles.toolGroupTitle}>Automation & Ownership</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupAutomationOwnership')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button icon={<ExportOutlined />} onClick={() => exportCiIntegrationPlan('markdown')} loading={reporting}>
@@ -339,10 +346,11 @@ function WorkspaceReleaseExportsActions({ scanWorkspaces, reporting, exportWorks
   'exportReleaseSignature' | 'refreshReleaseTrustPolicy' | 'exportReleaseTrustPolicy' |
   'exportDependencyHealthDashboard'
 >) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <ApartmentOutlined />
-      <Text className={styles.toolGroupTitle}>Workspace & Release Exports</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupWorkspaceReleaseExports')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button icon={<ApartmentOutlined />} onClick={scanWorkspaces} loading={reporting}>
@@ -415,17 +423,18 @@ function SnapshotPoliciesActions({ createSnapshot, reporting, diffLatestSnapshot
   'evaluatePolicy' | 'runReadinessGate' | 'ensureReadinessPolicy' | 'setReadinessPolicyEditorOpen' |
   'exportReadiness'
 >) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <SettingOutlined />
-      <Text className={styles.toolGroupTitle}>Snapshot & Policies</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupSnapshotPolicies')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button onClick={createSnapshot} loading={reporting}>
-        创建清单快照
+        {t('health.actionCreateSnapshot')}
       </Button>
       <Button onClick={diffLatestSnapshot} loading={reporting}>
-        对比最新快照
+        {t('health.actionDiffLatestSnapshot')}
       </Button>
       <Button onClick={diffDependencyComponents} loading={reporting}>
         Dependency risk diff
@@ -434,16 +443,16 @@ function SnapshotPoliciesActions({ createSnapshot, reporting, diffLatestSnapshot
         Export risk report
       </Button>
       <Button danger icon={<RollbackOutlined />} onClick={restoreLatestSnapshot} loading={reporting}>
-        恢复最新快照
+        {t('health.actionRestoreLatestSnapshot')}
       </Button>
       <Button onClick={ensurePolicy} loading={reporting}>
-        初始化策略
+        {t('health.actionInitPolicy')}
       </Button>
       <Button icon={<SettingOutlined />} onClick={() => setPolicyEditorOpen(true)} disabled={!currentPath}>
-        编辑策略
+        {t('health.actionEditPolicy')}
       </Button>
       <Button onClick={evaluatePolicy} loading={reporting}>
-        策略检查
+        {t('health.actionCheckPolicy')}
       </Button>
       <Button icon={<SafetyCertificateOutlined />} onClick={runReadinessGate} loading={reporting}>
         Readiness gate
@@ -462,17 +471,18 @@ function SnapshotPoliciesActions({ createSnapshot, reporting, diffLatestSnapshot
 }
 
 function NavigationActions({ navigate }: Pick<PanelValues, 'navigate'>) {
+  const t = useT()
   return (<div className={styles.toolGroup}>
     <div className={styles.toolGroupHeader}>
       <ToolOutlined />
-      <Text className={styles.toolGroupTitle}>Navigation</Text>
+      <Text className={styles.toolGroupTitle}>{t('health.groupNavigation')}</Text>
     </div>
     <div className={styles.toolGroupActions}>
       <Button icon={<ToolOutlined />} onClick={() => navigate('/environment')}>
-        环境与工具链
+        {t('toolchain.title')}
       </Button>
       <Button icon={<ExperimentOutlined />} onClick={() => navigate('/extended')}>
-        扩展生态计划器
+        {t('health.actionExtendedPlanner')}
       </Button>
     </div>
   </div>)

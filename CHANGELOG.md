@@ -59,6 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The framework runner now fails when a verification group is missing from
   `.github/workflows/quality.yml`, so a new group cannot pass locally and never
   run in CI. `legacy` stays deliberately excluded as the full regression.
+- `scripts/i18n-coverage.mjs` (`npm run i18n:coverage`, not a gate) splits the
+  remaining hardcoded-CJK backlog by whether an English user can still see it, so
+  work can be ranked by real impact instead of by raw character count. It parses
+  with the TypeScript AST: a regex-based scanner either treats `=>` as a JSX tag
+  close and swallows the rest of the file, or strips comments first and corrupts
+  every string containing `//`. Every bucket reconciles against the per-file
+  totals the ratchet uses, so a gap in the parser cannot silently under-report.
+- `scripts/i18n-coverage.mjs` (`npm run i18n:coverage`, not a gate) splits the
+  remaining hardcoded-CJK backlog by whether an English user can still see it, so
+  work can be ranked by real impact instead of by raw character count. It parses
+  with the TypeScript AST: a regex-based scanner either treats `=>` as a JSX tag
+  close and swallows the rest of the file, or strips comments first and corrupts
+  every string containing `//`. Every bucket reconciles against the per-file
+  totals the ratchet uses, so a gap in the parser cannot silently under-report.
 
 ### Changed
 - The dictionary moved to `src/i18n/dictionaries.ts` and the literal fallback map
@@ -91,6 +105,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The workspace landing page reuses the shared `ProjectPathBar` instead of its
   own directory picker, so the recent-directory dropdown, full-path tooltip, and
   history clearing work identically everywhere.
+- The health feature and the dependency policy editor resolve their copy through
+  the dictionary. 20 product files and 4 test files, 1,289 hardcoded CJK
+  characters removed (7,539 -> 6,250); the dictionary grows from 460 to 534 keys.
+- `HealthReportBlock` carries `labelKey: TranslationKey` instead of a resolved
+  `label`, and `useHealthReportLoader` resolves it at render. A label captured at
+  load time would keep the old language after a switch until the next refresh,
+  which means re-running 39 report loads to relabel a failure panel.
+- `LabelTranslator` moved from `src/utils/npmVersions.ts` to `src/i18n.ts`. It is
+  the subset of `useT()`'s return type a pure helper needs, and the health
+  presentation helpers need it too.
+- The hardcoded-CJK ratchet skips test files. A test that asserts localized copy
+  has to contain that copy, so counting it made the ratchet report progress it
+  could never measure; the suite's own assertions are guarded by the suite.
+- The health center header reuses the shared `ProjectPathBar` instead of its own
+  directory picker, which deletes `chooseDirectoryAction` (it duplicated the
+  shared handler and carried a hardcoded string that already had a dictionary key)
+  and the three now-dead `pathInfo` / `pathLabel` / `pathValue` styles.
+- `scripts/verify-framework.mjs` asserts the nine health workflow groups by
+  dictionary key plus dictionary value rather than by source literal, so the
+  grouping guarantee survives localization.
+- The health feature and the dependency policy editor resolve their copy through
+  the dictionary. 20 product files and 4 test files, 1,289 hardcoded CJK
+  characters removed (7,539 -> 6,250); the dictionary grows from 460 to 534 keys.
+- `HealthReportBlock` carries `labelKey: TranslationKey` instead of a resolved
+  `label`, and `useHealthReportLoader` resolves it at render. A label captured at
+  load time would keep the old language after a switch until the next refresh,
+  which means re-running 39 report loads to relabel a failure panel.
+- `LabelTranslator` moved from `src/utils/npmVersions.ts` to `src/i18n.ts`. It is
+  the subset of `useT()`'s return type a pure helper needs, and the health
+  presentation helpers need it too.
+- The hardcoded-CJK ratchet skips test files. A test that asserts localized copy
+  has to contain that copy, so counting it made the ratchet report progress it
+  could never measure; the suite's own assertions are guarded by the suite.
+- The health center header reuses the shared `ProjectPathBar` instead of its own
+  directory picker, which deletes `chooseDirectoryAction` (it duplicated the
+  shared handler and carried a hardcoded string that already had a dictionary key)
+  and the three now-dead `pathInfo` / `pathLabel` / `pathValue` styles.
+- `scripts/verify-framework.mjs` asserts the nine health workflow groups by
+  dictionary key plus dictionary value rather than by source literal, so the
+  grouping guarantee survives localization.
 
 ### Fixed
 - `channelLabel` returned the Chinese label `预览版` for an unknown prerelease
@@ -111,7 +165,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the empty state points at the select-directory action instead.
 - Removed the duplicated directory-selection handler and the now-unused
   `pathLabel`/`pathValue` styles from the workspace landing page.
-
+- The 39 health report-block labels were shown to English users in Chinese. None
+  of them was covered by the runtime literal map, and `HealthReportFailures`
+  renders the label whenever a report fails, so the failure panel — the one place
+  a user needs to read carefully — was the one place that stayed Chinese.
+- The health action layer builds ~80 notification messages and the runtime literal
+  map covered exactly one of them, so most user-facing feedback from the health
+  center showed Chinese regardless of the interface language.
+- The health metric cards were half translated in both directions: 8 titles were
+  Chinese, which an English user saw, and 32 were English, which a zh-CN user saw.
+  All 40 now resolve through the dictionary.
+- `HealthCenter.test.tsx`, `HealthReportFailures.test.tsx`, and
+  `reportLoading.test.tsx` asserted Chinese UI text, which passed only because the
+  copy was hardcoded. They pin the language and assert the dictionary value now.
+- The 39 health report-block labels were shown to English users in Chinese. None
+  of them was covered by the runtime literal map, and `HealthReportFailures`
+  renders the label whenever a report fails, so the failure panel — the one place
+  a user needs to read carefully — was the one place that stayed Chinese.
+- The health action layer builds ~80 notification messages and the runtime literal
+  map covered exactly one of them, so most user-facing feedback from the health
+  center showed Chinese regardless of the interface language.
+- The health metric cards were half translated in both directions: 8 titles were
+  Chinese, which an English user saw, and 32 were English, which a zh-CN user saw.
+  All 40 now resolve through the dictionary.
+- `HealthCenter.test.tsx`, `HealthReportFailures.test.tsx`, and
+  `reportLoading.test.tsx` asserted Chinese UI text, which passed only because the
+  copy was hardcoded. They pin the language and assert the dictionary value now.
 ## [1.0.3] - 2026-09-17
 
 ### Fixed

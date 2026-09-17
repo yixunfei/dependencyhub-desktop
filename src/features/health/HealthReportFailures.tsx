@@ -1,5 +1,6 @@
 import React from 'react'
 import { Alert, Button, Space, Typography } from 'antd'
+import { useT } from '../../i18n'
 import type { ReportFailure } from './reportStatus'
 import styles from './HealthCenter.module.css'
 
@@ -12,6 +13,7 @@ export interface HealthReportFailuresProps {
 }
 
 export const HealthReportFailures: React.FC<HealthReportFailuresProps> = ({ failures, onRetry, onRetryAll }) => {
+  const t = useT()
   if (failures.length === 0) return null
 
   return (
@@ -19,7 +21,7 @@ export const HealthReportFailures: React.FC<HealthReportFailuresProps> = ({ fail
       type="warning"
       showIcon
       className={styles.reportFailures}
-      title={`${failures.length} 个报告加载失败`}
+      title={t('health.reportFailuresTitle', { count: failures.length })}
       description={
         <Space orientation="vertical" size={4} style={{ width: '100%' }}>
           {failures.map((failure) => (
@@ -28,10 +30,10 @@ export const HealthReportFailures: React.FC<HealthReportFailuresProps> = ({ fail
                 <Text strong>{failure.label}</Text>
                 <Text type="secondary"> — {failure.message}</Text>
               </span>
-              <Button size="small" aria-label={`重试${failure.label}`} onClick={() => onRetry(failure.key)}>重试</Button>
+              <Button size="small" aria-label={t('health.retryNamed', { label: failure.label })} onClick={() => onRetry(failure.key)}>{t('health.retry')}</Button>
             </Space>
           ))}
-          <Button size="small" type="primary" ghost onClick={onRetryAll}>重试全部失败报告</Button>
+          <Button size="small" type="primary" ghost onClick={onRetryAll}>{t('health.retryAllFailed')}</Button>
         </Space>
       }
     />

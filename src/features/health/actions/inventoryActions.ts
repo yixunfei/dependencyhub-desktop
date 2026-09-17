@@ -1,20 +1,12 @@
 import { type ImplementedPackageManagerId } from '../../../domain/managers/registry'
 import type { HealthData } from '../healthData'
 
-export async function chooseDirectoryAction(context: Pick<HealthData, 'setCurrentPath' | 'addNotification'>) {
-  const { setCurrentPath, addNotification } = context
-  const path = await window.electronAPI.selectDirectory()
-  if (!path) return
-  setCurrentPath(path)
-  addNotification({ type: 'info', message: '项目路径已切换', description: path })
-}
-
 export async function scanManagerAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setScanning' | 'setScans'
+  't' | 'currentPath' | 'addNotification' | 'setScanning' | 'setScans'
 >, managerId: ImplementedPackageManagerId) {
-  const { currentPath, addNotification, setScanning, setScans } = context
+  const { t, currentPath, addNotification, setScanning, setScans } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -30,12 +22,12 @@ export async function scanManagerAction(context: Pick<HealthData,
 }
 
 export async function scanDetectedManagersAction(context: Pick<HealthData,
-  'managers' | 'detectedIds' | 'addNotification' | 'currentPath' | 'setScanning' | 'setScans'
+  't' | 'managers' | 'detectedIds' | 'addNotification' | 'currentPath' | 'setScanning' | 'setScans'
 >) {
-  const { managers, detectedIds, addNotification } = context
+  const { t, managers, detectedIds, addNotification } = context
   const targets = managers.filter((manager) => detectedIds.has(manager.id))
   if (targets.length === 0) {
-    addNotification({ type: 'info', message: '当前目录未识别到可扫描的依赖生态' })
+    addNotification({ type: 'info', message: t('health.noScannableEcosystem') })
     return
   }
 
@@ -44,10 +36,10 @@ export async function scanDetectedManagersAction(context: Pick<HealthData,
   }
 }
 
-export async function exportInventoryAction(context: Pick<HealthData, 'currentPath' | 'addNotification'>) {
-  const { currentPath, addNotification } = context
+export async function exportInventoryAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification'>) {
+  const { t, currentPath, addNotification } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -55,25 +47,25 @@ export async function exportInventoryAction(context: Pick<HealthData, 'currentPa
     const filePath = await window.electronAPI.project.exportInventory(currentPath)
     addNotification({
       type: 'success',
-      message: '依赖清单已导出',
+      message: t('health.inventoryExported'),
       description: filePath
     })
     await window.electronAPI.system.openFile(filePath)
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '导出依赖清单失败',
+      message: t('health.inventoryExportFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   }
 }
 
 export async function exportSupplyChainAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setSupplyChainReport'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setSupplyChainReport'
 >, format: SupplyChainExportResult['format']) {
-  const { currentPath, addNotification, setReporting, setSupplyChainReport } = context
+  const { t, currentPath, addNotification, setReporting, setSupplyChainReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -86,7 +78,7 @@ export async function exportSupplyChainAction(context: Pick<HealthData,
         : await window.electronAPI.supplyChain.exportMarkdown(currentPath)
     addNotification({
       type: 'success',
-      message: '供应链报告已导出',
+      message: t('health.supplyChainExported'),
       description: `${result.format}: ${result.path}`
     })
     await window.electronAPI.system.openFile(result.path)
@@ -94,7 +86,7 @@ export async function exportSupplyChainAction(context: Pick<HealthData,
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '导出供应链报告失败',
+      message: t('health.supplyChainExportFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   } finally {
@@ -103,11 +95,11 @@ export async function exportSupplyChainAction(context: Pick<HealthData,
 }
 
 export async function exportLicenseComplianceAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setLicenseReport'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setLicenseReport'
 >, format: LicenseComplianceExportFormat = 'markdown') {
-  const { currentPath, addNotification, setReporting, setLicenseReport } = context
+  const { t, currentPath, addNotification, setReporting, setLicenseReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -135,11 +127,11 @@ export async function exportLicenseComplianceAction(context: Pick<HealthData,
 }
 
 export async function exportThirdPartyNoticesAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setThirdPartyNotices' | 'setReportArtifactIndex'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setThirdPartyNotices' | 'setReportArtifactIndex'
 >, format: ThirdPartyNoticeFormat = 'text') {
-  const { currentPath, addNotification, setReporting, setThirdPartyNotices, setReportArtifactIndex } = context
+  const { t, currentPath, addNotification, setReporting, setThirdPartyNotices, setReportArtifactIndex } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -174,12 +166,12 @@ export async function exportThirdPartyNoticesAction(context: Pick<HealthData,
 }
 
 export async function checkRegistriesAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setRegistryReport' | 'setRegistryEndpoints' |
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setRegistryReport' | 'setRegistryEndpoints' |
   'setReadinessReport'
 >) {
-  const { currentPath, addNotification, setReporting, setRegistryReport, setRegistryEndpoints, setReadinessReport } = context
+  const { t, currentPath, addNotification, setReporting, setRegistryReport, setRegistryEndpoints, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -206,11 +198,11 @@ export async function checkRegistriesAction(context: Pick<HealthData,
 }
 
 export async function exportRegistryReachabilityAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setRegistryReport' | 'setRegistryEndpoints'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setRegistryReport' | 'setRegistryEndpoints'
 >, format: RegistryReachabilityExportFormat = 'markdown') {
-  const { currentPath, addNotification, setReporting, setRegistryReport, setRegistryEndpoints } = context
+  const { t, currentPath, addNotification, setReporting, setRegistryReport, setRegistryEndpoints } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -240,11 +232,11 @@ export async function exportRegistryReachabilityAction(context: Pick<HealthData,
 }
 
 export async function exportCredentialUsageAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting'
+  't' | 'currentPath' | 'addNotification' | 'setReporting'
 >, format: CredentialUsageExportFormat = 'markdown') {
-  const { currentPath, addNotification, setReporting } = context
+  const { t, currentPath, addNotification, setReporting } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -271,11 +263,11 @@ export async function exportCredentialUsageAction(context: Pick<HealthData,
 }
 
 export async function exportLockfileDriftAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting'
+  't' | 'currentPath' | 'addNotification' | 'setReporting'
 >, format: LockfileDriftExportFormat = 'markdown') {
-  const { currentPath, addNotification, setReporting } = context
+  const { t, currentPath, addNotification, setReporting } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -302,11 +294,11 @@ export async function exportLockfileDriftAction(context: Pick<HealthData,
 }
 
 export async function exportRuntimePinningAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting'
+  't' | 'currentPath' | 'addNotification' | 'setReporting'
 >, format: RuntimePinningExportFormat = 'markdown') {
-  const { currentPath, addNotification, setReporting } = context
+  const { t, currentPath, addNotification, setReporting } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -333,11 +325,11 @@ export async function exportRuntimePinningAction(context: Pick<HealthData,
 }
 
 export async function exportOfflineCacheReadinessAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setOfflineCacheReport'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setOfflineCacheReport'
 >, format: OfflineCacheReadinessExportFormat = 'markdown') {
-  const { currentPath, addNotification, setReporting, setOfflineCacheReport } = context
+  const { t, currentPath, addNotification, setReporting, setOfflineCacheReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -364,10 +356,10 @@ export async function exportOfflineCacheReadinessAction(context: Pick<HealthData
   }
 }
 
-export async function diffDependencyComponentsAction(context: Pick<HealthData, 'currentPath' | 'addNotification' | 'setReporting' | 'setDependencyDiff'>) {
-  const { currentPath, addNotification, setReporting, setDependencyDiff } = context
+export async function diffDependencyComponentsAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setDependencyDiff'>) {
+  const { t, currentPath, addNotification, setReporting, setDependencyDiff } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -376,7 +368,7 @@ export async function diffDependencyComponentsAction(context: Pick<HealthData, '
     const result = await window.electronAPI.supplyChain.dependencyDiffLatestSnapshot(currentPath)
     setDependencyDiff(result)
     if (!result) {
-      addNotification({ type: 'info', message: '还没有可分析的依赖清单快照' })
+      addNotification({ type: 'info', message: t('health.noSnapshotToAnalyse') })
       return
     }
 
@@ -396,10 +388,10 @@ export async function diffDependencyComponentsAction(context: Pick<HealthData, '
   }
 }
 
-export async function exportDependencyDiffAction(context: Pick<HealthData, 'currentPath' | 'addNotification' | 'setReporting' | 'setDependencyDiff'>) {
-  const { currentPath, addNotification, setReporting, setDependencyDiff } = context
+export async function exportDependencyDiffAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setDependencyDiff'>) {
+  const { t, currentPath, addNotification, setReporting, setDependencyDiff } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 

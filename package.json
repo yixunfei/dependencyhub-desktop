@@ -55,6 +55,7 @@
     "verify:hardening": "node scripts/verify-hardening-behaviors.mjs",
     "verify:engineering-debt": "node scripts/verify-engineering-debt.mjs",
     "verify:i18n": "node scripts/verify-i18n.mjs",
+    "i18n:coverage": "node scripts/i18n-coverage.mjs",
     "test": "npm run test:scripts && vitest run",
     "verify:ipc": "node scripts/verify-ipc-bridge.mjs",
     "test:scripts": "node --test scripts/build.test.cjs"

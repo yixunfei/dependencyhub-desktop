@@ -2,11 +2,11 @@ import type { HealthData } from '../healthData'
 import { readinessStatusLabel } from '../healthPresentation'
 
 export async function exportPolicyAsCodePackAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setPolicyAsCodePack'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setPolicyAsCodePack'
 >, format: PolicyAsCodeExportFormat = 'markdown') {
-  const { currentPath, addNotification, setReporting, setPolicyAsCodePack } = context
+  const { t, currentPath, addNotification, setReporting, setPolicyAsCodePack } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -37,10 +37,10 @@ export async function exportPolicyAsCodePackAction(context: Pick<HealthData,
   }
 }
 
-export async function runReadinessGateAction(context: Pick<HealthData, 'currentPath' | 'addNotification' | 'setReporting' | 'setReadinessReport'>) {
-  const { currentPath, addNotification, setReporting, setReadinessReport } = context
+export async function runReadinessGateAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setReadinessReport'>) {
+  const { t, currentPath, addNotification, setReporting, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -65,11 +65,11 @@ export async function runReadinessGateAction(context: Pick<HealthData, 'currentP
 }
 
 export async function exportReadinessAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setReadinessReport'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setReadinessReport'
 >, format: ReadinessGateExportFormat = 'markdown') {
-  const { currentPath, addNotification, setReporting, setReadinessReport } = context
+  const { t, currentPath, addNotification, setReporting, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -97,11 +97,11 @@ export async function exportReadinessAction(context: Pick<HealthData,
 }
 
 export async function createSnapshotAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'setSnapshots' | 'setDependencyRollbackPlan'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setSnapshots' | 'setDependencyRollbackPlan'
 >) {
-  const { currentPath, addNotification, setReporting, setSnapshots, setDependencyRollbackPlan } = context
+  const { t, currentPath, addNotification, setReporting, setSnapshots, setDependencyRollbackPlan } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -110,8 +110,8 @@ export async function createSnapshotAction(context: Pick<HealthData,
     const result = await window.electronAPI.supplyChain.createSnapshot(currentPath)
     addNotification({
       type: 'success',
-      message: '依赖清单快照已创建',
-      description: `${result.files.length} 个文件: ${result.path}`
+      message: t('health.snapshotCreated'),
+      description: t('health.snapshotCreatedDescription', { count: result.files.length, path: result.path })
     })
     await window.electronAPI.system.openFile(result.path)
     const [snapshotList, rollbackPlan] = await Promise.all([
@@ -123,7 +123,7 @@ export async function createSnapshotAction(context: Pick<HealthData,
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '创建快照失败',
+      message: t('health.snapshotCreateFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   } finally {
@@ -131,10 +131,10 @@ export async function createSnapshotAction(context: Pick<HealthData,
   }
 }
 
-export async function diffLatestSnapshotAction(context: Pick<HealthData, 'currentPath' | 'addNotification' | 'setReporting' | 'setSnapshotDiff'>) {
-  const { currentPath, addNotification, setReporting, setSnapshotDiff } = context
+export async function diffLatestSnapshotAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setSnapshotDiff'>) {
+  const { t, currentPath, addNotification, setReporting, setSnapshotDiff } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -143,12 +143,12 @@ export async function diffLatestSnapshotAction(context: Pick<HealthData, 'curren
     const result = await window.electronAPI.supplyChain.diffLatestSnapshot(currentPath)
     setSnapshotDiff(result)
     if (!result) {
-      addNotification({ type: 'info', message: '还没有可对比的依赖清单快照' })
+      addNotification({ type: 'info', message: t('health.noSnapshotToCompare') })
     }
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '对比快照失败',
+      message: t('health.snapshotDiffFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   } finally {
@@ -156,10 +156,10 @@ export async function diffLatestSnapshotAction(context: Pick<HealthData, 'curren
   }
 }
 
-export async function restoreLatestSnapshotAction(context: Pick<HealthData, 'currentPath' | 'addNotification' | 'setReporting' | 'loadOverview'>) {
-  const { currentPath, addNotification, setReporting, loadOverview } = context
+export async function restoreLatestSnapshotAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'loadOverview'>) {
+  const { t, currentPath, addNotification, setReporting, loadOverview } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -167,20 +167,20 @@ export async function restoreLatestSnapshotAction(context: Pick<HealthData, 'cur
   try {
     const result = await window.electronAPI.supplyChain.restoreLatestSnapshot(currentPath)
     if (!result) {
-      addNotification({ type: 'info', message: '还没有可恢复的依赖清单快照' })
+      addNotification({ type: 'info', message: t('health.noSnapshotToRestore') })
       return
     }
 
     addNotification({
       type: 'success',
-      message: '已恢复最新依赖清单快照',
-      description: `${result.restoredCount} 个文件；恢复前快照: ${result.preRestoreSnapshot.path}`
+      message: t('health.snapshotRestoredLatest'),
+      description: t('health.snapshotRestoredLatestDescription', { count: result.restoredCount, path: result.preRestoreSnapshot.path })
     })
     await loadOverview()
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '恢复快照失败',
+      message: t('health.snapshotRestoreFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   } finally {
@@ -189,11 +189,11 @@ export async function restoreLatestSnapshotAction(context: Pick<HealthData, 'cur
 }
 
 export async function restoreSnapshotAction(context: Pick<HealthData,
-  'currentPath' | 'addNotification' | 'setReporting' | 'loadOverview'
+  't' | 'currentPath' | 'addNotification' | 'setReporting' | 'loadOverview'
 >, snapshot: SupplyChainSnapshotSummary) {
-  const { currentPath, addNotification, setReporting, loadOverview } = context
+  const { t, currentPath, addNotification, setReporting, loadOverview } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -202,14 +202,14 @@ export async function restoreSnapshotAction(context: Pick<HealthData,
     const result = await window.electronAPI.supplyChain.restoreSnapshot(currentPath, snapshot.path)
     addNotification({
       type: 'success',
-      message: '已恢复依赖清单快照',
-      description: `${snapshot.reason || snapshot.id}: ${result.restoredCount} 个文件；恢复前快照: ${result.preRestoreSnapshot.path}`
+      message: t('health.snapshotRestored'),
+      description: t('health.snapshotRestoredDescription', { reason: snapshot.reason || snapshot.id, count: result.restoredCount, path: result.preRestoreSnapshot.path })
     })
     await loadOverview()
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '恢复指定快照失败',
+      message: t('health.snapshotRestoreSpecificFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   } finally {
@@ -217,23 +217,23 @@ export async function restoreSnapshotAction(context: Pick<HealthData,
   }
 }
 
-export async function openSnapshotAction(context: Pick<HealthData, 'addNotification'>, snapshot: SupplyChainSnapshotSummary) {
-  const { addNotification } = context
+export async function openSnapshotAction(context: Pick<HealthData, 't' | 'addNotification'>, snapshot: SupplyChainSnapshotSummary) {
+  const { t, addNotification } = context
   try {
     await window.electronAPI.system.openFile(snapshot.path)
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '打开快照失败',
+      message: t('health.snapshotOpenFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   }
 }
 
-export async function ensurePolicyAction(context: Pick<HealthData, 'currentPath' | 'addNotification' | 'setReporting'>) {
-  const { currentPath, addNotification, setReporting } = context
+export async function ensurePolicyAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting'>) {
+  const { t, currentPath, addNotification, setReporting } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -242,14 +242,14 @@ export async function ensurePolicyAction(context: Pick<HealthData, 'currentPath'
     const filePath = await window.electronAPI.supplyChain.ensurePolicy(currentPath)
     addNotification({
       type: 'success',
-      message: '依赖策略文件已准备',
+      message: t('health.policyFileReady'),
       description: filePath
     })
     await window.electronAPI.system.openFile(filePath)
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '创建依赖策略失败',
+      message: t('health.policyCreateFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   } finally {
@@ -257,10 +257,10 @@ export async function ensurePolicyAction(context: Pick<HealthData, 'currentPath'
   }
 }
 
-export async function ensureReadinessPolicyAction(context: Pick<HealthData, 'currentPath' | 'addNotification' | 'setReporting' | 'setReadinessReport'>) {
-  const { currentPath, addNotification, setReporting, setReadinessReport } = context
+export async function ensureReadinessPolicyAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setReadinessReport'>) {
+  const { t, currentPath, addNotification, setReporting, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: 'Select a project directory first' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -286,7 +286,7 @@ export async function ensureReadinessPolicyAction(context: Pick<HealthData, 'cur
 }
 
 export async function onReadinessPolicySavedAction(context: Pick<HealthData,
-  'addNotification' | 'currentPath' | 'setReadinessReport'
+  't' | 'addNotification' | 'currentPath' | 'setReadinessReport'
 >, result: ReadinessPolicyFile) {
   const { addNotification, currentPath, setReadinessReport } = context
   addNotification({
@@ -299,10 +299,10 @@ export async function onReadinessPolicySavedAction(context: Pick<HealthData,
   }
 }
 
-export async function evaluatePolicyAction(context: Pick<HealthData, 'currentPath' | 'addNotification' | 'setReporting' | 'setPolicyEvaluation'>) {
-  const { currentPath, addNotification, setReporting, setPolicyEvaluation } = context
+export async function evaluatePolicyAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setPolicyEvaluation'>) {
+  const { t, currentPath, addNotification, setReporting, setPolicyEvaluation } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: '请先选择项目目录' })
+    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
     return
   }
 
@@ -312,13 +312,13 @@ export async function evaluatePolicyAction(context: Pick<HealthData, 'currentPat
     setPolicyEvaluation(result)
     addNotification({
       type: result.violationCount > 0 ? 'warning' : 'success',
-      message: result.violationCount > 0 ? '依赖策略存在违规项' : '依赖策略检查通过',
-      description: `${result.violationCount} 个违规项`
+      message: result.violationCount > 0 ? t('health.policyViolations') : t('health.policyPassed'),
+      description: t('health.violationCount', { count: result.violationCount })
     })
   } catch (error: unknown) {
     addNotification({
       type: 'error',
-      message: '依赖策略检查失败',
+      message: t('health.policyCheckFailed'),
       description: error instanceof Error ? error.message : String(error)
     })
   } finally {
@@ -327,12 +327,12 @@ export async function evaluatePolicyAction(context: Pick<HealthData, 'currentPat
 }
 
 export async function handlePolicySavedAction(context: Pick<HealthData,
-  'addNotification' | 'currentPath' | 'setReporting' | 'setPolicyEvaluation'
+  't' | 'addNotification' | 'currentPath' | 'setReporting' | 'setPolicyEvaluation'
 >, result: DependencyPolicyFile) {
-  const { addNotification } = context
+  const { t, addNotification } = context
   addNotification({
     type: 'success',
-    message: '依赖策略已保存',
+    message: t('health.policySaved'),
     description: result.path
   })
   await evaluatePolicyAction(context,)

@@ -18,6 +18,10 @@ import { join, relative, sep } from 'node:path'
  * recorded count, and no new file may introduce hardcoded CJK. Run
  * `node scripts/verify-i18n.mjs --update` after translating to tighten the
  * baseline; it refuses to raise an existing value or to add a new entry.
+ *
+ * The ratchet covers product copy only: `src/i18n/**` holds the dictionaries and
+ * the literal fallback map, and `*.test.tsx` pins localized strings that must be
+ * present for the assertion to mean anything. Neither is untranslated copy.
  */
 
 const DICTIONARIES = ['en-US', 'zh-CN']
@@ -129,6 +133,11 @@ const current = new Map()
 for (const file of rendererFiles) {
   const key = toKey(file)
   if (key === toKey(SOURCE) || key === toKey(join('src', 'i18n.ts')) || key.startsWith(`${I18N_DIR}/`)) continue
+  // Tests are excluded. A test that pins a localized string has to contain that
+  // string, so counting it as untranslated copy is a category error: this ratchet
+  // measures product copy. Asserting the real Chinese is what makes such a test
+  // worth having, so the exclusion is deliberate rather than a loophole.
+  if (/\.test\.tsx?$/.test(key)) continue
   const count = (await readFile(file, 'utf-8')).match(CJK_CHARACTERS)?.length || 0
   if (count > 0) current.set(key, count)
 }

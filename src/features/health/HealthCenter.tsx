@@ -1,9 +1,11 @@
 import {
-  ApartmentOutlined, ExperimentOutlined, FolderOpenOutlined, HistoryOutlined, ReloadOutlined,
+  ApartmentOutlined, ExperimentOutlined, HistoryOutlined, ReloadOutlined,
   RollbackOutlined, SafetyCertificateOutlined, SettingOutlined, WarningOutlined
 } from '@ant-design/icons'
 import { Alert, Button, Space, Typography } from 'antd'
 import React from 'react'
+import ProjectPathBar from '../../components/ProjectPathBar/ProjectPathBar'
+import { useT } from '../../i18n'
 import DependencyPolicyEditor from '../../features/policies/DependencyPolicyEditor'
 import ReadinessPolicyEditor from '../../features/policies/ReadinessPolicyEditor'
 import { useAppStore } from '../../stores/appStore'
@@ -84,23 +86,17 @@ export default HealthCenter
 import type { HealthCenterModel } from './useHealthCenterModel'
 
 function HealthHeader(model: Pick<HealthCenterModel,
-  'currentPath' | 'chooseDirectory' | 'loadOverview' | 'loading' | 'failedReports' | 'retryReport' |
-  'reloadFailedReports'
+  'loadOverview' | 'loading' | 'failedReports' | 'retryReport' | 'reloadFailedReports'
 >) {
+  const t = useT()
   return (<><div className={styles.header}>
     <div>
-      <Title level={2} className={styles.title}>健康与安全中心</Title>
-      <Paragraph className={styles.subtitle}>
-        聚合工具链可用性、项目生态识别、依赖诊断、审计入口和可导出的生产清单。
-      </Paragraph>
+      <Title level={2} className={styles.title}>{t('health.title')}</Title>
+      <Paragraph className={styles.subtitle}>{t('health.subtitle')}</Paragraph>
     </div>
     <Space wrap>
-      <span className={styles.pathInfo}>
-        <span className={styles.pathLabel}>当前项目:</span>
-        <span className={styles.pathValue}>{model.currentPath || '未选择'}</span>
-      </span>
-      <Button icon={<FolderOpenOutlined />} onClick={model.chooseDirectory}>选择目录</Button>
-      <Button icon={<ReloadOutlined />} onClick={model.loadOverview} loading={model.loading}>重新检测</Button>
+      <ProjectPathBar compact />
+      <Button icon={<ReloadOutlined />} onClick={model.loadOverview} loading={model.loading}>{t('health.redetect')}</Button>
     </Space>
   </div>
 
@@ -215,6 +211,7 @@ function InventorySection(model: Pick<HealthCenterModel,
   'releaseTrustPolicy' | 'refreshFrameworkCoverage' | 'reporting' | 'exportFrameworkCoverage' |
   'currentPath' | 'frameworkCoverageRows'
 >) {
+  const t = useT()
   return (<>{renderWorkflowSection(
     'health-inventory',
     <SafetyCertificateOutlined />,
@@ -229,8 +226,8 @@ function InventorySection(model: Pick<HealthCenterModel,
     <Alert
       type="info"
       showIcon
-      title="生产级管理入口"
-      description="当前已提供跨生态工具链检测、项目依赖清单导出、依赖健康扫描聚合、CycloneDX/SPDX SBOM、Markdown 报告、清单快照、快照差异与恢复；扩展生态页已支持标准操作计划、dry-run 判断、执行前备份与恢复。"
+      title={t('health.productionEntryTitle')}
+      description={t('health.productionEntryDescription')}
     /></>)
 }
 
@@ -344,6 +341,7 @@ function ReproducibilitySection(model: Pick<HealthCenterModel,
   'setArtifactCategoryFilter' | 'artifactFormatFilter' | 'setArtifactFormatFilter' | 'artifactSearchTerm' |
   'setArtifactSearchTerm'
 >) {
+  const t = useT()
   return (<>{renderWorkflowSection(
     'health-reproducibility',
     <RollbackOutlined />,
@@ -355,13 +353,13 @@ function ReproducibilitySection(model: Pick<HealthCenterModel,
       <Alert
         type={model.snapshotDiff.changed.length || model.snapshotDiff.added.length || model.snapshotDiff.removed.length ? 'warning' : 'success'}
         showIcon
-        title={`与快照 ${model.snapshotDiff.fromSnapshotId} 对比`}
+        title={t('health.snapshotDiffTitle', { id: model.snapshotDiff.fromSnapshotId })}
         description={
           <Space orientation="vertical" size={4}>
-            <span>新增: {model.snapshotDiff.added.length ? model.snapshotDiff.added.join(', ') : '无'}</span>
-            <span>移除: {model.snapshotDiff.removed.length ? model.snapshotDiff.removed.join(', ') : '无'}</span>
-            <span>变更: {model.snapshotDiff.changed.length ? model.snapshotDiff.changed.map((item) => item.file).join(', ') : '无'}</span>
-            <span>未变更: {model.snapshotDiff.unchanged.length}</span>
+            <span>{t('health.snapshotDiffAdded', { items: model.snapshotDiff.added.length ? model.snapshotDiff.added.join(', ') : t('health.none') })}</span>
+            <span>{t('health.snapshotDiffRemoved', { items: model.snapshotDiff.removed.length ? model.snapshotDiff.removed.join(', ') : t('health.none') })}</span>
+            <span>{t('health.snapshotDiffChanged', { items: model.snapshotDiff.changed.length ? model.snapshotDiff.changed.map((item) => item.file).join(', ') : t('health.none') })}</span>
+            <span>{t('health.snapshotDiffUnchanged', { count: model.snapshotDiff.unchanged.length })}</span>
           </Space>
         }
       />

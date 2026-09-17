@@ -13,6 +13,13 @@ const hasCjk = (value: string) => /[\u3400-\u9fff]/.test(value)
 export type TranslationParams = Record<string, string | number>
 
 /**
+ * The subset of `useT()`'s return type a pure helper needs to label a value.
+ * Module-scope helpers and non-component code take one of these instead of
+ * calling `useT()` themselves.
+ */
+export type LabelTranslator = (key: TranslationKey, params?: TranslationParams) => string
+
+/**
  * Resolves a key for the active language, falling back to English and finally to
  * the key itself. `params` fills `{name}` placeholders; a placeholder with no
  * matching param is left untouched so a mistake is visible rather than silent.

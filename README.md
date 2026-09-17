@@ -178,11 +178,14 @@ npm run verify:engineering-debt
 npm run verify:framework
 npm run verify:ai-managers
 npm run verify:i18n
+npm run i18n:coverage
 npm run verify:release-integrity
 npm run verify:release-signature
 npm run verify:release-trust
 ```
 
+- 界面默认英文，但渲染层仍有硬编码中文。`npm run verify:i18n` 用 ratchet 冻结剩余量，只许下降；
+  `npm run i18n:coverage` 按“英文用户是否仍会看到中文”拆分剩余量，用于排优先级（它不是门禁）。
 - 工具不可用时，在“工具链/Tool Versions”中配置项目级路径。
 - 审计工具是可选依赖；缺失时界面显示安装建议，不会伪造审计结果。
 - Maven/Gradle 远程搜索速度取决于 Maven Central、镜像和本地 `.m2` 规模。

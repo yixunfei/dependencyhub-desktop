@@ -16,7 +16,7 @@ import {
   recordReleaseApprovalAction, recordReleaseExceptionAction
 } from './evidenceActions'
 import {
-  checkRegistriesAction, chooseDirectoryAction, diffDependencyComponentsAction, exportCredentialUsageAction,
+  checkRegistriesAction, diffDependencyComponentsAction, exportCredentialUsageAction,
   exportDependencyDiffAction, exportInventoryAction, exportLicenseComplianceAction,
   exportLockfileDriftAction, exportOfflineCacheReadinessAction, exportRegistryReachabilityAction,
   exportRuntimePinningAction, exportSupplyChainAction, exportThirdPartyNoticesAction,
@@ -50,7 +50,6 @@ function bindAction<Args extends unknown[], Result>(context: HealthData, action:
 
 export function bindHealthActions(context: HealthData) {
   return {
-    chooseDirectory: bindAction(context, chooseDirectoryAction),
     scanManager: bindAction(context, scanManagerAction),
     scanDetectedManagers: bindAction(context, scanDetectedManagersAction),
     exportInventory: bindAction(context, exportInventoryAction),

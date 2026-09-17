@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useT } from '../../i18n'
 import { HealthReportLoader, type HealthReportBlock } from './reportBlocks'
 import { collectReportFailures, createReportStatus, recordReportFailure, recordReportSuccess, type ReportStatusEntry } from './reportStatus'
 
 export function useHealthReportLoader(buildBlocks: () => HealthReportBlock[]) {
+  const t = useT()
   const loader = useMemo(() => new HealthReportLoader(), [])
   const buildRef = useRef(buildBlocks)
   buildRef.current = buildBlocks
@@ -42,7 +44,7 @@ export function useHealthReportLoader(buildBlocks: () => HealthReportBlock[]) {
     await loader.load(block, mark)
   }
   const failedReports = collectReportFailures(status, Object.fromEntries(
-    blocksRef.current.map((block) => [block.key, block.label])
+    blocksRef.current.map((block) => [block.key, t(block.labelKey)])
   ))
   const reloadFailedReports = async () => {
     await Promise.all(failedReports.map(({ key }) => retryReport(key)))

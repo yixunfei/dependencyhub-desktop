@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { getImplementedManagerDefinitions } from '../../domain/managers/registry'
+import { useT } from '../../i18n'
 import type { HealthState } from './useHealthState'
 
 function useInventoryDerived(context: Pick<HealthState,
@@ -184,6 +185,7 @@ function useArtifactDerived(context: Pick<HealthState & ReturnType<typeof useInv
     releaseSignature, releaseTrustPolicy, policyAsCodePack, artifactSearchTerm, reportArtifactIndex,
     artifactCategoryFilter, artifactFormatFilter, frameworkCoverage, operationHistory
   } = context
+  const t = useT()
   const releaseSignatureSourceRows = useMemo(() => {
     if (!releaseSignature) return []
     const findings = releaseSignature.sources.filter((source) => source.status !== 'included' || source.reportStatus === 'blocked')
@@ -229,10 +231,10 @@ function useArtifactDerived(context: Pick<HealthState & ReturnType<typeof useInv
       record.classification?.managerId || record.classification?.tool || 'unknown'
     )))).sort()
     return [
-      { value: 'all', label: '全部工具' },
+      { value: 'all', label: t('health.allTools') },
       ...managers.map((manager) => ({ value: manager, label: manager }))
     ]
-  }, [operationHistory])
+  }, [operationHistory, t])
   return {
     releaseSignatureSourceRows, releaseSignatureFindings, releaseTrustPolicyRows, policyDeploymentGateRows,
     policyRequiredArtifactRows, reportArtifactRows, frameworkCoverageRows, operationStats,

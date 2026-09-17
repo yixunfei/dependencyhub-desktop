@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Divider, Form, Input, InputNumber, Modal, Select, Space, Switch, Typography } from 'antd'
 import { getManagerDefinition, MANAGER_DEFINITIONS, type DependencyManagerId } from '../../domain/managers/registry'
+import { useT } from '../../i18n'
 
 const { Text } = Typography
 
@@ -49,6 +50,7 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
   onClose,
   onSaved
 }) => {
+  const t = useT()
   const [form] = Form.useForm<PolicyFormValues>()
   const [policyPath, setPolicyPath] = useState('')
   const [loading, setLoading] = useState(false)
@@ -114,13 +116,13 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
 
   return (
     <Modal
-      title="依赖策略编辑器"
+      title={t('policy.editorTitle')}
       open={open}
       onCancel={onClose}
       onOk={savePolicy}
       confirmLoading={saving}
-      okText="保存策略"
-      cancelText="取消"
+      okText={t('policy.save')}
+      cancelText={t('common.cancel')}
       width={920}
       destroyOnHidden
     >
@@ -128,15 +130,15 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
         <Alert
           type="info"
           showIcon
-          title="策略会写入项目目录"
-          description={policyPath || (projectPath ? `${projectPath}\\.npmDesktopManager\\dependency-policy.json` : '请先选择项目目录')}
+          title={t('policy.writesToProject')}
+          description={policyPath || (projectPath ? `${projectPath}\\.npmDesktopManager\\dependency-policy.json` : t('health.selectProjectFirst'))}
         />
         {managerOverlap.length > 0 && (
           <Alert
             type="warning"
             showIcon
-            title="允许和阻止的管理器存在重叠"
-            description={managerOverlap.map((manager) => getManagerDefinition(manager)?.shortName || manager).join('、')}
+            title={t('policy.managerOverlap')}
+            description={managerOverlap.map((manager) => getManagerDefinition(manager)?.shortName || manager).join(t('common.enumerationSeparator'))}
           />
         )}
         <Form
@@ -146,63 +148,63 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
           disabled={loading || !projectPath}
         >
           <Space size={24} wrap>
-            <Form.Item name="requirePinnedVersions" valuePropName="checked" label="要求固定版本">
+            <Form.Item name="requirePinnedVersions" valuePropName="checked" label={t('policy.requirePinned')}>
               <Switch />
             </Form.Item>
-            <Form.Item name="disallowPrerelease" valuePropName="checked" label="禁止预发布版本">
+            <Form.Item name="disallowPrerelease" valuePropName="checked" label={t('policy.disallowPrerelease')}>
               <Switch />
             </Form.Item>
-            <Form.Item name="requireKnownLicenses" valuePropName="checked" label="要求已知许可证">
+            <Form.Item name="requireKnownLicenses" valuePropName="checked" label={t('policy.requireKnownLicenses')}>
               <Switch />
             </Form.Item>
-            <Form.Item name="maxComponents" label="组件数量上限">
-              <InputNumber min={1} precision={0} placeholder="不限" />
+            <Form.Item name="maxComponents" label={t('policy.maxComponents')}>
+              <InputNumber min={1} precision={0} placeholder={t('common.unlimited')} />
             </Form.Item>
           </Space>
 
-          <Form.Item name="allowedManagers" label="允许的管理器">
+          <Form.Item name="allowedManagers" label={t('policy.allowedManagers')}>
             <Select
               mode="multiple"
               allowClear
               options={managerOptions}
-              placeholder="留空表示不限制"
+              placeholder={t('policy.allowedManagersHint')}
             />
           </Form.Item>
 
-          <Form.Item name="blockedManagers" label="阻止的管理器">
+          <Form.Item name="blockedManagers" label={t('policy.blockedManagers')}>
             <Select
               mode="multiple"
               allowClear
               options={managerOptions}
-              placeholder="选择不允许出现在项目中的生态"
+              placeholder={t('policy.blockedManagersHint')}
             />
           </Form.Item>
 
-          <Form.Item name="blockedPackages" label="阻止的包名">
+          <Form.Item name="blockedPackages" label={t('policy.blockedPackages')}>
             <Select
               mode="tags"
               tokenSeparators={[',', '\n', ' ']}
-              placeholder="例如 left-pad、log4j-core"
+              placeholder={t('policy.blockedPackagesHint')}
             />
           </Form.Item>
 
-          <Form.Item name="allowedLicenses" label="允许的许可证">
+          <Form.Item name="allowedLicenses" label={t('policy.allowedLicenses')}>
             <Select
               mode="tags"
               allowClear
               tokenSeparators={[',', '\n', ' ']}
               options={LICENSE_PRESETS.map((license) => ({ value: license, label: license }))}
-              placeholder="留空表示不限制许可证白名单"
+              placeholder={t('policy.allowedLicensesHint')}
             />
           </Form.Item>
 
-          <Form.Item name="blockedLicenses" label="阻止的许可证">
+          <Form.Item name="blockedLicenses" label={t('policy.blockedLicenses')}>
             <Select
               mode="tags"
               allowClear
               tokenSeparators={[',', '\n', ' ']}
               options={LICENSE_PRESETS.map((license) => ({ value: license, label: license }))}
-              placeholder="例如 GPL-3.0、AGPL-3.0、UNLICENSED"
+              placeholder={t('policy.blockedLicensesHint')}
             />
           </Form.Item>
 
@@ -211,7 +213,7 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
             {(fields, { add, remove }) => (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Space align="center" wrap>
-                  <Text strong>Package family rules</Text>
+                  <Text strong>{t('policy.packageRules')}</Text>
                   <Button
                     size="small"
                     onClick={() => add({
@@ -227,7 +229,7 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
                       blockedLicenses: []
                     })}
                   >
-                    Add rule
+                    {t('policy.addRule')}
                   </Button>
                 </Space>
                 {fields.map((field) => (
@@ -241,10 +243,10 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
                   >
                     <Space direction="vertical" size={8} style={{ width: '100%' }}>
                       <Space wrap align="start" style={{ width: '100%' }}>
-                        <Form.Item name={[field.name, 'id']} label="Rule ID" rules={[{ required: true }]}>
+                        <Form.Item name={[field.name, 'id']} label={t('policy.ruleId')} rules={[{ required: true }]}>
                           <Input placeholder="frontend-critical" style={{ width: 180 }} />
                         </Form.Item>
-                        <Form.Item name={[field.name, 'severity']} label="Severity">
+                        <Form.Item name={[field.name, 'severity']} label={t('common.severity')}>
                           <Select
                             style={{ width: 140 }}
                             options={['critical', 'high', 'medium', 'low', 'info'].map((severity) => ({
@@ -253,23 +255,23 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
                             }))}
                           />
                         </Form.Item>
-                        <Form.Item name={[field.name, 'managers']} label="Managers">
+                        <Form.Item name={[field.name, 'managers']} label={t('common.managers')}>
                           <Select
                             mode="multiple"
                             allowClear
                             style={{ minWidth: 220 }}
                             options={managerOptions}
-                            placeholder="All managers"
+                            placeholder={t('policy.allManagers')}
                           />
                         </Form.Item>
                         <Button danger size="small" onClick={() => remove(field.name)}>
-                          Remove
+                          {t('common.remove')}
                         </Button>
                       </Space>
-                      <Form.Item name={[field.name, 'description']} label="Description">
-                        <Input placeholder="Critical UI/runtime dependencies" />
+                      <Form.Item name={[field.name, 'description']} label={t('common.description')}>
+                        <Input placeholder={t('policy.descriptionHint')} />
                       </Form.Item>
-                      <Form.Item name={[field.name, 'packagePatterns']} label="Package patterns" rules={[{ required: true }]}>
+                      <Form.Item name={[field.name, 'packagePatterns']} label={t('policy.packagePatterns')} rules={[{ required: true }]}>
                         <Select
                           mode="tags"
                           tokenSeparators={[',', '\n', ' ']}
@@ -277,21 +279,21 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
                         />
                       </Form.Item>
                       <Space size={24} wrap>
-                        <Form.Item name={[field.name, 'blocked']} valuePropName="checked" label="Block matches">
+                        <Form.Item name={[field.name, 'blocked']} valuePropName="checked" label={t('policy.blockMatches')}>
                           <Switch />
                         </Form.Item>
-                        <Form.Item name={[field.name, 'requirePinnedVersions']} valuePropName="checked" label="Require pinned">
+                        <Form.Item name={[field.name, 'requirePinnedVersions']} valuePropName="checked" label={t('policy.requirePinnedShort')}>
                           <Switch />
                         </Form.Item>
-                        <Form.Item name={[field.name, 'disallowPrerelease']} valuePropName="checked" label="No prerelease">
+                        <Form.Item name={[field.name, 'disallowPrerelease']} valuePropName="checked" label={t('policy.noPrereleaseShort')}>
                           <Switch />
                         </Form.Item>
-                        <Form.Item name={[field.name, 'requireKnownLicenses']} valuePropName="checked" label="Known license">
+                        <Form.Item name={[field.name, 'requireKnownLicenses']} valuePropName="checked" label={t('policy.knownLicenseShort')}>
                           <Switch />
                         </Form.Item>
                       </Space>
                       <Space size={12} wrap style={{ width: '100%' }}>
-                        <Form.Item name={[field.name, 'allowedLicenses']} label="Allowed licenses">
+                        <Form.Item name={[field.name, 'allowedLicenses']} label={t('policy.allowedLicenses')}>
                           <Select
                             mode="tags"
                             allowClear
@@ -300,7 +302,7 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
                             style={{ minWidth: 280 }}
                           />
                         </Form.Item>
-                        <Form.Item name={[field.name, 'blockedLicenses']} label="Blocked licenses">
+                        <Form.Item name={[field.name, 'blockedLicenses']} label={t('policy.blockedLicenses')}>
                           <Select
                             mode="tags"
                             allowClear
@@ -317,9 +319,7 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
             )}
           </Form.List>
 
-          <Text type="secondary">
-            保存后可立即在健康中心运行策略检查；未知许可证数量来自当前供应链报告和锁文件解析结果。
-          </Text>
+          <Text type="secondary">{t('policy.editorFooterHint')}</Text>
         </Form>
       </Space>
     </Modal>

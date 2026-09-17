@@ -4,6 +4,7 @@ import {
   ciEvidenceStatusColor, offlineCacheStatusColor, readinessStatusColor, readinessStatusLabel,
   releaseApprovalColor, releaseRiskStatusColor
 } from '../healthPresentation'
+import { useT } from '../../../i18n'
 import type { HealthCenterModel } from '../useHealthCenterModel'
 const { Text, Title } = Typography
 
@@ -70,43 +71,49 @@ export function HealthMetrics(props: Props) {
 type PanelValues = Props
 
 function DetectedIdsMetric({ detectedIds }: Pick<PanelValues, 'detectedIds'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">已识别生态</Text>
+    <Text type="secondary">{t('health.metric.detectedEcosystems')}</Text>
     <Title level={3}>{detectedIds.size}</Title>
   </Card>)
 }
 
 function ToolStatusesMetric({ toolStatuses }: Pick<PanelValues, 'toolStatuses'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">可用工具</Text>
+    <Text type="secondary">{t('health.metric.availableTools')}</Text>
     <Title level={3}>{toolStatuses.filter((tool) => tool.available).length}/{toolStatuses.length}</Title>
   </Card>)
 }
 
 function ScansMetric({ scans }: Pick<PanelValues, 'scans'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">已扫描生态</Text>
+    <Text type="secondary">{t('health.metric.scannedEcosystems')}</Text>
     <Title level={3}>{Object.keys(scans).length}</Title>
   </Card>)
 }
 
 function SupplyChainReportMetric({ supplyChainReport }: Pick<PanelValues, 'supplyChainReport'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">供应链组件</Text>
+    <Text type="secondary">{t('health.metric.supplyChainComponents')}</Text>
     <Title level={3}>{supplyChainReport?.componentCount || 0}</Title>
   </Card>)
 }
 
 function ExtendedDetectedCountMetric({ extendedDetectedCount }: Pick<PanelValues, 'extendedDetectedCount'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">扩展生态</Text>
+    <Text type="secondary">{t('health.metric.extendedEcosystems')}</Text>
     <Title level={3}>{extendedDetectedCount}</Title>
   </Card>)
 }
 
 function FrameworkCoverageMetric({ frameworkCoverage }: Pick<PanelValues, 'frameworkCoverage'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Framework coverage</Text>
+    <Text type="secondary">{t('health.metric.frameworkCoverage')}</Text>
     <Title level={3}>{frameworkCoverage ? frameworkCoverage.summary.managerCount : '-'}</Title>
     {frameworkCoverage && (
       <Space size={4} wrap>
@@ -120,15 +127,17 @@ function FrameworkCoverageMetric({ frameworkCoverage }: Pick<PanelValues, 'frame
 }
 
 function UnknownLicenseCountMetric({ unknownLicenseCount }: Pick<PanelValues, 'unknownLicenseCount'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">未知许可证</Text>
+    <Text type="secondary">{t('health.metric.unknownLicenses')}</Text>
     <Title level={3}>{unknownLicenseCount}</Title>
   </Card>)
 }
 
 function LicenseReportMetric({ licenseReport, licenseRiskCount }: Pick<PanelValues, 'licenseReport' | 'licenseRiskCount'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">License risks</Text>
+    <Text type="secondary">{t('health.metric.licenseRisks')}</Text>
     <Title level={3}>{licenseReport ? licenseRiskCount : '-'}</Title>
     {licenseReport && (
       <Tag color={licenseRiskCount > 0 ? 'orange' : 'green'}>
@@ -139,8 +148,9 @@ function LicenseReportMetric({ licenseReport, licenseRiskCount }: Pick<PanelValu
 }
 
 function ThirdPartyNoticesMetric({ thirdPartyNotices }: Pick<PanelValues, 'thirdPartyNotices'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Third-party notices</Text>
+    <Text type="secondary">{t('health.metric.thirdPartyNotices')}</Text>
     <Title level={3}>{thirdPartyNotices ? thirdPartyNotices.summary.noticeCount : '-'}</Title>
     {thirdPartyNotices && (
       <Space size={4} wrap>
@@ -154,30 +164,34 @@ function ThirdPartyNoticesMetric({ thirdPartyNotices }: Pick<PanelValues, 'third
 }
 
 function SnapshotsMetric({ snapshots }: Pick<PanelValues, 'snapshots'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">快照</Text>
+    <Text type="secondary">{t('health.metric.snapshots')}</Text>
     <Title level={3}>{snapshots.length}</Title>
   </Card>)
 }
 
 function DependencyDiffMetric({ dependencyDiff, dependencyHighRiskCount }: Pick<PanelValues, 'dependencyDiff' | 'dependencyHighRiskCount'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Diff risk</Text>
+    <Text type="secondary">{t('health.metric.diffRisk')}</Text>
     <Title level={3}>{dependencyDiff ? dependencyHighRiskCount : '-'}</Title>
     {dependencyDiff && <Tag color={dependencyHighRiskCount > 0 ? 'red' : 'green'}>high+</Tag>}
   </Card>)
 }
 
 function OperationHistoryMetric({ operationHistory }: Pick<PanelValues, 'operationHistory'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">操作记录</Text>
+    <Text type="secondary">{t('health.metric.operationHistory')}</Text>
     <Title level={3}>{operationHistory.length}</Title>
   </Card>)
 }
 
 function CiEvidenceMetric({ ciEvidence, latestCiEvidence }: Pick<PanelValues, 'ciEvidence' | 'latestCiEvidence'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">CI evidence</Text>
+    <Text type="secondary">{t('health.metric.ciEvidence')}</Text>
     <Title level={3}>{ciEvidence.length}</Title>
     {latestCiEvidence && (
       <Tag color={ciEvidenceStatusColor(latestCiEvidence.status)}>
@@ -188,8 +202,9 @@ function CiEvidenceMetric({ ciEvidence, latestCiEvidence }: Pick<PanelValues, 'c
 }
 
 function AuditEvidenceMetric({ auditEvidence }: Pick<PanelValues, 'auditEvidence'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Audit evidence</Text>
+    <Text type="secondary">{t('health.metric.auditEvidence')}</Text>
     <Title level={3}>{auditEvidence ? auditEvidence.summary.findingCount : '-'}</Title>
     {auditEvidence && (
       <Space size={4} wrap>
@@ -203,8 +218,9 @@ function AuditEvidenceMetric({ auditEvidence }: Pick<PanelValues, 'auditEvidence
 }
 
 function VulnerabilityRemediationPlanMetric({ vulnerabilityRemediationPlan }: Pick<PanelValues, 'vulnerabilityRemediationPlan'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Vuln remediation</Text>
+    <Text type="secondary">{t('health.metric.vulnRemediation')}</Text>
     <Title level={3}>{vulnerabilityRemediationPlan ? vulnerabilityRemediationPlan.summary.itemCount : '-'}</Title>
     {vulnerabilityRemediationPlan && (
       <Space size={4} wrap>
@@ -220,8 +236,9 @@ function VulnerabilityRemediationPlanMetric({ vulnerabilityRemediationPlan }: Pi
 }
 
 function ReleaseApprovalsMetric({ releaseApprovals, latestReleaseApproval }: Pick<PanelValues, 'releaseApprovals' | 'latestReleaseApproval'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Release approvals</Text>
+    <Text type="secondary">{t('health.metric.releaseApprovals')}</Text>
     <Title level={3}>{releaseApprovals.length}</Title>
     {latestReleaseApproval && (
       <Tag color={releaseApprovalColor(latestReleaseApproval.decision)}>
@@ -232,8 +249,9 @@ function ReleaseApprovalsMetric({ releaseApprovals, latestReleaseApproval }: Pic
 }
 
 function ReleaseExceptionsMetric({ releaseExceptions, latestReleaseException }: Pick<PanelValues, 'releaseExceptions' | 'latestReleaseException'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Release exceptions</Text>
+    <Text type="secondary">{t('health.metric.releaseExceptions')}</Text>
     <Title level={3}>{releaseExceptions.length}</Title>
     {latestReleaseException && (
       <Tag color={latestReleaseException.decision === 'approved' ? 'orange' : 'default'}>
@@ -244,8 +262,9 @@ function ReleaseExceptionsMetric({ releaseExceptions, latestReleaseException }: 
 }
 
 function RegistryReportMetric({ registryReport, registryEndpoints }: Pick<PanelValues, 'registryReport' | 'registryEndpoints'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Registries</Text>
+    <Text type="secondary">{t('health.metric.registries')}</Text>
     <Title level={3}>{registryReport?.summary.endpointCount ?? registryEndpoints.length}</Title>
     {registryReport && (
       <Tag color={registryReport.summary.unreachable > 0 ? 'red' : 'green'}>
@@ -256,8 +275,9 @@ function RegistryReportMetric({ registryReport, registryEndpoints }: Pick<PanelV
 }
 
 function WorkspaceReportMetric({ workspaceReport }: Pick<PanelValues, 'workspaceReport'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Workspaces</Text>
+    <Text type="secondary">{t('health.metric.workspaces')}</Text>
     <Title level={3}>{workspaceReport?.summary.workspaceCount ?? '-'}</Title>
     {workspaceReport && (
       <Tag color={workspaceReport.summary.explicitWorkspaceCount > 0 ? 'blue' : 'default'}>
@@ -268,8 +288,9 @@ function WorkspaceReportMetric({ workspaceReport }: Pick<PanelValues, 'workspace
 }
 
 function WorkspaceGovernanceReportMetric({ workspaceGovernanceReport }: Pick<PanelValues, 'workspaceGovernanceReport'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Workspace risks</Text>
+    <Text type="secondary">{t('health.metric.workspaceRisks')}</Text>
     <Title level={3}>{workspaceGovernanceReport ? workspaceGovernanceReport.summary.blocked + workspaceGovernanceReport.summary.warning : '-'}</Title>
     {workspaceGovernanceReport && (
       <Space size={4} wrap>
@@ -285,8 +306,9 @@ function WorkspaceGovernanceReportMetric({ workspaceGovernanceReport }: Pick<Pan
 }
 
 function ReadinessReportMetric({ readinessReport }: Pick<PanelValues, 'readinessReport'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Production readiness</Text>
+    <Text type="secondary">{t('health.metric.productionReadiness')}</Text>
     <Title level={3}>{readinessReport ? readinessReport.score : '-'}</Title>
     {readinessReport && (
       <Tag color={readinessStatusColor(readinessReport.status)}>
@@ -297,8 +319,9 @@ function ReadinessReportMetric({ readinessReport }: Pick<PanelValues, 'readiness
 }
 
 function OfflineCacheReportMetric({ offlineCacheReport }: Pick<PanelValues, 'offlineCacheReport'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Offline cache</Text>
+    <Text type="secondary">{t('health.metric.offlineCache')}</Text>
     <Title level={3}>{offlineCacheReport ? offlineCacheReport.summary.findingCount : '-'}</Title>
     {offlineCacheReport && (
       <Space size={4} wrap>
@@ -312,8 +335,9 @@ function OfflineCacheReportMetric({ offlineCacheReport }: Pick<PanelValues, 'off
 }
 
 function ReleaseRiskProfileMetric({ releaseRiskProfile }: Pick<PanelValues, 'releaseRiskProfile'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Release risk</Text>
+    <Text type="secondary">{t('health.metric.releaseRisk')}</Text>
     <Title level={3}>{releaseRiskProfile ? releaseRiskProfile.score : '-'}</Title>
     {releaseRiskProfile && (
       <Space size={4} wrap>
@@ -327,8 +351,9 @@ function ReleaseRiskProfileMetric({ releaseRiskProfile }: Pick<PanelValues, 'rel
 }
 
 function CiIntegrationPlanMetric({ ciIntegrationPlan }: Pick<PanelValues, 'ciIntegrationPlan'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">CI plan</Text>
+    <Text type="secondary">{t('health.metric.ciPlan')}</Text>
     <Title level={3}>{ciIntegrationPlan ? ciIntegrationPlan.summary.jobCount : '-'}</Title>
     {ciIntegrationPlan && (
       <Space size={4} wrap>
@@ -345,8 +370,9 @@ function CiIntegrationPlanMetric({ ciIntegrationPlan }: Pick<PanelValues, 'ciInt
 }
 
 function DependencyAutomationPlanMetric({ dependencyAutomationPlan }: Pick<PanelValues, 'dependencyAutomationPlan'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Automation</Text>
+    <Text type="secondary">{t('health.metric.automation')}</Text>
     <Title level={3}>{dependencyAutomationPlan ? dependencyAutomationPlan.summary.generatedConfigCount : '-'}</Title>
     {dependencyAutomationPlan && (
       <Space size={4} wrap>
@@ -360,8 +386,9 @@ function DependencyAutomationPlanMetric({ dependencyAutomationPlan }: Pick<Panel
 }
 
 function CredentialRotationPlanMetric({ credentialRotationPlan }: Pick<PanelValues, 'credentialRotationPlan'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Credential rotation</Text>
+    <Text type="secondary">{t('health.metric.credentialRotation')}</Text>
     <Title level={3}>{credentialRotationPlan ? credentialRotationPlan.summary.actionCount : '-'}</Title>
     {credentialRotationPlan && (
       <Space size={4} wrap>
@@ -375,8 +402,9 @@ function CredentialRotationPlanMetric({ credentialRotationPlan }: Pick<PanelValu
 }
 
 function AutomationSafetyPlanMetric({ automationSafetyPlan }: Pick<PanelValues, 'automationSafetyPlan'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Automation safety</Text>
+    <Text type="secondary">{t('health.metric.automationSafety')}</Text>
     <Title level={3}>{automationSafetyPlan ? automationSafetyPlan.summary.ruleCount : '-'}</Title>
     {automationSafetyPlan && (
       <Space size={4} wrap>
@@ -390,8 +418,9 @@ function AutomationSafetyPlanMetric({ automationSafetyPlan }: Pick<PanelValues, 
 }
 
 function DependencyOwnershipPlanMetric({ dependencyOwnershipPlan }: Pick<PanelValues, 'dependencyOwnershipPlan'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Ownership</Text>
+    <Text type="secondary">{t('health.metric.ownership')}</Text>
     <Title level={3}>{dependencyOwnershipPlan ? dependencyOwnershipPlan.summary.ownedAssignmentCount : '-'}</Title>
     {dependencyOwnershipPlan && (
       <Space size={4} wrap>
@@ -405,8 +434,9 @@ function DependencyOwnershipPlanMetric({ dependencyOwnershipPlan }: Pick<PanelVa
 }
 
 function DependencyUpgradePlaybookMetric({ dependencyUpgradePlaybook }: Pick<PanelValues, 'dependencyUpgradePlaybook'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Upgrade playbook</Text>
+    <Text type="secondary">{t('health.metric.upgradePlaybook')}</Text>
     <Title level={3}>{dependencyUpgradePlaybook ? dependencyUpgradePlaybook.summary.itemCount : '-'}</Title>
     {dependencyUpgradePlaybook && (
       <Space size={4} wrap>
@@ -421,8 +451,9 @@ function DependencyUpgradePlaybookMetric({ dependencyUpgradePlaybook }: Pick<Pan
 }
 
 function DependencyRollbackPlanMetric({ dependencyRollbackPlan }: Pick<PanelValues, 'dependencyRollbackPlan'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Rollback plan</Text>
+    <Text type="secondary">{t('health.metric.rollbackPlan')}</Text>
     <Title level={3}>{dependencyRollbackPlan ? dependencyRollbackPlan.summary.itemCount : '-'}</Title>
     {dependencyRollbackPlan && (
       <Space size={4} wrap>
@@ -437,8 +468,9 @@ function DependencyRollbackPlanMetric({ dependencyRollbackPlan }: Pick<PanelValu
 }
 
 function DependencyImpactAnalysisMetric({ dependencyImpactAnalysis }: Pick<PanelValues, 'dependencyImpactAnalysis'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Impact analysis</Text>
+    <Text type="secondary">{t('health.metric.impactAnalysis')}</Text>
     <Title level={3}>{dependencyImpactAnalysis ? dependencyImpactAnalysis.summary.itemCount : '-'}</Title>
     {dependencyImpactAnalysis && (
       <Space size={4} wrap>
@@ -453,8 +485,9 @@ function DependencyImpactAnalysisMetric({ dependencyImpactAnalysis }: Pick<Panel
 }
 
 function DependencyChangeApprovalPacketMetric({ dependencyChangeApprovalPacket }: Pick<PanelValues, 'dependencyChangeApprovalPacket'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Approval packet</Text>
+    <Text type="secondary">{t('health.metric.approvalPacket')}</Text>
     <Title level={3}>{dependencyChangeApprovalPacket ? dependencyChangeApprovalPacket.summary.checklistCount : '-'}</Title>
     {dependencyChangeApprovalPacket && (
       <Space size={4} wrap>
@@ -469,8 +502,9 @@ function DependencyChangeApprovalPacketMetric({ dependencyChangeApprovalPacket }
 }
 
 function DependencyChangeCalendarMetric({ dependencyChangeCalendar }: Pick<PanelValues, 'dependencyChangeCalendar'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Change calendar</Text>
+    <Text type="secondary">{t('health.metric.changeCalendar')}</Text>
     <Title level={3}>{dependencyChangeCalendar ? dependencyChangeCalendar.summary.windowCount : '-'}</Title>
     {dependencyChangeCalendar && (
       <Space size={4} wrap>
@@ -485,8 +519,9 @@ function DependencyChangeCalendarMetric({ dependencyChangeCalendar }: Pick<Panel
 }
 
 function DependencyChangeExecutionRecordMetric({ dependencyChangeExecutionRecord }: Pick<PanelValues, 'dependencyChangeExecutionRecord'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Execution record</Text>
+    <Text type="secondary">{t('health.metric.executionRecord')}</Text>
     <Title level={3}>{dependencyChangeExecutionRecord ? dependencyChangeExecutionRecord.summary.recordCount : '-'}</Title>
     {dependencyChangeExecutionRecord && (
       <Space size={4} wrap>
@@ -501,8 +536,9 @@ function DependencyChangeExecutionRecordMetric({ dependencyChangeExecutionRecord
 }
 
 function PolicyAsCodePackMetric({ policyAsCodePack }: Pick<PanelValues, 'policyAsCodePack'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Policy-as-code</Text>
+    <Text type="secondary">{t('health.metric.policyAsCode')}</Text>
     <Title level={3}>{policyAsCodePack ? policyAsCodePack.summary.dependencyPolicyRuleCount : '-'}</Title>
     {policyAsCodePack && (
       <Space size={4} wrap>
@@ -517,8 +553,9 @@ function PolicyAsCodePackMetric({ policyAsCodePack }: Pick<PanelValues, 'policyA
 }
 
 function ReleaseEvidenceCompletenessMetric({ releaseEvidenceCompleteness }: Pick<PanelValues, 'releaseEvidenceCompleteness'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Evidence completeness</Text>
+    <Text type="secondary">{t('health.metric.evidenceCompleteness')}</Text>
     <Title level={3}>{releaseEvidenceCompleteness ? releaseEvidenceCompleteness.summary.presentArtifactCount : '-'}</Title>
     {releaseEvidenceCompleteness && (
       <Space size={4} wrap>
@@ -533,8 +570,9 @@ function ReleaseEvidenceCompletenessMetric({ releaseEvidenceCompleteness }: Pick
 }
 
 function ReleaseProvenanceAttestationMetric({ releaseProvenanceAttestation }: Pick<PanelValues, 'releaseProvenanceAttestation'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Release provenance</Text>
+    <Text type="secondary">{t('health.metric.releaseProvenance')}</Text>
     <Title level={3}>{releaseProvenanceAttestation ? releaseProvenanceAttestation.summary.artifactCount : '-'}</Title>
     {releaseProvenanceAttestation && (
       <Space size={4} wrap>
@@ -550,8 +588,9 @@ function ReleaseProvenanceAttestationMetric({ releaseProvenanceAttestation }: Pi
 }
 
 function ReleaseIntegrityVerificationMetric({ releaseIntegrityVerification }: Pick<PanelValues, 'releaseIntegrityVerification'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Release integrity</Text>
+    <Text type="secondary">{t('health.metric.releaseIntegrity')}</Text>
     <Title level={3}>{releaseIntegrityVerification ? releaseIntegrityVerification.summary.verifiedArtifactCount : '-'}</Title>
     {releaseIntegrityVerification && (
       <Space size={4} wrap>
@@ -565,8 +604,9 @@ function ReleaseIntegrityVerificationMetric({ releaseIntegrityVerification }: Pi
 }
 
 function ReleaseSignatureMetric({ releaseSignature }: Pick<PanelValues, 'releaseSignature'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Release signature</Text>
+    <Text type="secondary">{t('health.metric.releaseSignature')}</Text>
     <Title level={3}>{releaseSignature ? releaseSignature.summary.includedSourceCount : '-'}</Title>
     {releaseSignature && (
       <Space size={4} wrap>
@@ -583,8 +623,9 @@ function ReleaseSignatureMetric({ releaseSignature }: Pick<PanelValues, 'release
 }
 
 function ReleaseTrustPolicyMetric({ releaseTrustPolicy }: Pick<PanelValues, 'releaseTrustPolicy'>) {
+  const t = useT()
   return (<Card className={styles.metricCard} variant="borderless">
-    <Text type="secondary">Release trust</Text>
+    <Text type="secondary">{t('health.metric.releaseTrust')}</Text>
     <Title level={3}>{releaseTrustPolicy ? releaseTrustPolicy.summary.passedCheckCount : '-'}</Title>
     {releaseTrustPolicy && (
       <Space size={4} wrap>

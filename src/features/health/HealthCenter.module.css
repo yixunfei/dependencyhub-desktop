@@ -28,26 +28,6 @@
   margin-bottom: 0;
 }
 
-.pathInfo {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 520px;
-}
-
-.pathLabel {
-  color: var(--text-secondary, #999);
-  white-space: nowrap;
-}
-
-.pathValue {
-  max-width: 360px;
-  overflow: hidden;
-  color: var(--primary-color, #1890ff);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

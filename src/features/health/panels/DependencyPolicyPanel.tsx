@@ -1,4 +1,5 @@
 import { Empty, Space, Table, Tag, Typography } from 'antd'
+import { useT } from '../../../i18n'
 import styles from '../HealthCenter.module.css'
 import type { HealthCenterModel } from '../useHealthCenterModel'
 const { Text } = Typography
@@ -6,15 +7,16 @@ const { Text } = Typography
 type Props = Pick<HealthCenterModel, 'policyEvaluation'>
 
 export function DependencyPolicyPanel({ policyEvaluation }: Props) {
+  const t = useT()
   return (policyEvaluation && (
     <div className={styles.policyPanel}>
       <div className={styles.policyHeader}>
         <Space wrap>
-          <Text strong>依赖策略检查</Text>
+          <Text strong>{t('health.policyCheck')}</Text>
           <Tag color={policyEvaluation.violationCount > 0 ? 'orange' : 'green'}>
-            {policyEvaluation.violationCount} 个违规项
+            {t('health.violationCount', { count: policyEvaluation.violationCount })}
           </Tag>
-          <Tag>{policyEvaluation.componentCount} 个组件</Tag>
+          <Tag>{t('health.componentCount', { count: policyEvaluation.componentCount })}</Tag>
         </Space>
         <Text type="secondary">{policyEvaluation.policyPath}</Text>
       </div>
@@ -26,15 +28,16 @@ export function DependencyPolicyPanel({ policyEvaluation }: Props) {
 type PanelValues = { [Key in keyof Props]: NonNullable<Props[Key]> }
 
 function DependencyPolicyPanelTable({ policyEvaluation }: Pick<PanelValues, 'policyEvaluation'>) {
+  const t = useT()
   return (<Table
     dataSource={policyEvaluation.violations}
     rowKey={(record, index) => `${record.title}:${record.packageName || ''}:${index}`}
     size="small"
     pagination={{ pageSize: 6 }}
-    locale={{ emptyText: <Empty description="策略检查通过" /> }}
+    locale={{ emptyText: <Empty description={t('health.policyPassed')} /> }}
     columns={[
       {
-        title: '级别',
+        title: t('health.columnSeverity'),
         dataIndex: 'severity',
         key: 'severity',
         width: 90,
@@ -45,7 +48,7 @@ function DependencyPolicyPanelTable({ policyEvaluation }: Pick<PanelValues, 'pol
         )
       },
       {
-        title: '依赖',
+        title: t('health.columnDependency'),
         key: 'dependency',
         width: 240,
         render: (_: unknown, record: DependencyPolicyViolation) => (
@@ -57,19 +60,19 @@ function DependencyPolicyPanelTable({ policyEvaluation }: Pick<PanelValues, 'pol
         )
       },
       {
-        title: '问题',
+        title: t('health.columnIssue'),
         dataIndex: 'title',
         key: 'title',
         width: 220
       },
       {
-        title: '说明',
+        title: t('health.columnExplanation'),
         dataIndex: 'description',
         key: 'description',
         ellipsis: true
       },
       {
-        title: '建议',
+        title: t('health.columnSuggestion'),
         dataIndex: 'recommendation',
         key: 'recommendation',
         ellipsis: true

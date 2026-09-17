@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '../../stores/appStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import HealthCenter from './HealthCenter'
 
 const bridge = {
@@ -9,11 +10,17 @@ const bridge = {
   plugins: { catalog: vi.fn().mockResolvedValue([]) },
   frameworkCoverage: { report: vi.fn().mockResolvedValue(null) }
 }
+// The assertions below read Chinese copy, which now comes from the dictionary.
+// Pinning the language keeps them meaningful as more of HealthCenter is localized.
 beforeEach(() => {
   useAppStore.setState({ currentPath: '', notifications: [] })
+  useSettingsStore.setState({ language: 'zh-CN' })
   Object.defineProperty(window, 'electronAPI', { configurable: true, value: bridge })
 })
-afterEach(() => vi.clearAllMocks())
+afterEach(() => {
+  useSettingsStore.setState({ language: 'en-US' })
+  vi.clearAllMocks()
+})
 
 describe('health center integration', () => {
   it('renders without a project, including empty list reports, and refreshes safely', async () => {

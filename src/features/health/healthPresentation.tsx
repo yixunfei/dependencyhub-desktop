@@ -1,5 +1,6 @@
 import { Space, Tag, Tooltip } from 'antd'
 import React from 'react'
+import type { LabelTranslator, TranslationKey } from '../../i18n'
 import { WorkflowSectionHeader } from './components'
 import type { HealthWorkflowSectionId } from './workflows'
 
@@ -32,10 +33,10 @@ export const REPORT_ARTIFACT_FORMAT_OPTIONS: Array<{ value: 'all' | ReportArtifa
   { value: 'unknown', label: 'Unknown' }
 ]
 
-export function snapshotSourceLabel(source: SupplyChainSnapshotSource | undefined): string {
-  if (source === 'mutation') return '变更'
-  if (source === 'restore') return '恢复'
-  return '手动'
+export function snapshotSourceLabel(source: SupplyChainSnapshotSource | undefined, t: LabelTranslator): string {
+  if (source === 'mutation') return t('health.snapshotSourceMutation')
+  if (source === 'restore') return t('health.snapshotSourceRestore')
+  return t('health.snapshotSourceManual')
 }
 
 export function readinessStatusLabel(status: ReadinessGateStatus): string {
@@ -318,32 +319,34 @@ export function formatDuration(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)} s`
 }
 
-export function operationKindLabel(kind: OperationHistoryOperationKind | undefined): string {
-  const labels: Record<OperationHistoryOperationKind, string> = {
-    install: '安装',
-    uninstall: '移除',
-    update: '更新',
-    sync: '同步',
-    audit: '审计',
-    tree: '依赖树',
-    list: '列表',
-    search: '搜索',
-    outdated: '过期检查',
-    publish: '发布',
-    config: '配置',
-    cache: '缓存',
-    build: '构建',
-    test: '测试',
-    run: '运行',
-    clean: '清理',
-    lock: '锁定',
-    login: '凭据',
-    toolchain: '工具链',
-    restore: '恢复',
-    info: '信息',
-    unknown: '未知'
-  }
-  return labels[kind || 'unknown']
+/** Module-scope data: the label is resolved at render time by the caller. */
+const operationKindKeys: Record<OperationHistoryOperationKind, TranslationKey> = {
+  install: 'health.op.install',
+  uninstall: 'health.op.uninstall',
+  update: 'health.op.update',
+  sync: 'health.op.sync',
+  audit: 'health.op.audit',
+  tree: 'health.op.tree',
+  list: 'health.op.list',
+  search: 'health.op.search',
+  outdated: 'health.op.outdated',
+  publish: 'health.op.publish',
+  config: 'health.op.config',
+  cache: 'health.op.cache',
+  build: 'health.op.build',
+  test: 'health.op.test',
+  run: 'health.op.run',
+  clean: 'health.op.clean',
+  lock: 'health.op.lock',
+  login: 'health.op.login',
+  toolchain: 'health.op.toolchain',
+  restore: 'health.op.restore',
+  info: 'health.op.info',
+  unknown: 'common.unknown'
+}
+
+export function operationKindLabel(kind: OperationHistoryOperationKind | undefined, t: LabelTranslator): string {
+  return t(operationKindKeys[kind || 'unknown'])
 }
 
 export function operationKindColor(kind: OperationHistoryOperationKind | undefined): string {
@@ -354,18 +357,21 @@ export function operationKindColor(kind: OperationHistoryOperationKind | undefin
   return 'default'
 }
 
-export function renderScanStatus(scan: DependencyHealthScanResult | { error: string } | undefined) {
-  if (!scan) return <Tag>未扫描</Tag>
-  if ('error' in scan) return <Tooltip title={scan.error}><Tag color="red">扫描失败</Tag></Tooltip>
+export function renderScanStatus(
+  scan: DependencyHealthScanResult | { error: string } | undefined,
+  t: LabelTranslator
+) {
+  if (!scan) return <Tag>{t('health.scanNotScanned')}</Tag>
+  if ('error' in scan) return <Tooltip title={scan.error}><Tag color="red">{t('health.scanStatusFailed')}</Tag></Tooltip>
 
   const total = scan.summary.total
-  if (total === 0) return <Tag color="green">无问题</Tag>
+  if (total === 0) return <Tag color="green">{t('health.scanNoIssues')}</Tag>
 
   return (
     <Space size={4} wrap>
-      <Tag color="red">高危 {scan.summary.critical + scan.summary.high}</Tag>
-      <Tag color="orange">中 {scan.summary.medium}</Tag>
-      <Tag>总计 {total}</Tag>
+      <Tag color="red">{t('health.scanHighRisk', { count: scan.summary.critical + scan.summary.high })}</Tag>
+      <Tag color="orange">{t('health.scanMedium', { count: scan.summary.medium })}</Tag>
+      <Tag>{t('health.scanTotal', { count: total })}</Tag>
     </Space>
   )
 }

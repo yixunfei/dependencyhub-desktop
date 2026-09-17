@@ -1,9 +1,8 @@
-import type { TranslationKey, TranslationParams } from '../i18n'
+import type { LabelTranslator } from '../i18n'
 
 export const VERSION_PAGE_SIZE = 10
 
-/** The subset of `useT()`'s return type a pure helper needs to label a value. */
-export type LabelTranslator = (key: TranslationKey, params?: TranslationParams) => string
+export type { LabelTranslator }
 
 export type VersionChannelFilter = 'stable' | 'prerelease' | 'all'
 
