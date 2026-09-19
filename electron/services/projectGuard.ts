@@ -1,4 +1,5 @@
 import { OperationCancelledError, type OperationContext } from './operationContext'
+import { invalidateReports } from './reportCache'
 
 export interface ProjectGuardOptions {
   timeoutMs?: number | null
@@ -60,8 +61,14 @@ export async function runProjectOperation<T>(
       }
       return await run()
     }
-    if (options.serialize === false) return await run()
-    return await waitForProjectTurn(dependencies, lockKey, context, run)
+    const result = options.serialize === false
+      ? await run()
+      : await waitForProjectTurn(dependencies, lockKey, context, run)
+    // Every report that described the project before this write is now stale:
+    // without this a freshly installed dependency simply does not appear until
+    // something else happens to refresh the panel.
+    if (options.kind !== 'read') invalidateReports(cwd || undefined)
+    return result
   } catch (error) {
     throw dependencies.attachFailure(error, context.operationId)
   } finally {

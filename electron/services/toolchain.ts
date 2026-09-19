@@ -2,6 +2,7 @@ import { app, shell } from 'electron'
 import { access, mkdir, readFile, stat, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { runLoggedCommand } from './commandRunner'
+import { toolchainLimiter } from './concurrency'
 
 export const TOOL_NAMES = [
   'npm',
@@ -303,7 +304,9 @@ export async function checkTool(tool: ToolName, projectPath?: string): Promise<T
 }
 
 export async function checkTools(projectPath?: string): Promise<ToolStatus[]> {
-  return Promise.all(TOOL_NAMES.map((tool) => checkTool(tool, projectPath)))
+  // Sixty-six tools every executed as separate processes saturated smaller
+  // machines and starved the command the user was actually waiting for.
+  return toolchainLimiter.runAll(TOOL_NAMES, (tool) => checkTool(tool, projectPath))
 }
 
 export async function openToolDownload(tool: ToolName): Promise<void> {

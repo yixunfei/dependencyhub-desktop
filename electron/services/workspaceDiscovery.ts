@@ -7,6 +7,8 @@ import {
   type DependencyManagerId
 } from '../../shared/managerRegistry'
 import type { WorkspaceKind } from '../../shared/workspaceKinds'
+import { fsLimiter } from './concurrency'
+import { cachedReport, invalidateReports } from './reportCache'
 
 export type { WorkspaceKind }
 
@@ -36,6 +38,8 @@ export interface WorkspaceDiscoverySummary {
   configFileCount: number
   byKind: Record<string, number>
   byManager: Record<string, number>
+  /** True when the directory cap stopped the walk; results are then partial. */
+  truncated?: boolean
 }
 
 export interface WorkspaceDiscoveryReport {
@@ -62,6 +66,8 @@ interface WorkspaceCandidate {
 
 const REPORT_DIR = '.npmDesktopManager/reports'
 const MAX_SCAN_DEPTH = 5
+/** Beyond a few thousand directories every extra probe costs more than it finds. */
+const MAX_SCAN_DIRECTORIES = 20000
 const IGNORED_DIRECTORIES = new Set([
   '.git',
   '.hg',
@@ -86,9 +92,27 @@ const IGNORED_DIRECTORIES = new Set([
 ])
 
 const MANAGER_IDS = MANAGER_DEFINITIONS.map((manager) => manager.id)
-const directoryNamesCache = new Map<string, Promise<string[]>>()
+
+/**
+ * Directory listings are cached with a short TTL rather than cleared at the top
+ * of every report: eight services request this scan at once and each of them
+ * used to wipe the cache the others had just populated, so none ever hit it.
+ */
+const DIRECTORY_NAMES_TTL_MS = 10_000
+const MAX_CACHED_DIRECTORIES = 5000
+interface DirectoryNamesEntry {
+  at: number
+  promise: Promise<string[]>
+}
+const directoryNamesCache = new Map<string, DirectoryNamesEntry>()
 
 export class WorkspaceDiscoveryService {
+  /**
+   * A full tree walk is the single most expensive read in the app and several
+   * governance reports ask for it during the same page load. Memoising it keeps
+   * one scan alive for concurrent callers; writes call {@link invalidateReports}
+   * so a panel never renders pre-install results.
+   */
   async report(projectPath: string): Promise<WorkspaceDiscoveryReport> {
     if (!projectPath?.trim()) {
       throw new Error('Project path is required')
@@ -96,9 +120,11 @@ export class WorkspaceDiscoveryService {
 
     const root = resolve(projectPath)
     await access(root)
-    directoryNamesCache.clear()
+    return await cachedReport(`workspaceDiscovery:${root}`, 30_000, () => this.scanWorkspaceTree(root))
+  }
 
-    const directories = await walkDirectories(root, MAX_SCAN_DEPTH)
+  private async scanWorkspaceTree(root: string): Promise<WorkspaceDiscoveryReport> {
+    const { directories, truncated } = await walkDirectories(root, MAX_SCAN_DEPTH)
     const explicitCandidates = await discoverExplicitWorkspaces(root, directories)
     const manifestCandidates = await discoverManifestWorkspaces(root, directories)
     const candidates: WorkspaceCandidate[] = [
@@ -107,19 +133,28 @@ export class WorkspaceDiscoveryService {
       ...manifestCandidates
     ]
 
-    const byPath = new Map<string, WorkspaceNode>()
-    for (const candidate of candidates) {
+    // Inspecting a workspace touches the filesystem dozens of times, so it is
+    // parallelised but still bounded; the results are merged back in candidate
+    // order afterwards, keeping the report deterministic.
+    const inspected = await fsLimiter.runAll(candidates, async (candidate) => {
       const workspacePath = resolve(candidate.path)
-      if (!isInside(root, workspacePath)) continue
-      if (!await isDirectory(workspacePath)) continue
+      if (!isInside(root, workspacePath)) return null
+      if (!await isDirectory(workspacePath)) return null
+      return {
+        candidate,
+        node: await inspectWorkspace(root, workspacePath, candidate)
+      }
+    })
 
-      const node = await inspectWorkspace(root, workspacePath, candidate)
-      const key = pathKey(workspacePath)
+    const byPath = new Map<string, WorkspaceNode>()
+    for (const entry of inspected) {
+      if (!entry) continue
+      const key = pathKey(entry.node.path)
       const existing = byPath.get(key)
       if (existing) {
-        mergeWorkspace(existing, node, candidate.source)
+        mergeWorkspace(existing, entry.node, entry.candidate.source)
       } else {
-        byPath.set(key, node)
+        byPath.set(key, entry.node)
       }
     }
 
@@ -127,11 +162,12 @@ export class WorkspaceDiscoveryService {
       .sort((a, b) => workspaceSortKey(a).localeCompare(workspaceSortKey(b)))
     assignParents(workspaces)
 
+    const summary = summarize(workspaces)
     return {
       generatedAt: new Date().toISOString(),
       projectPath: root,
       workspaces,
-      summary: summarize(workspaces)
+      summary: truncated ? { ...summary, truncated: true } : summary
     }
   }
 
@@ -299,16 +335,16 @@ async function discoverGoWorkModules(root: string): Promise<WorkspaceCandidate[]
 }
 
 async function discoverManifestWorkspaces(root: string, directories: string[]): Promise<WorkspaceCandidate[]> {
-  const candidates: WorkspaceCandidate[] = []
-  for (const directory of directories) {
-    if (!await hasWorkspaceManifest(directory)) continue
-    candidates.push({
-      path: directory,
-      kind: await inferWorkspaceKind(directory, directory === root),
-      source: 'manifest-scan'
-    })
-  }
-  return candidates
+  const matches = await fsLimiter.runAll(directories, async (directory) => (
+    await hasWorkspaceManifest(directory)
+      ? {
+          path: directory,
+          kind: await inferWorkspaceKind(directory, directory === root),
+          source: 'manifest-scan'
+        }
+      : null
+  ))
+  return matches.filter((candidate): candidate is WorkspaceCandidate => candidate !== null)
 }
 
 async function inspectWorkspace(
@@ -324,19 +360,29 @@ async function inspectWorkspace(
   const lockFiles = new Set<string>()
   const configFiles = new Set<string>()
 
-  for (const manager of MANAGER_DEFINITIONS) {
-    const detectionMatches = await existingPatternMatches(workspacePath, getManagerDetectionFiles(manager))
-    if (detectionMatches.length > 0) {
+  // Sixty-two ecosystems inspected one at a time meant hundreds of sequential
+  // awaits per workspace; they are independent reads, so run them in parallel
+  // and collect into the same ordered sets afterwards.
+  const perManager = await fsLimiter.runAll(MANAGER_DEFINITIONS, async (manager) => ({
+    manager,
+    detection: await existingPatternMatches(workspacePath, getManagerDetectionFiles(manager)),
+    manifest: await existingPatternMatches(workspacePath, manager.manifestFiles),
+    lock: await existingPatternMatches(workspacePath, manager.lockFiles),
+    config: await existingPatternMatches(workspacePath, manager.configFiles || [])
+  }))
+
+  for (const { manager, detection, manifest, lock, config } of perManager) {
+    if (detection.length > 0) {
       detectedManagers.add(manager.id)
     }
 
-    for (const file of await existingPatternMatches(workspacePath, manager.manifestFiles)) {
+    for (const file of manifest) {
       manifestFiles.add(toProjectRelative(root, workspacePath, file))
     }
-    for (const file of await existingPatternMatches(workspacePath, manager.lockFiles)) {
+    for (const file of lock) {
       lockFiles.add(toProjectRelative(root, workspacePath, file))
     }
-    for (const file of await existingPatternMatches(workspacePath, manager.configFiles || [])) {
+    for (const file of config) {
       configFiles.add(toProjectRelative(root, workspacePath, file))
     }
   }
@@ -520,12 +566,11 @@ function managerHintsForKind(kind: WorkspaceKind): DependencyManagerId[] {
 }
 
 async function hasWorkspaceManifest(directory: string): Promise<boolean> {
-  for (const manager of MANAGER_DEFINITIONS) {
-    if ((await existingPatternMatches(directory, manager.manifestFiles)).length > 0) {
-      return true
-    }
-  }
-  return false
+  const matches = await fsLimiter.runAll(
+    MANAGER_DEFINITIONS,
+    (manager) => existingPatternMatches(directory, manager.manifestFiles)
+  )
+  return matches.some((found) => found.length > 0)
 }
 
 async function inferWorkspaceKind(directory: string, isRoot: boolean): Promise<WorkspaceKind> {
@@ -668,11 +713,22 @@ async function readWorkspaceIdentity(directory: string): Promise<{ packageName?:
   return {}
 }
 
-async function walkDirectories(root: string, maxDepth: number): Promise<string[]> {
+async function walkDirectories(
+  root: string,
+  maxDepth: number
+): Promise<{ directories: string[]; truncated: boolean }> {
   const result: string[] = [root]
+  let truncated = false
 
   async function visit(directory: string, depth: number) {
     if (depth >= maxDepth) return
+    // A huge monorepo checkout (or a directory symlinked into itself) can
+    // otherwise produce hundreds of thousands of candidates, each of which is
+    // later probed sixty-two times.
+    if (result.length >= MAX_SCAN_DIRECTORIES) {
+      truncated = true
+      return
+    }
     let entries: Dirent[]
     try {
       entries = await readdir(directory, { withFileTypes: true })
@@ -689,7 +745,7 @@ async function walkDirectories(root: string, maxDepth: number): Promise<string[]
   }
 
   await visit(root, 0)
-  return result
+  return { directories: result, truncated }
 }
 
 function expandWorkspacePatterns(root: string, patterns: string[], directories: string[]): string[] {
@@ -773,10 +829,11 @@ async function existingPatternMatches(directory: string, patterns: readonly stri
 async function readDirectoryNames(directory: string): Promise<string[]> {
   const key = resolve(directory)
   const cached = directoryNamesCache.get(key)
-  if (cached) return await cached
-  const pending = readdir(key).then((entries) => entries.sort()).catch(() => [])
-  directoryNamesCache.set(key, pending)
-  return await pending
+  if (cached && Date.now() - cached.at < DIRECTORY_NAMES_TTL_MS) return await cached.promise
+  const promise = readdir(key).then((entries) => entries.sort()).catch(() => [] as string[])
+  if (directoryNamesCache.size > MAX_CACHED_DIRECTORIES) directoryNamesCache.clear()
+  directoryNamesCache.set(key, { at: Date.now(), promise })
+  return await promise
 }
 
 async function exists(path: string): Promise<boolean> {

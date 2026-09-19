@@ -1,9 +1,24 @@
 import { access, mkdir, readFile, writeFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
 import type { DependencyManagerId } from '../../shared/managerRegistry'
+import { httpLimiter } from './concurrency'
+import { cachedReport } from './reportCache'
 
 export type RegistryEndpointKind = 'registry' | 'mirror' | 'proxy' | 'repository' | 'image-registry'
-export type RegistryReachabilityStatus = 'reachable' | 'unreachable' | 'unknown' | 'skipped'
+/**
+ * `unauthorized` and `not-found` used to be reported as reachable: any HTTP
+ * status below 500 counted as success, so a private feed that answered 401 —
+ * the single most common "custom registry" failure — was rendered green.
+ * `slow` distinguishes "answered, but only just" from "no answer at all".
+ */
+export type RegistryReachabilityStatus =
+  | 'reachable'
+  | 'unreachable'
+  | 'unauthorized'
+  | 'not-found'
+  | 'slow'
+  | 'unknown'
+  | 'skipped'
 export type RegistryReachabilityExportFormat = 'markdown' | 'json'
 
 export interface RegistryEndpoint {
@@ -62,7 +77,10 @@ export type RegistryEndpointChecker = (
 ) => Promise<Pick<RegistryReachabilityResult, 'status' | 'statusCode' | 'message' | 'redirectedUrl'>>
 
 const REPORT_DIR = '.npmDesktopManager/reports'
-const DEFAULT_TIMEOUT_MS = 3000
+/** Three seconds is below the round-trip time of most cross-region mirrors. */
+const DEFAULT_TIMEOUT_MS = 6000
+const RETRY_TIMEOUT_MS = 12000
+const REPORT_CACHE_TTL_MS = 30_000
 
 export class RegistryReachabilityService {
   private readonly checker: RegistryEndpointChecker
@@ -90,19 +108,27 @@ export class RegistryReachabilityService {
 
   async check(cwd: string, options: RegistryReachabilityOptions = {}): Promise<RegistryReachabilityReport> {
     const root = resolve(cwd)
-    const generatedAt = new Date().toISOString()
-    const endpoints = await this.discover(root)
     const checkOptions = {
       timeoutMs: normalizeTimeout(options.timeoutMs)
     }
-    const results = await Promise.all(endpoints.map((endpoint) => this.checkOne(endpoint, checkOptions)))
-    return {
-      generatedAt,
-      projectPath: root,
-      endpoints,
-      results,
-      summary: summarize(results, endpoints)
-    }
+    // HealthCenter, Readiness and several governance panels all probe the same
+    // endpoints within a second of each other; probing once per burst keeps the
+    // results consistent without hammering a private feed.
+    return await cachedReport(
+      `registryReachability:${root}:${checkOptions.timeoutMs}`,
+      REPORT_CACHE_TTL_MS,
+      async () => {
+        const endpoints = await this.discover(root)
+        const results = await httpLimiter.runAll(endpoints, (endpoint) => this.checkOne(endpoint, checkOptions))
+        return {
+          generatedAt: new Date().toISOString(),
+          projectPath: root,
+          endpoints,
+          results,
+          summary: summarize(results, endpoints)
+        }
+      }
+    )
   }
 
   async exportMarkdown(cwd: string, options: RegistryReachabilityOptions = {}): Promise<RegistryReachabilityExportResult> {
@@ -135,7 +161,6 @@ export class RegistryReachabilityService {
     endpoint: RegistryEndpoint,
     options: Required<RegistryReachabilityOptions>
   ): Promise<RegistryReachabilityResult> {
-    const startedAt = Date.now()
     if (!/^https?:\/\//i.test(endpoint.url)) {
       return {
         ...endpoint,
@@ -146,6 +171,22 @@ export class RegistryReachabilityService {
       }
     }
 
+    const probe = await this.probeOnce(endpoint, options)
+    // Running out of time on the first attempt proves nothing — the endpoint
+    // may simply be far away. Confirm with a generous budget before reporting
+    // it as broken, because "your registry is down" sends users down the wrong path.
+    if (probe.status === 'slow' && options.timeoutMs < RETRY_TIMEOUT_MS) {
+      const retried = await this.probeOnce(endpoint, { timeoutMs: RETRY_TIMEOUT_MS })
+      if (CONCLUSIVE_STATUSES.has(retried.status)) return retried
+    }
+    return probe
+  }
+
+  private async probeOnce(
+    endpoint: RegistryEndpoint,
+    options: Required<RegistryReachabilityOptions>
+  ): Promise<RegistryReachabilityResult> {
+    const startedAt = Date.now()
     try {
       const result = await this.checker(endpoint, options)
       return {
@@ -165,6 +206,21 @@ export class RegistryReachabilityService {
     }
   }
 }
+
+/** Statuses that say something real about the endpoint, unlike a timing accident. */
+const CONCLUSIVE_STATUSES = new Set<RegistryReachabilityStatus>([
+  'reachable',
+  'unreachable',
+  'unauthorized',
+  'not-found'
+])
+
+/** Statuses that mean "this endpoint cannot currently serve a package". */
+const FAILING_STATUSES = new Set<RegistryReachabilityStatus>([
+  'unreachable',
+  'unauthorized',
+  'not-found'
+])
 
 async function discoverNpm(cwd: string): Promise<RegistryEndpoint[]> {
   const endpoints: RegistryEndpoint[] = []
@@ -337,23 +393,46 @@ async function defaultEndpointChecker(
         headers: { Range: 'bytes=0-0' }
       })
     }
-    const reachable = response.status < 500
     return {
-      status: reachable ? 'reachable' : 'unreachable',
+      status: classifyStatus(response.status),
       statusCode: response.status,
       redirectedUrl: response.url !== endpoint.url ? response.url : undefined,
-      message: reachable ? response.statusText || 'reachable' : response.statusText || 'server error'
+      message: describeStatus(response.status, response.statusText)
     }
   } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      return {
+        status: 'slow',
+        message: `No response within ${options.timeoutMs} ms`
+      }
+    }
     return {
-      status: error?.name === 'AbortError' ? 'unknown' : 'unreachable',
-      message: error?.name === 'AbortError'
-        ? `Timed out after ${options.timeoutMs} ms`
-        : error?.message || String(error)
+      status: 'unreachable',
+      message: error?.message || String(error)
     }
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Anything below 500 used to count as success, which painted expired
+ * credentials and mistyped private feeds green. These are the statuses users
+ * most need to know about, so they get their own outcome.
+ */
+function classifyStatus(status: number): RegistryReachabilityStatus {
+  if (status >= 500) return 'unreachable'
+  if (status === 401 || status === 403 || status === 407) return 'unauthorized'
+  if (status === 404 || status === 410) return 'not-found'
+  return 'reachable'
+}
+
+function describeStatus(status: number, statusText: string): string {
+  if (status === 401 || status === 403) return `${status} ${statusText || ''} — credentials are required or no longer valid`.trim()
+  if (status === 407) return `${status} — a proxy must authenticate this request`
+  if (status === 404 || status === 410) return `${status} — this address does not serve packages; check the registry URL`
+  if (status >= 500) return `${status} ${statusText || ''} — the registry itself is failing`.trim()
+  return statusText || 'reachable'
 }
 
 function endpoint(
@@ -383,8 +462,10 @@ function summarize(results: RegistryReachabilityResult[], endpoints: RegistryEnd
   return {
     endpointCount: endpoints.length,
     reachable: results.filter((result) => result.status === 'reachable').length,
-    unreachable: results.filter((result) => result.status === 'unreachable').length,
-    unknown: results.filter((result) => result.status === 'unknown').length,
+    // Unauthorised and missing feeds are failures for every consumer that gates
+    // on `unreachable`, even though the row itself reports the precise reason.
+    unreachable: results.filter((result) => FAILING_STATUSES.has(result.status)).length,
+    unknown: results.filter((result) => result.status === 'unknown' || result.status === 'slow').length,
     skipped: results.filter((result) => result.status === 'skipped').length,
     insecure: endpoints.filter((endpoint) => !endpoint.secure).length,
     privateHost: endpoints.filter((endpoint) => endpoint.privateHost).length
@@ -471,10 +552,19 @@ function uniqueEndpoints(endpoints: RegistryEndpoint[]): RegistryEndpoint[] {
   })
 }
 
+const DOCKER_HUB_REGISTRY = 'registry-1.docker.io'
+
+/**
+ * `FROM node:20` names no registry at all, and returning nothing here meant the
+ * overwhelming majority of Dockerfiles produced no endpoint — so a broken or
+ * rate-limited Docker Hub looked like "nothing to check". Official short names
+ * and explicit docker.io both resolve to the Hub API host.
+ */
 function dockerRegistryHost(image: string): string {
   const first = image.split('/')[0]
-  if (!first || first === image) return ''
-  if (first === 'docker.io' || first === 'index.docker.io') return ''
+  if (!first) return ''
+  if (first === 'docker.io' || first === 'index.docker.io') return DOCKER_HUB_REGISTRY
+  if (first === image) return DOCKER_HUB_REGISTRY
   return /[.:]/.test(first) ? first : ''
 }
 
@@ -508,9 +598,7 @@ function isPrivateHost(host: string): boolean {
     host &&
     (
       host === 'localhost' ||
-      host.endsWith('.local') ||
-      host.endsWith('.internal') ||
-      host.endsWith('.corp') ||
+      PRIVATE_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix)) ||
       /^\d+\.\d+\.\d+\.\d+$/.test(host) ||
       /^10\./.test(host) ||
       /^192\.168\./.test(host) ||
@@ -518,6 +606,25 @@ function isPrivateHost(host: string): boolean {
     )
   )
 }
+
+/** Includes the suffixes teams actually use for internal mirrors and clusters. */
+const PRIVATE_HOST_SUFFIXES = [
+  '.local',
+  '.internal',
+  '.corp',
+  '.lan',
+  '.home.arpa',
+  '.svc',
+  '.svc.cluster.local',
+  '.cluster.local',
+  '.test',
+  '.example',
+  '.intranet',
+  '.private',
+  '.tencentcs.com',
+  '.aliyuncs.com',
+  '.amazonaws.com.cn'
+]
 
 function stripQuotes(value: string): string {
   return value.replace(/^['"]|['"]$/g, '')

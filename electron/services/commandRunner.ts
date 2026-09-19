@@ -1,4 +1,5 @@
 import { CommandProcess } from './commandProcess'
+import { commandLimiter } from './concurrency'
 import { createLogId, formatCommand, sendCommandLog } from './commandLogger'
 import { recordOperationHistory } from './operationHistory'
 import {
@@ -110,7 +111,10 @@ export async function runLoggedCommand(
   }
   emit('running')
   try {
-    const result = await processRun.run()
+    // Command spawning shares one budget so a burst of explorer reads cannot
+    // push an in-flight install into swap; nested calls are detected by the
+    // limiter itself and never queue against their own parent.
+    const result = await commandLimiter.run(() => processRun.run())
     emit('success')
     await recordHistory('success')
     return result
