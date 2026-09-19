@@ -1,0 +1,1 @@
+tc=0 test=0 core=0 hard=0 ipc=0

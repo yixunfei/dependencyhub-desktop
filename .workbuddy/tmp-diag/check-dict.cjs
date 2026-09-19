@@ -1,0 +1,10 @@
+const fs = require('fs')
+const zh = fs.readFileSync('src/i18n/dictionaries/zh-CN.ts', 'utf-8')
+const probe = "'app.settings': '设置'"
+console.log('utf8 valid:', !zh.includes('\uFFFD'))
+console.log('probe found:', zh.includes(probe))
+console.log('line count:', zh.split('\n').length)
+const en = fs.readFileSync('src/i18n/dictionaries/en-US.ts', 'utf-8')
+console.log('en line count:', en.split('\n').length)
+console.log('en closes:', en.trimEnd().endsWith('} as const'))
+console.log('zh closes:', zh.trimEnd().endsWith('} as const'))

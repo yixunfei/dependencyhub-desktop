@@ -1,0 +1,30 @@
+﻿act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/w
+rap-tests-with-act
+
+
+[31m鈳幆鈳幆鈳幆鈳?[39m[1m[41m Failed Tests 1 [49m[22m[31m鈳幆鈳幆鈳幆鈳?[39m
+
+[41m[1m FAIL [22m[49m electron/services/terminalWrite.test.ts[2m > [22mterminal write safety[2m > [22mdoes not 
+crash the process when writing while the shell is tearing down
+[31m[1mAssertionError[22m: expected [Function] to throw an error[39m
+[36m [2m鉂?[22m electron/services/terminalWrite.test.ts:[2m29:63[22m[39m
+    [90m 27|[39m
+    [90m 28|[39m     await wait(400)
+    [90m 29|[39m     expect(() => service.write(session.id, 'echo final\r\n')).toThrow()
+    [90m   |[39m                                                               [31m^[39m
+    [90m 30|[39m     service.killAll()
+    [90m 31|[39m   })
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/1]鈳?[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (11)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m35 passed[39m[22m[90m (36)[39m
+[2m   Start at [22m 11:12:19
+[2m   Duration [22m 8.28s[2m (tests 41%, environment 26%, import 21%, setup 9%, transform 4%)[22m
+

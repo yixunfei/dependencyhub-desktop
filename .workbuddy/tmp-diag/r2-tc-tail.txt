@@ -1,0 +1,5 @@
+EC=0
+
+> dependencyhub-desktop@1.0.3 typecheck:electron
+> tsc -p tsconfig.electron.json --noEmit --pretty false
+

@@ -1,0 +1,1 @@
+typecheck=0; build=0; test=0; core=0; hard=0; ipc=1; contracts=0; i18n=0; debt=1

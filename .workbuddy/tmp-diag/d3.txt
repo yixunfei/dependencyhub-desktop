@@ -1,0 +1,12 @@
+﻿    + FullyQualifiedErrorId : NativeCommandError
+ 
+if (failures.length) throw new Error(failures.join('\n'))
+                           ^
+
+Error: src/components/CommandLog/CommandLogWindow.tsx: function #1 is 546 lines
+, exceeds 526
+src/features/managers/npm/scopes/global/Global.tsx: function #1 is 745 lines, e
+xceeds 744
+    at file:///E:/npmManager/scripts/verify-engineering-debt.mjs:19:28
+
+Node.js v22.22.2

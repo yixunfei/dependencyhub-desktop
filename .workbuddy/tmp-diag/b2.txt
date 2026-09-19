@@ -1,0 +1,6 @@
+﻿all includes work from other calls. To find its cost, profile the build with `n
+ode --cpu-prof`:
+  - vite:esbuild-transpile renderChunk (45 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more de
+tails.
+[39m

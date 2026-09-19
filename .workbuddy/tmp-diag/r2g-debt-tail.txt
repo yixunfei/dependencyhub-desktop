@@ -1,0 +1,25 @@
+﻿+ & "C:\Users\yixun\.workbuddy\binaries\node\versions\22.22.2-3/node.ex ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (file:///E:/npmM...ing-debt.mjs:19 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+if (failures.length) throw new Error(failures.join('\n'))
+                           ^
+
+Error: electron/main.ts: 2140 lines exceeds 2137
+electron/main.ts: function #1 is 1517 lines, exceeds 1515
+src/components/Toolchain/GlobalToolchainPanel.tsx: function #1 is 137 lines, ex
+ceeds 124
+src/features/managers/npm/scopes/global/Global.tsx: explicit any grew from 17 t
+o 18
+src/features/managers/npm/scopes/global/Global.tsx: function #1 is 765 lines, e
+xceeds 745
+src/features/managers/npm/scopes/project/Project.tsx: function #1 is 1087 lines
+, exceeds 1076
+src/features/settings/Settings.tsx: function #1 is 935 lines, exceeds 925
+src/i18n/dictionaries.ts: 1814 lines exceeds 1500
+src/stores/packageStore.ts: function #1 is 357 lines, exceeds 347
+    at file:///E:/npmManager/scripts/verify-engineering-debt.mjs:19:28
+
+Node.js v22.22.2

@@ -1,0 +1,527 @@
+warning: in the working copy of 'electron/services/commandRunner.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'electron/services/credentialVaultCore.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'electron/services/flutter.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'electron/services/gradle.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'electron/services/projectGuard.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'electron/services/system.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'electron/services/terminal.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git a/electron/services/commandRunner.ts b/electron/services/commandRunner.ts
+index 5802c20..ab3cedf 100644
+--- a/electron/services/commandRunner.ts
++++ b/electron/services/commandRunner.ts
+@@ -112,11 +112,18 @@ function formatCmdCommand(bin: string, args: string[]): string {
+ function formatCmdArg(arg: string): string {
+   if (arg.length === 0) return '""'
+ 
+-  const safe = arg.replace(/[\r\n]/g, '')
+-  const escaped = safe
+-    .replace(/\^/g, '^^')
+-    .replace(/"/g, '\\"')
+-    .replace(/[&|<>()]/g, '^$&')
++  if (/[\r\n]/.test(arg)) {
++    // Stripping newlines silently changed the argument's meaning. Callers pass
++    // package names, versions and flags that never contain line breaks, so a
++    // newline here indicates a caller bug and must fail loudly.
++    throw new Error('Command arguments must not contain line breaks')
++  }
++
++  if (!/[\s"&|<>()^%]/.test(arg)) return arg
+ 
+-  return /\s|["&|<>()^]/.test(safe) ? `"${escaped}"` : escaped
++  // cmd.exe does not interpret ^ inside double quotes, so quoted content must
++  // stay ^-free. %VAR% expands even inside quotes, so each % is emitted as ^%
++  // in a short unquoted gap between quoted segments: "abc"^%"def" -> abc%def.
++  const escaped = arg.replace(/"/g, '\\"')
++  return `"${escaped.replace(/%/g, '"^%"')}"`
+ }
+diff --git a/electron/services/credentialVaultCore.ts b/electron/services/credentialVaultCore.ts
+index d954bc9..8d31fba 100644
+--- a/electron/services/credentialVaultCore.ts
++++ b/electron/services/credentialVaultCore.ts
+@@ -73,6 +73,19 @@ interface VaultFile {
+ }
+ 
+ export class CredentialVaultStore {
++  /**
++   * All read-modify-write cycles must run inside this queue: concurrent
++   * save/delete/resolve would otherwise read the same snapshot and the last
++   * writer wins, silently dropping the other operation's credential.
++   */
++  private vaultQueue: Promise<unknown> = Promise.resolve()
++
++  private enqueueVaultOperation<T>(operation: () => Promise<T>): Promise<T> {
++    const next = this.vaultQueue.then(operation, operation)
++    this.vaultQueue = next.catch(() => undefined)
++    return next
++  }
++
+   constructor(
+     private readonly baseDir: string,
+     private readonly cipher: CredentialCipher
+@@ -91,51 +104,55 @@ export class CredentialVaultStore {
+   }
+ 
+   async save(input: CredentialInput): Promise<CredentialMetadata> {
+-    const normalized = normalizeCredentialInput(input)
+-    const vault = await this.readVault()
+-    const now = new Date().toISOString()
+-    const existingIndex = normalized.id
+-      ? vault.credentials.findIndex((credential) => credential.id === normalized.id)
+-      : -1
+-    const existing = existingIndex >= 0 ? vault.credentials[existingIndex] : undefined
+-    const encryptedSecret = this.cipher.encrypt(normalized.secret)
+-    const storage = this.cipher.storage
+-    const encrypted = this.cipher.encrypted
+-    const credential: StoredCredential = {
+-      id: existing?.id || normalized.id || randomUUID(),
+-      managerId: normalized.managerId,
+-      service: normalized.service,
+-      account: normalized.account,
+-      label: normalized.label || buildCredentialLabel(normalized),
+-      kind: normalized.kind || 'token',
+-      url: normalized.url,
+-      notes: normalized.notes,
+-      secretPreview: previewSecret(normalized.secret),
+-      storage,
+-      encrypted,
+-      createdAt: existing?.createdAt || now,
+-      updatedAt: now,
+-      lastUsedAt: existing?.lastUsedAt,
+-      encryptedSecret
+-    }
++    return await this.enqueueVaultOperation(async () => {
++      const normalized = normalizeCredentialInput(input)
++      const vault = await this.readVault()
++      const now = new Date().toISOString()
++      const existingIndex = normalized.id
++        ? vault.credentials.findIndex((credential) => credential.id === normalized.id)
++        : -1
++      const existing = existingIndex >= 0 ? vault.credentials[existingIndex] : undefined
++      const encryptedSecret = this.cipher.encrypt(normalized.secret)
++      const storage = this.cipher.storage
++      const encrypted = this.cipher.encrypted
++      const credential: StoredCredential = {
++        id: existing?.id || normalized.id || randomUUID(),
++        managerId: normalized.managerId,
++        service: normalized.service,
++        account: normalized.account,
++        label: normalized.label || buildCredentialLabel(normalized),
++        kind: normalized.kind || 'token',
++        url: normalized.url,
++        notes: normalized.notes,
++        secretPreview: previewSecret(normalized.secret),
++        storage,
++        encrypted,
++        createdAt: existing?.createdAt || now,
++        updatedAt: now,
++        lastUsedAt: existing?.lastUsedAt,
++        encryptedSecret
++      }
+ 
+-    if (existingIndex >= 0) {
+-      vault.credentials[existingIndex] = credential
+-    } else {
+-      vault.credentials.push(credential)
+-    }
++      if (existingIndex >= 0) {
++        vault.credentials[existingIndex] = credential
++      } else {
++        vault.credentials.push(credential)
++      }
+ 
+-    await this.writeVault(vault)
+-    return toMetadata(credential)
++      await this.writeVault(vault)
++      return toMetadata(credential)
++    })
+   }
+ 
+   async delete(id: string): Promise<boolean> {
+     if (!id.trim()) return false
+-    const vault = await this.readVault()
+-    const nextCredentials = vault.credentials.filter((credential) => credential.id !== id)
+-    if (nextCredentials.length === vault.credentials.length) return false
+-    await this.writeVault({ ...vault, credentials: nextCredentials })
+-    return true
++    return await this.enqueueVaultOperation(async () => {
++      const vault = await this.readVault()
++      const nextCredentials = vault.credentials.filter((credential) => credential.id !== id)
++      if (nextCredentials.length === vault.credentials.length) return false
++      await this.writeVault({ ...vault, credentials: nextCredentials })
++      return true
++    })
+   }
+ 
+   async resolve(id: string): Promise<CredentialResolution> {
+@@ -161,11 +178,13 @@ export class CredentialVaultStore {
+   }
+ 
+   private async touch(id: string): Promise<void> {
+-    const vault = await this.readVault()
+-    const credential = vault.credentials.find((item) => item.id === id)
+-    if (!credential) return
+-    credential.lastUsedAt = new Date().toISOString()
+-    await this.writeVault(vault)
++    await this.enqueueVaultOperation(async () => {
++      const vault = await this.readVault()
++      const credential = vault.credentials.find((item) => item.id === id)
++      if (!credential) return
++      credential.lastUsedAt = new Date().toISOString()
++      await this.writeVault(vault)
++    })
+   }
+ 
+   private async readVault(): Promise<VaultFile> {
+@@ -184,8 +203,10 @@ export class CredentialVaultStore {
+ 
+   private async writeVault(vault: VaultFile): Promise<void> {
+     const path = this.vaultPath()
+-    const tmpPath = `${path}.tmp`
+     await mkdir(dirname(path), { recursive: true })
++    // A unique staging file per write keeps concurrent or crashed writers from
++    // corrupting each other's snapshot; a fixed `${path}.tmp` does not.
++    const tmpPath = `${path}.${randomUUID()}.tmp`
+     await writeFile(tmpPath, JSON.stringify({
+       version: VAULT_VERSION,
+       credentials: vault.credentials
+@@ -193,8 +214,10 @@ export class CredentialVaultStore {
+     try {
+       await rename(tmpPath, path)
+     } catch (error) {
+-      await unlink(path).catch(() => undefined)
+-      await rename(tmpPath, path)
++      // Never unlink the live vault to "make room" for the rename: if the
++      // retry also fails, the previous vault contents must stay intact.
++      await unlink(tmpPath).catch(() => undefined)
++      throw error
+     }
+   }
+ 
+diff --git a/electron/services/flutter.ts b/electron/services/flutter.ts
+index c8fd418..e14aa07 100644
+--- a/electron/services/flutter.ts
++++ b/electron/services/flutter.ts
+@@ -2,6 +2,7 @@ import { access, readFile, writeFile } from 'fs/promises'
+ import { join } from 'path'
+ import { runLoggedCommand } from './commandRunner'
+ import { resolveToolBin } from './toolchain'
++import { splitCommandLine } from './splitCommandLine'
+ 
+ export type FlutterDependencyType = 'dependencies' | 'dev_dependencies' | 'dependency_overrides'
+ export type FlutterDependencySource = 'hosted' | 'sdk' | 'path' | 'git'
+@@ -592,6 +593,7 @@ function buildDependencyTreeFromPubDeps(data: any): FlutterDependencyTreeNode |
+ }
+ 
+ function upsertDependency(content: string, dependency: FlutterDependencyArgs & { type: FlutterDependencyType; version: string }): string {
++  const eol = detectLineEnding(content)
+   let nextContent = content
+   for (const section of DEPENDENCY_SECTIONS) {
+     nextContent = removeDependency(nextContent, dependency.packageName, section)
+@@ -599,15 +601,16 @@ function upsertDependency(content: string, dependency: FlutterDependencyArgs & {
+ 
+   const lines = ensureSection(nextContent.split(/\r?\n/), dependency.type)
+   const range = sectionRange(lines.join('\n'), dependency.type)
+-  if (!range) return ensureTrailingNewline(lines.join('\n'))
++  if (!range) return withLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
+ 
+   const insertAt = range.end
+   const dependencyLines = formatDependencyLines(dependency)
+   lines.splice(insertAt, 0, ...dependencyLines)
+-  return ensureTrailingNewline(lines.join('\n'))
++  return withLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
+ }
+ 
+ function removeDependency(content: string, packageName: string, section?: FlutterDependencyType): string {
++  const eol = detectLineEnding(content)
+   const sections = section ? [section] : DEPENDENCY_SECTIONS
+   let lines = content.split(/\r?\n/)
+ 
+@@ -628,7 +631,7 @@ function removeDependency(content: string, packageName: string, section?: Flutte
+     }
+   }
+ 
+-  return ensureTrailingNewline(lines.join('\n'))
++  return withLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
+ }
+ 
+ function formatDependencyLines(dependency: FlutterDependencyArgs & { type: FlutterDependencyType; version: string }): string[] {
+@@ -647,13 +650,14 @@ function formatDependencyLines(dependency: FlutterDependencyArgs & { type: Flutt
+ }
+ 
+ function upsertAsset(content: string, assetPath: string): string {
++  const eol = detectLineEnding(content)
+   const assets = parseAssets(content)
+   if (assets.some((asset) => asset.path === assetPath)) return ensureTrailingNewline(content)
+ 
+   let lines = content.split(/\r?\n/)
+   lines = ensureSection(lines, 'flutter')
+   const flutterRange = sectionRange(lines.join('\n'), 'flutter')
+-  if (!flutterRange) return ensureTrailingNewline(lines.join('\n'))
++  if (!flutterRange) return withLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
+ 
+   let assetsHeader = -1
+   for (let index = flutterRange.start + 1; index < flutterRange.end; index += 1) {
+@@ -665,7 +669,7 @@ function upsertAsset(content: string, assetPath: string): string {
+ 
+   if (assetsHeader < 0) {
+     lines.splice(flutterRange.start + 1, 0, '  assets:', `    - ${assetPath}`)
+-    return ensureTrailingNewline(lines.join('\n'))
++    return withLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
+   }
+ 
+   let insertAt = assetsHeader + 1
+@@ -673,10 +677,11 @@ function upsertAsset(content: string, assetPath: string): string {
+     insertAt += 1
+   }
+   lines.splice(insertAt, 0, `    - ${assetPath}`)
+-  return ensureTrailingNewline(lines.join('\n'))
++  return withLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
+ }
+ 
+ function removeAsset(content: string, assetPath: string): string {
++  const eol = detectLineEnding(content)
+   const lines = content.split(/\r?\n/)
+   const range = sectionRange(content, 'flutter')
+   if (!range) return ensureTrailingNewline(content)
+@@ -689,7 +694,7 @@ function removeAsset(content: string, assetPath: string): string {
+     }
+   }
+ 
+-  return ensureTrailingNewline(lines.join('\n'))
++  return withLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
+ }
+ 
+ function ensureSection(lines: string[], section: string): string[] {
+@@ -986,13 +991,6 @@ async function httpsPostJson(url: string, payload: unknown): Promise<string> {
+   })
+ }
+ 
+-function splitCommandLine(commandLine: string): string[] {
+-  return commandLine
+-    .split(/\s+/)
+-    .map((part) => part.trim())
+-    .filter(Boolean)
+-}
+-
+ function lineIndent(line: string): number {
+   return line.match(/^\s*/)?.[0].length || 0
+ }
+@@ -1001,6 +999,16 @@ function ensureTrailingNewline(value: string): string {
+   return value.endsWith('\n') ? value : `${value}\n`
+ }
+ 
++// Editing a single dependency must not rewrite the whole file's line endings,
++// otherwise every CRLF project gets a full-file diff in version control.
++function detectLineEnding(content: string): '\r\n' | '\n' {
++  return content.includes('\r\n') ? '\r\n' : '\n'
++}
++
++function withLineEnding(content: string, eol: '\r\n' | '\n'): string {
++  return eol === '\r\n' ? content.replace(/\n/g, '\r\n') : content
++}
++
+ function escapeRegExp(value: string): string {
+   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+ }
+diff --git a/electron/services/gradle.ts b/electron/services/gradle.ts
+index 4da839d..60a59d1 100644
+--- a/electron/services/gradle.ts
++++ b/electron/services/gradle.ts
+@@ -2,6 +2,8 @@ import { access, readFile, writeFile } from 'fs/promises'
+ import { join } from 'path'
+ import { runLoggedCommand } from './commandRunner'
+ import { resolveToolBin } from './toolchain'
++import { assertValidMavenCoordinate, writeFileAtomic } from './maven'
++import { splitCommandLine } from './splitCommandLine'
+ import type { MavenSearchMode, MavenSearchOptions } from './maven'
+ 
+ export interface GradleDependency {
+@@ -92,6 +94,9 @@ export class GradleService {
+     if (!args.groupId || !args.artifactId || !args.version) {
+       throw new Error('groupId, artifactId and version are required')
+     }
++    assertValidMavenCoordinate('groupId', args.groupId)
++    assertValidMavenCoordinate('artifactId', args.artifactId)
++    assertValidMavenCoordinate('version', args.version)
+ 
+     const buildPath = await ensureBuildFile(args.cwd)
+     const content = await readFile(buildPath, 'utf-8')
+@@ -102,7 +107,7 @@ export class GradleService {
+       : `    ${configuration} '${coordinate}'`
+ 
+     const nextContent = upsertGradleDependency(content, line, args)
+-    await writeFile(buildPath, nextContent, 'utf-8')
++    await writeFileAtomic(buildPath, nextContent)
+   }
+ 
+   async updateDependency(args: GradleAddDependencyArgs): Promise<void> {
+@@ -227,25 +232,45 @@ function cleanGradleVersion(value: string): string {
+ }
+ 
+ function upsertGradleDependency(content: string, line: string, dep: Pick<GradleDependency, 'groupId' | 'artifactId'>): string {
+-  const withoutExisting = removeGradleDependency(content, dep)
+-
+-  if (withoutExisting.includes('dependencies {')) {
+-    return withoutExisting.replace(/dependencies\s*\{/, (match) => `${match}\n${line}`)
++  const eol = detectLineEnding(content)
++  const withoutExisting = removeGradleDependency(content.replace(/\r\n/g, '\n'), dep)
++
++  // Anchor on a top-level (unindented) `dependencies {` so the token appearing
++  // inside a comment or string cannot inject the dependency into a wrong block.
++  let nextContent: string
++  if (/^dependencies\s*\{/m.test(withoutExisting)) {
++    nextContent = withoutExisting.replace(/^dependencies\s*\{/, (match) => `${match}\n${line}`)
++  } else {
++    nextContent = `${withoutExisting.trimEnd()}\n\ndependencies {\n${line}\n}\n`
+   }
+ 
+-  return `${withoutExisting.trimEnd()}\n\ndependencies {\n${line}\n}\n`
++  return withLineEnding(nextContent, eol)
+ }
+ 
+ function removeGradleDependency(content: string, dep: Pick<GradleDependency, 'groupId' | 'artifactId'> & { configuration?: string }): string {
+-  return content
+-    .split(/\r?\n/)
+-    .filter((line) => {
+-      if (dep.configuration && !line.trim().startsWith(dep.configuration)) return true
+-      return !line.includes(`${dep.groupId}:${dep.artifactId}:`)
+-        && !(line.includes(`group: '${dep.groupId}'`) && line.includes(`name: '${dep.artifactId}'`))
+-        && !(line.includes(`group: "${dep.groupId}"`) && line.includes(`name: "${dep.artifactId}"`))
+-    })
+-    .join('\n')
++  const eol = detectLineEnding(content)
++  return withLineEnding(
++    content
++      .split(/\r?\n/)
++      .filter((line) => {
++        if (dep.configuration && !line.trim().startsWith(dep.configuration)) return true
++        return !line.includes(`${dep.groupId}:${dep.artifactId}:`)
++          && !(line.includes(`group: '${dep.groupId}'`) && line.includes(`name: '${dep.artifactId}'`))
++          && !(line.includes(`group: "${dep.groupId}"`) && line.includes(`name: "${dep.artifactId}"`))
++      })
++      .join('\n'),
++    eol
++  )
++}
++
++// Editing a dependency must not rewrite the whole file's line endings, which
++// would produce a full-file diff for CRLF projects.
++function detectLineEnding(content: string): '\r\n' | '\n' {
++  return content.includes('\r\n') ? '\r\n' : '\n'
++}
++
++function withLineEnding(content: string, eol: '\r\n' | '\n'): string {
++  return eol === '\r\n' ? content.replace(/\n/g, '\r\n') : content
+ }
+ 
+ async function httpsGet(url: string): Promise<string> {
+@@ -453,13 +478,6 @@ function uniqueGradleResults(items: GradleSearchResult[]): GradleSearchResult[]
+   })
+ }
+ 
+-function splitCommandLine(commandLine: string): string[] {
+-  return commandLine
+-    .split(/\s+/)
+-    .map((part) => part.trim())
+-    .filter(Boolean)
+-}
+-
+ function isGradleDependencyDoc(doc: any): boolean {
+   if (!doc?.g || !doc?.a) return false
+   if (doc.p === 'maven-plugin') return false
+diff --git a/electron/services/projectGuard.ts b/electron/services/projectGuard.ts
+index 9081d72..d5bb6d8 100644
+--- a/electron/services/projectGuard.ts
++++ b/electron/services/projectGuard.ts
+@@ -65,6 +65,9 @@ function waitForProjectTurn<T>(
+     if (context.signal.aborted) cancel()
+     void dependencies.withProjectMutation(cwd, async () => {
+       context.signal.removeEventListener('abort', cancel)
++      // An abort while queued rejects the caller already; re-check here so the
++      // task short-circuits instead of running a wasted turn once it gets the lock.
++      if (context.signal.aborted) throw new OperationCancelledError(context.operationId, context.label)
+       return await run()
+     }).then(resolve, reject).finally(() => context.signal.removeEventListener('abort', cancel))
+   })
+diff --git a/electron/services/system.ts b/electron/services/system.ts
+index 7bbb408..9499f46 100644
+--- a/electron/services/system.ts
++++ b/electron/services/system.ts
+@@ -1,23 +1,16 @@
+-import { execFile, spawn } from 'child_process'
+-import { promisify } from 'util'
++import { spawn } from 'child_process'
+ import { app } from 'electron'
+ import { resolveToolBin } from './toolchain'
+-import { resolveShellFreeCommand } from './commandRunner'
+-import { commandEnv, decodeCommandChunk } from './encoding'
++import { runLoggedCommand } from './commandRunner'
+ 
+-const execFileAsync = promisify(execFile)
+ function run(bin: string, args: string[] = [], cwd?: string): Promise<{ stdout: string; stderr: string }> {
+-  const command = resolveShellFreeCommand(bin, args)
+-  return execFileAsync(command.bin, command.args, {
++  // log:false keeps system diagnostics (version checks, cache config) out of
++  // the workbench command log; runLoggedCommand supplies timeout/signal/operationId.
++  return runLoggedCommand(bin, args, {
+     cwd,
+-    env: commandEnv(),
+-    maxBuffer: 1024 * 1024 * 10,
+-    windowsHide: true,
+-    encoding: 'buffer'
+-  }).then((result) => ({
+-    stdout: decodeBuffer(result.stdout),
+-    stderr: decodeBuffer(result.stderr)
+-  }))
++    log: false,
++    maxBuffer: 1024 * 1024 * 10
++  })
+ }
+ 
+ export class SystemService {
+@@ -97,13 +90,8 @@ export class SystemService {
+   }
+ }
+ 
+-function decodeBuffer(value: Buffer | string): string {
+-  if (typeof value === 'string') return value
+-  return decodeCommandChunk(value)
+-}
+-
+ function readableError(error: any): string {
+-  const stdout = error?.stdout ? decodeBuffer(error.stdout) : ''
+-  const stderr = error?.stderr ? decodeBuffer(error.stderr) : ''
++  const stdout = typeof error?.stdout === 'string' ? error.stdout : ''
++  const stderr = typeof error?.stderr === 'string' ? error.stderr : ''
+   return (stderr || stdout || error?.message || String(error)).trim()
+ }
+diff --git a/electron/services/terminal.ts b/electron/services/terminal.ts
+index aa3ef42..5900932 100644
+--- a/electron/services/terminal.ts
++++ b/electron/services/terminal.ts
+@@ -34,6 +34,10 @@ export class TerminalService {
+     const session: TerminalSession = { id, cwd: workingDirectory, child }
+     this.sessions.set(id, session)
+ 
++    // A destroyed stdin (shell already exited but 'close' not yet delivered)
++    // must not surface as an uncaughtException and take down the main process.
++    child.stdin.on('error', () => undefined)
++
+     child.stdout.on('data', (chunk) => {
+       this.send('terminal:data', { id, data: decodeCommandChunk(chunk), stream: 'stdout' })
+     })
+@@ -59,7 +63,13 @@ export class TerminalService {
+     if (!session || session.child.killed) {
+       throw new Error('Terminal session is not available')
+     }
+-    session.child.stdin.write(data)
++    const stdin = session.child.stdin
++    if (stdin.destroyed || stdin.writableEnded) {
++      throw new Error('Terminal session is not available')
++    }
++    stdin.write(data, () => {
++      // Swallow late write errors (e.g. stream destroyed between check and write).
++    })
+   }
+ 
+   kill(id: string): void {

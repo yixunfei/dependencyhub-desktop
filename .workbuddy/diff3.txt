@@ -1,0 +1,105 @@
+warning: in the working copy of 'electron/services/extendedManager.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git a/electron/services/extendedManager.ts b/electron/services/extendedManager.ts
+index c8edaa5..9de1c6d 100644
+--- a/electron/services/extendedManager.ts
++++ b/electron/services/extendedManager.ts
+@@ -11,6 +11,7 @@ import {
+ } from '../../shared/managerRegistry'
+ import { runLoggedCommand, type LoggedCommandOptions } from './commandRunner'
+ import { withProjectMutation } from './projectMutation'
++import { splitCommandLine } from './splitCommandLine'
+ import { resolveToolBin, type ToolName } from './toolchain'
+ import {
+   createNodeOperationTemplate,
+@@ -341,7 +342,11 @@ export class ExtendedManagerService {
+ 
+     const tool = primaryRunTool(manager)
+     const args = normalizeArgs(tool, splitCommandLine(commandLine))
+-    return await this.runArgs(cwd, manager, tool, args, commandLine, false, context)
++    const invoke = () => this.runArgs(cwd, manager, tool, args, commandLine, false, context)
++    // Free-form commands (runCustom) mutate the project for install/uninstall-like
++    // input and must share the same mutation queue as planned operations.
++    if (!commandMutatesProjectFiles(args)) return await invoke()
++    return await withProjectMutation(cwd, invoke)
+   }
+ 
+   async executePlanned(
+@@ -362,7 +367,9 @@ export class ExtendedManagerService {
+       throw new Error(`No reliable dry-run command is available for ${managerId}`)
+     }
+     const commandLine = [tool, ...plannedArgs].join(' ')
+-    return await this.runArgs(cwd, manager, tool as ToolName, plannedArgs, commandLine, dryRun, context)
++    const run = () => this.runArgs(cwd, manager, tool as ToolName, plannedArgs, commandLine, dryRun, context)
++    if (dryRun || !commandMutatesProjectFiles(plannedArgs)) return await run()
++    return await withProjectMutation(cwd, run)
+   }
+ 
+   async execute(
+@@ -2876,10 +2883,47 @@ function stripQuotes(value: string): string {
+   return value.replace(/^['"]|['"]$/g, '')
+ }
+ 
++// Character-level scan so `//` inside string values (URLs, scopes) survives;
++// the previous regex truncated every `//` outside `://` and broke JSON parsing.
+ function stripJsonComments(value: string): string {
+-  return value
+-    .replace(/\/\*[\s\S]*?\*\//g, '')
+-    .replace(/(^|[^:])\/\/.*$/gm, '$1')
++  let result = ''
++  let index = 0
++  while (index < value.length) {
++    const char = value[index]
++    if (char === '"') {
++      const end = endOfJsonString(value, index)
++      result += value.slice(index, end)
++      index = end
++      continue
++    }
++    if (char === '/' && value[index + 1] === '/') {
++      // Line comment: strip to (not including) the newline so line structure stays.
++      index += 2
++      while (index < value.length && value[index] !== '\n') index += 1
++      continue
++    }
++    if (char === '/' && value[index + 1] === '*') {
++      const end = value.indexOf('*/', index + 2)
++      index = end < 0 ? value.length : end + 2
++      continue
++    }
++    result += char
++    index += 1
++  }
++  return result
++}
++
++function endOfJsonString(value: string, start: number): number {
++  let index = start + 1
++  while (index < value.length) {
++    if (value[index] === '\\') {
++      index += 2
++      continue
++    }
++    if (value[index] === '"') return index + 1
++    index += 1
++  }
++  return value.length
+ }
+ 
+ function normalizeArgs(tool: string, args: string[]): string[] {
+@@ -2891,16 +2935,6 @@ function normalizeArgs(tool: string, args: string[]): string[] {
+   return args
+ }
+ 
+-function splitCommandLine(commandLine: string): string[] {
+-  const args: string[] = []
+-  const regex = /"([^"]*)"|'([^']*)'|[^\s]+/g
+-  let match: RegExpExecArray | null
+-  while ((match = regex.exec(commandLine)) !== null) {
+-    args.push(match[1] ?? match[2] ?? match[0])
+-  }
+-  return args
+-}
+-
+ function objectEntries(value: unknown): Array<[string, unknown]> {
+   if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+   return Object.entries(value as Record<string, unknown>)

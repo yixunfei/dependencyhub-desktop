@@ -1,0 +1,26 @@
+﻿
+> dependencyhub-desktop@1.0.3 verify:ipc
+> node scripts/verify-ipc-bridge.mjs
+
+
+node.exe : [15660:0918/153832.308:ERROR:net\base\network_change_notifier_win.cc:200] WSALookupServiceBegin failed with:
+ 10108
+所在位置 行:1 字符: 1
++ & "C:\Users\yixun\.workbuddy\binaries\node\versions\22.22.2-3/node.ex ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([15660:0918/153...led with: 10108:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ReferenceError: failedError is not defined
+    at C:\Users\yixun\AppData\Local\Temp\dependencyhub-ipc-5bNZRa\main.cjs:135:5
+file:///E:/npmManager/scripts/verify-ipc-bridge.mjs:95
+      else reject(new Error(`Electron IPC verification exited with ${code}`))
+                  ^
+
+Error: Electron IPC verification exited with 1
+    at ChildProcess.<anonymous> (file:///E:/npmManager/scripts/verify-ipc-bridge.mjs:95:19)
+    at Object.onceWrapper (node:events:634:26)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess._handle.onexit (node:internal/child_process:293:12)
+
+Node.js v22.22.2

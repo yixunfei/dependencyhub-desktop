@@ -1,0 +1,3 @@
+﻿  'npm.depsLoadFailed': '椤圭洰渚濊禆璇诲彇澶辫触',
+  'npm.runScriptTitle': '鎵ц: npm run {script}'
+} as const

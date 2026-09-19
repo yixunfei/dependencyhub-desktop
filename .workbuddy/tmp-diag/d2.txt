@@ -1,0 +1,12 @@
+﻿    + CategoryInfo          : NotSpecified: (file:///E:/npmM...ing-debt.mjs:19:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+if (failures.length) throw new Error(failures.join('\n'))
+                           ^
+
+Error: src/components/CommandLog/CommandLogWindow.tsx: function #1 is 546 lines, exceeds 526
+src/features/managers/npm/scopes/global/Global.tsx: function #1 is 745 lines, exceeds 744
+src/stores/packageStore.ts: function #1 is 347 lines, exceeds 344
+    at file:///E:/npmManager/scripts/verify-engineering-debt.mjs:19:28
+
+Node.js v22.22.2

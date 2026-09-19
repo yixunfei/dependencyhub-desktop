@@ -1,0 +1,8 @@
+﻿> npm run typecheck:renderer && npm run typecheck:electron
+
+
+> dependencyhub-desktop@1.0.3 typecheck:renderer
+> tsc --noEmit --pretty false
+
+src/features/managers/npm/scopes/global/Global.tsx(806,67): error TS2339: Property 'downloads' does not exist on type 'PackageInfo'.
+src/features/managers/npm/scopes/global/Global.tsx(810,46): error TS2304: Cannot find name 'SearchPackage'.

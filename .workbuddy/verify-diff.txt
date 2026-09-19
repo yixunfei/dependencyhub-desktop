@@ -1,0 +1,129 @@
+diff --git a/electron/services/maven.ts b/electron/services/maven.ts
+index af977bc..11c6ad8 100644
+--- a/electron/services/maven.ts
++++ b/electron/services/maven.ts
+@@ -522,7 +522,8 @@ export class MavenService {
+     } catch {
+       return {
+         issues: [],
+-        reportPath
++        reportPath,
++        error: 'Maven security audit completed without producing a report'
+       }
+     }
+   }
+diff --git a/electron/services/processTree.ts b/electron/services/processTree.ts
+index 6fb7319..7c7f6f9 100644
+--- a/electron/services/processTree.ts
++++ b/electron/services/processTree.ts
+@@ -9,6 +9,7 @@ export async function terminateProcessTree(child: ChildProcess): Promise<void> {
+     } catch (error) {
+       if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+     }
++    await waitForExit(child)
+     return
+   }
+   await new Promise<void>((resolve, reject) => {
+@@ -18,8 +19,36 @@ export async function terminateProcessTree(child: ChildProcess): Promise<void> {
+     })
+     killer.once('error', reject)
+     killer.once('close', (code) => {
+-      if (code === 0 || child.exitCode !== null || child.signalCode !== null) resolve()
+-      else reject(new Error(`Unable to terminate process tree ${child.pid} (taskkill ${code})`))
++      if (code !== 0 && child.exitCode === null && child.signalCode === null) {
++        reject(new Error(`Unable to terminate process tree ${child.pid} (taskkill ${code})`))
++        return
++      }
++      void waitForExit(child).then(resolve, reject)
+     })
+   })
+ }
++
++function waitForExit(child: ChildProcess): Promise<void> {
++  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
++  return new Promise((resolve, reject) => {
++    const timeout = setTimeout(() => {
++      cleanup()
++      reject(new Error(`Timed out waiting for process ${child.pid ?? 'unknown'} to exit`))
++    }, 5000)
++    const onClose = () => {
++      cleanup()
++      resolve()
++    }
++    const onError = (error: Error) => {
++      cleanup()
++      reject(error)
++    }
++    const cleanup = () => {
++      clearTimeout(timeout)
++      child.removeListener('close', onClose)
++      child.removeListener('error', onError)
++    }
++    child.once('close', onClose)
++    child.once('error', onError)
++  })
++}
+diff --git a/electron/services/shellGuard.ts b/electron/services/shellGuard.ts
+index eafa08d..f259892 100644
+--- a/electron/services/shellGuard.ts
++++ b/electron/services/shellGuard.ts
+@@ -10,7 +10,8 @@ import { basename, extname } from 'path'
+ const BLOCKED_EXECUTABLE_EXTENSIONS = new Set([
+   '.exe', '.bat', '.cmd', '.com', '.scr', '.pif', '.msi', '.msp', '.mst',
+   '.ps1', '.psm1', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.wsb',
+-  '.hta', '.jar', '.lnk', '.reg', '.cpl', '.gadget'
++  '.hta', '.jar', '.lnk', '.reg', '.cpl', '.gadget', '.url', '.inf', '.msix',
++  '.appx', '.msu', '.settingcontent-ms', '.chm'
+ ])
+ 
+ export async function assertSafeShellTarget(targetPath: string): Promise<void> {
+@@ -18,6 +19,10 @@ export async function assertSafeShellTarget(targetPath: string): Promise<void> {
+     throw new Error('A non-empty path is required')
+   }
+ 
++  if (/^(?:\\\\|\/\/)/.test(targetPath.trim())) {
++    throw new Error('Refusing to open remote network paths')
++  }
++
+   // Windows strips trailing dots/spaces when it resolves a path, so
+   // `payload.exe.` / `payload.exe ` must be normalized before both the stat and
+   // the extension check, or they bypass the blacklist entirely.
+diff --git a/src/features/managers/maven/MavenManagerPage.tsx b/src/features/managers/maven/MavenManagerPage.tsx
+index 28b8370..c916d82 100644
+--- a/src/features/managers/maven/MavenManagerPage.tsx
++++ b/src/features/managers/maven/MavenManagerPage.tsx
+@@ -80,7 +80,10 @@ const MavenManagerPage: React.FC = () => {
+   const [mavenMirror, setMavenMirror] = useState<MavenMirrorPreset>('central')
+   const [customMavenGoals, setCustomMavenGoals] = useState<string[]>(() => {
+     try {
+-      return JSON.parse(localStorage.getItem('custom-maven-goals') || '[]')
++      const parsed: unknown = JSON.parse(localStorage.getItem('custom-maven-goals') || '[]')
++      return Array.isArray(parsed) && parsed.every((goal): goal is string => typeof goal === 'string')
++        ? parsed
++        : []
+     } catch {
+       return []
+     }
+diff --git a/src/main.tsx b/src/main.tsx
+index c741aa4..384985f 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -9,6 +9,7 @@ import './styles/global.css'
+ import { useThemeStore } from './stores/themeStore'
+ import { useSettingsStore } from './stores/settingsStore'
+ import { useResolvedTheme } from './hooks/useResolvedTheme'
++import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary'
+ 
+ const Root: React.FC = () => {
+   const mode = useThemeStore((state) => state.mode)
+@@ -29,7 +30,9 @@ const Root: React.FC = () => {
+           }}
+         >
+           <AntdApp>
+-            <App />
++            <ErrorBoundary>
++              <App />
++            </ErrorBoundary>
+           </AntdApp>
+         </ConfigProvider>
+       </HashRouter>

@@ -1,0 +1,3 @@
+﻿  'npm.depsLoadFailed': 'Failed to load project dependencies',
+  'npm.runScriptTitle': 'Run: npm run {script}'
+} as const

@@ -1,0 +1,160 @@
+warning: in the working copy of 'scripts/verify-hardening-behaviors.mjs', LF will be replaced by CRLF the next time Git touches it
+diff --git a/scripts/verify-hardening-behaviors.mjs b/scripts/verify-hardening-behaviors.mjs
+index 127c558..2c3e8e0 100644
+--- a/scripts/verify-hardening-behaviors.mjs
++++ b/scripts/verify-hardening-behaviors.mjs
+@@ -9,7 +9,7 @@ const outputFile = join(workDir, 'hardening-verifier.mjs')
+ const roots = []
+ 
+ const runner = String.raw`
+-import { mkdtemp, readFile, rename, rm, writeFile } from 'fs/promises'
++import { mkdtemp, readdir, readFile, rename, rm, writeFile } from 'fs/promises'
+ import { tmpdir } from 'os'
+ import { join } from 'path'
+ import { withProjectMutation, projectMutationQueueSize } from './electron/services/projectMutation'
+@@ -23,7 +23,8 @@ import {
+   requestOperationCancel,
+   runWithOperationContext
+ } from './electron/services/operationContext'
+-import { runLoggedCommand } from './electron/services/commandRunner'
++import { resolveShellFreeCommand, runLoggedCommand } from './electron/services/commandRunner'
++import { createBase64CredentialCipher, CredentialVaultStore } from './electron/services/credentialVaultCore'
+ import { isAllowedExternalUrl } from './electron/services/externalUrl'
+ import { fileWatcher } from './electron/services/watcher'
+ 
+@@ -245,6 +246,37 @@ async function testReportFailureVisibility() {
+   assert(applied.length === 0 && failed.ok === false, 'S2 the caller can skip applying a failed report instead of showing empty data')
+ }
+ 
++// B2 鈥?cmd.exe quoting keeps metacharacters literal and % expansion impossible.
++function testCmdArgumentQuoting() {
++  const { bin, args } = resolveShellFreeCommand('npm.cmd', ['run', 't', '--', '--grep', 'a&b'])
++  const command = args[3]
++  assert(bin === 'cmd.exe', 'B2 .cmd entrypoints are wrapped through cmd.exe')
++  assert(command.includes('"a&b"'), 'B2 an argument with & stays quoted and literal (got ' + command + ')')
++  assert(!command.includes('^&'), 'B2 no ^ is injected inside quoted arguments (cmd does not parse ^ there)')
++  const percent = resolveShellFreeCommand('npm.cmd', ['view', 'pkg@1%2B0']).args[3]
++  assert(percent.includes('"pkg@1"^%"2B0"'), 'B2 % is emitted as ^% between quoted segments so cmd cannot expand it (got ' + percent + ')')
++}
++
++// B3 鈥?concurrent vault operations serialize and never lose credentials or leak staging files.
++async function testVaultConcurrencyAndStagingFiles() {
++  const cwd = await fixture('vault')
++  const store = new CredentialVaultStore(cwd, createBase64CredentialCipher())
++  const saved = await Promise.all(Array.from({ length: 24 }, (_, index) =>
++    store.save({ managerId: 'npm', service: 'registry-' + index, secret: 'secret-' + index })))
++  const ids = saved.map((credential) => credential.id)
++  assert(new Set(ids).size === 24, 'B3 concurrent saves produce distinct credentials')
++  const listed = await store.list()
++  assert(listed.length === 24, 'B3 concurrent read-modify-write does not lose a credential')
++  await Promise.all([...ids.map((id) => store.resolve(id)),
++    store.save({ managerId: 'npm', service: 'registry-late', secret: 'late' })])
++  await Promise.all([store.delete(ids[0]), store.save({ managerId: 'npm', service: 'registry-extra', secret: 'extra' })])
++  const after = await store.list()
++  assert(after.length === 25 && !after.some((credential) => credential.id === ids[0]),
++    'B3 interleaved resolve/save/delete keep the vault consistent')
++  const files = await readdir(cwd)
++  assert(!files.some((file) => file.endsWith('.tmp')), 'B3 staging files are unique per write and never left behind')
++}
++
+ async function waitForEvent(events, file) {
+   for (let attempt = 0; attempt < 60; attempt += 1) {
+     if (events.includes(file)) return
+@@ -265,6 +297,8 @@ try {
+   testExternalUrlGuard()
+   await testWatcherCoversManifestAndLockfiles()
+   await testReportFailureVisibility()
++  testCmdArgumentQuoting()
++  await testVaultConcurrencyAndStagingFiles()
+   console.log('Hardening behavior verification passed (' + checks.length + ' checks)')
+ } finally {
+   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })))
+===== terminalWrite.test.ts =====
+// @vitest-environment node
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('electron', () => ({ BrowserWindow: class {} }))
+
+type Listener = (payload?: unknown) => void
+
+function createFakeStream() {
+  const listeners: Record<string, Listener[]> = {}
+  return {
+    destroyed: false,
+    writableEnded: false,
+    write: vi.fn((_data: string, callback?: (error?: Error | null) => void) => {
+      callback?.(null)
+      return true
+    }),
+    on(event: string, listener: Listener) {
+      listeners[event] = listeners[event] || []
+      listeners[event].push(listener)
+      return this
+    },
+    emit(event: string, payload?: unknown) {
+      for (const listener of listeners[event] || []) listener(payload)
+    },
+    hasListener(event: string) {
+      return (listeners[event] || []).length > 0
+    }
+  }
+}
+
+const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }))
+vi.mock('child_process', () => ({ spawn }))
+
+import { TerminalService } from './terminal'
+
+function createFakeChild() {
+  return {
+    stdin: createFakeStream(),
+    stdout: createFakeStream(),
+    stderr: createFakeStream(),
+    killed: false,
+    on: vi.fn(),
+    kill: vi.fn()
+  }
+}
+
+describe('terminal write safety', () => {
+  it('swallows stdin stream errors instead of crashing on an unhandled event', () => {
+    const child = createFakeChild()
+    spawn.mockReturnValue(child)
+    const service = new TerminalService()
+    const session = service.create()
+
+    // Before the fix a stdin 'error' had no listener, so Node re-threw it as an
+    // uncaughtException and took the main process down.
+    expect(child.stdin.hasListener('error')).toBe(true)
+    expect(() => child.stdin.emit('error', new Error('ERR_STREAM_DESTROYED'))).not.toThrow()
+    service.killAll()
+  })
+
+  it('rejects writes once the stdin stream is destroyed', () => {
+    const child = createFakeChild()
+    spawn.mockReturnValue(child)
+    const service = new TerminalService()
+    const session = service.create()
+
+    child.stdin.destroyed = true
+    expect(() => service.write(session.id, 'echo late\r\n'))
+      .toThrow('Terminal session is not available')
+
+    child.stdin.destroyed = false
+    child.stdin.writableEnded = true
+    expect(() => service.write(session.id, 'echo late\r\n'))
+      .toThrow('Terminal session is not available')
+    service.killAll()
+  })
+
+  it('writes through to a healthy stream', () => {
+    const child = createFakeChild()
+    spawn.mockReturnValue(child)
+    const service = new TerminalService()
+    const session = service.create()
+
+    service.write(session.id, 'echo hi\r\n')
+    expect(child.stdin.write).toHaveBeenCalledWith('echo hi\r\n', expect.any(Function))
+    service.killAll()
+  })
+})

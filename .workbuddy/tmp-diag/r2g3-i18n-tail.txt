@@ -1,0 +1,10 @@
+﻿
+ReferenceError: SOURCE is not defined
+    at file:///E:/npmManager/scripts/verify-i18n.mjs:83:31
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:
+665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:11
+7:5)
+
+Node.js v22.22.2

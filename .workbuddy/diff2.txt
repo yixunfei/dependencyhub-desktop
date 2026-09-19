@@ -1,0 +1,1720 @@
+warning: in the working copy of 'src/components/Localization/RuntimeLocalizer.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/features/workspace/MultiManager.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/stores/packageStore.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/stores/searchStore.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git a/src/components/Localization/RuntimeLocalizer.tsx b/src/components/Localization/RuntimeLocalizer.tsx
+index f9a4f82..834a53b 100644
+--- a/src/components/Localization/RuntimeLocalizer.tsx
++++ b/src/components/Localization/RuntimeLocalizer.tsx
+@@ -56,7 +56,7 @@ export const RuntimeLocalizer: FC = () => {
+     const observer = new MutationObserver((mutations) => {
+       for (const mutation of mutations) {
+         if (mutation.type === 'characterData') {
+-          localizeTextNode(mutation.target as Text, language)
++          localizeChangedTextNode(mutation.target as Text, language)
+         } else if (mutation.type === 'attributes') {
+           localizeElementAttributes(mutation.target as Element, language)
+         } else {
+@@ -107,6 +107,24 @@ function localizeTextNode(node: Text, language: AppLanguage) {
+   }
+ }
+ 
++function localizeChangedTextNode(node: Text, language: AppLanguage) {
++  if (language !== 'zh-CN') {
++    localizeTextNode(node, language)
++    return
++  }
++
++  const current = node.textContent || ''
++  const original = originalTextNodes.get(node)
++
++  // In zh-CN the stored original is the untranslated source. A mismatch here
++  // means React just wrote new content (e.g. a live counter) 鈥?adopt it as the
++  // new source instead of clobbering it with the stale recorded text
++  // ("last writer wins").
++  if (original && current !== original) {
++    originalTextNodes.set(node, current)
++  }
++}
++
+ function localizeElementAttributes(element: Element, language: AppLanguage) {
+   if (shouldSkipElement(element)) return
+ 
+@@ -118,8 +136,11 @@ function localizeElementAttributes(element: Element, language: AppLanguage) {
+     const original = originalMap?.get(attr)
+ 
+     if (language === 'zh-CN') {
++      // Same "last writer wins" as localizeChangedTextNode: a mismatch means
++      // React wrote a new value (e.g. an updated placeholder), so adopt it as
++      // the new original instead of clobbering it with the stale record.
+       if (original && current !== original) {
+-        element.setAttribute(attr, original)
++        rememberAttribute(element, attr, current)
+       }
+       continue
+     }
+diff --git a/src/features/managers/npm/scopes/global/Global.tsx b/src/features/managers/npm/scopes/global/Global.tsx
+index d84dd24..a3ee60c 100644
+--- a/src/features/managers/npm/scopes/global/Global.tsx
++++ b/src/features/managers/npm/scopes/global/Global.tsx
+@@ -10,6 +10,7 @@ import { BatchVersionPreviewModal } from '../../../../../components/Package/Batc
+ import { SecurityAuditModal } from '../../../../../components/Package/SecurityAuditModal'
+ import { NpmVersionPicker } from '../../../../../components/Package/NpmVersionPicker'
+ import { localizedModal } from '../../../../../utils/localizedFeedback'
++import { useT, type LabelTranslator } from '../../../../../i18n'
+ import { VERSION_PAGE_SIZE, VersionChannelFilter, toVersionOptions, versionsForFilter } from '../../../../../utils/npmVersions'
+ import { cleanPackageSummary, formatCompactNumber } from '../../../../../utils/npmDisplay'
+ import styles from './Global.module.css'
+@@ -48,9 +49,15 @@ const GlobalPage: React.FC = () => {
+   const [cachePath, setCachePath] = useState('')
+   
+   const addNotification = useAppStore((state) => state.addNotification)
++  const t = useT()
+   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
+   const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
+-  const { globalPackages, loading, fetchGlobalPackages, installPackage, uninstallPackage, installSpecificVersion } = usePackageStore()
++  const globalPackages = usePackageStore((state) => state.globalPackages)
++  const globalLoading = usePackageStore((state) => state.globalLoading)
++  const fetchGlobalPackages = usePackageStore((state) => state.fetchGlobalPackages)
++  const installPackage = usePackageStore((state) => state.installPackage)
++  const uninstallPackage = usePackageStore((state) => state.uninstallPackage)
++  const installSpecificVersion = usePackageStore((state) => state.installSpecificVersion)
+   
+   useEffect(() => {
+     fetchGlobalPackages()
+@@ -72,26 +79,37 @@ const GlobalPage: React.FC = () => {
+   }
+   
+   const handleRefresh = async () => {
+-    await fetchGlobalPackages()
+-    await loadGlobalMeta()
++    try {
++      await fetchGlobalPackages()
++      await loadGlobalMeta()
++    } catch (error: any) {
++      // fetchGlobalPackages rethrows on failure; surface it instead of a false success.
++      addNotification({
++        type: 'error',
++        message: t('npm.refreshFailed'),
++        description: error.message
++      })
++      return
++    }
+     addNotification({
+       type: 'success',
+-      message: '鍒锋柊鎴愬姛'
++      message: t('npm.refreshSucceeded')
+     })
+   }
+-  
++
+   const handleCheckAllOutdated = async () => {
+     setCheckingAll(true)
+     try {
+-      await fetchGlobalPackages()
++      // Bypass the 5-minute cache: this entry must show fresh outdated info.
++      await fetchGlobalPackages(true)
+       addNotification({
+         type: 'success',
+-        message: '妫€鏌ュ畬鎴?
++        message: t('npm.checkComplete')
+       })
+     } catch (error: any) {
+       addNotification({
+         type: 'error',
+-        message: '妫€鏌ュけ璐?,
++        message: t('npm.checkFailed'),
+         description: error.message
+       })
+     } finally {
+@@ -107,13 +125,13 @@ const GlobalPage: React.FC = () => {
+       })
+       addNotification({
+         type: 'success',
+-        message: '鍗歌浇鎴愬姛',
+-        description: `${packageName} 宸插嵏杞絗
++        message: t('npm.uninstallSucceeded'),
++        description: t('npm.uninstalledDescription', { name: packageName })
+       })
+     } catch (error: any) {
+       addNotification({
+         type: 'error',
+-        message: '鍗歌浇澶辫触',
++        message: t('npm.uninstallFailed'),
+         description: error.message
+       })
+     }
+@@ -166,7 +184,7 @@ const GlobalPage: React.FC = () => {
+       setPackageSearchQuery(trimmedQuery)
+       setPackageSearchPage(page)
+       setPackageSearchHasMore(hasMore)
+-      setPackageOptions(buildPackageOptions(visiblePackages, downloads))
++      setPackageOptions(buildPackageOptions(visiblePackages, downloads, t))
+     } catch {
+       setPackageOptions([])
+       setPackageSearchHasMore(false)
+@@ -278,7 +296,7 @@ const GlobalPage: React.FC = () => {
+     } catch (error: any) {
+       addNotification({
+         type: 'error',
+-        message: '鎵撳紑璺緞澶辫触',
++        message: t('npm.openPathFailed'),
+         description: error.message
+       })
+     }
+@@ -407,8 +425,8 @@ const GlobalPage: React.FC = () => {
+ 
+           addNotification({
+             type: successCount > 0 ? 'success' : 'error',
+-            message: '鎵归噺鍗歌浇瀹屾垚',
+-            description: `鎴愬姛: ${successCount}, 澶辫触: ${failCount}`
++            message: t('npm.batchUninstallComplete'),
++            description: t('npm.batchResult', { succeeded: successCount, failed: failCount })
+           })
+ 
+           setSelectedRowKeys([])
+@@ -416,7 +434,7 @@ const GlobalPage: React.FC = () => {
+         } catch (error: any) {
+           addNotification({
+             type: 'error',
+-            message: '鎵归噺鍗歌浇澶辫触',
++            message: t('npm.batchUninstallFailed'),
+             description: error.message
+           })
+         } finally {
+@@ -458,7 +476,7 @@ const GlobalPage: React.FC = () => {
+ 
+   const columns = [
+     {
+-      title: '鍖呭悕',
++      title: t('package.columnName'),
+       dataIndex: 'name',
+       key: 'name',
+       width: 200,
+@@ -466,7 +484,7 @@ const GlobalPage: React.FC = () => {
+         <Space>
+           <span className={styles.pkgName}>{text}</span>
+           {record.outdated && (
+-            <Tooltip title="鏈夋柊鐗堟湰鍙敤">
++            <Tooltip title={t('package.updateAvailable')}>
+               <WarningOutlined style={{ color: '#faad14' }} />
+             </Tooltip>
+           )}
+@@ -474,35 +492,35 @@ const GlobalPage: React.FC = () => {
+       )
+     },
+     {
+-      title: '鎻忚堪',
++      title: t('common.description'),
+       dataIndex: 'description',
+       key: 'description',
+       ellipsis: true,
+       render: (text: string) => text || '-'
+     },
+     {
+-      title: '褰撳墠鐗堟湰',
++      title: t('common.currentVersion'),
+       dataIndex: 'version',
+       key: 'version',
+       width: 120,
+       render: (text: string) => <Tag>v{text}</Tag>
+     },
+     {
+-      title: '鏈€鏂扮増鏈?,
++      title: t('npm.columnLatestVersion'),
+       dataIndex: 'latest',
+       key: 'latest',
+       width: 120,
+-      render: (text: string, record: PackageInfo) => 
++      render: (text: string, record: PackageInfo) =>
+         text ? (
+           <Space>
+             <Tag color={text !== record.version ? 'blue' : 'green'}>
+               v{text}
+             </Tag>
+             {text !== record.version && (
+-              <Tooltip title="鏌ョ湅鏇存柊鏃ュ織">
+-                <Button 
+-                  size="small" 
+-                  type="link" 
++              <Tooltip title={t('npm.viewChangelog')}>
++                <Button
++                  size="small"
++                  type="link"
+                   icon={<HistoryOutlined />}
+                   onClick={() => handleViewChangelog(record.name)}
+                 />
+@@ -512,23 +530,23 @@ const GlobalPage: React.FC = () => {
+         ) : '-'
+     },
+     {
+-      title: '鎿嶄綔',
++      title: t('common.actions'),
+       key: 'action',
+       width: 150,
+       render: (_: any, record: PackageInfo) => (
+         <Space>
+           {record.outdated && (
+-            <Tooltip title="鏇存柊">
++            <Tooltip title={t('common.update')}>
+               <Button size="small" icon={<SyncOutlined />} onClick={() => handleUpdate(record.name)} />
+             </Tooltip>
+           )}
+           <Dropdown menu={{
+             items: [
+-              { key: 'detail', label: '鏌ョ湅璇︽儏', icon: <InfoCircleOutlined /> },
+-              { key: 'version', label: '鍒囨崲鐗堟湰', icon: <SwapOutlined /> },
+-              { key: 'open', label: '鎵撳紑鏂囦欢璺緞', icon: <FolderFilled /> },
+-              { key: 'changelog', label: '鏌ョ湅鏇存柊鏃ュ織', icon: <HistoryOutlined /> },
+-              { key: 'uninstall', label: '鍗歌浇', icon: <ReloadOutlined />, danger: true }
++              { key: 'detail', label: t('package.viewDetail'), icon: <InfoCircleOutlined /> },
++              { key: 'version', label: t('npm.switchVersion'), icon: <SwapOutlined /> },
++              { key: 'open', label: t('npm.openFilePath'), icon: <FolderFilled /> },
++              { key: 'changelog', label: t('npm.viewChangelog'), icon: <HistoryOutlined /> },
++              { key: 'uninstall', label: t('package.uninstall'), icon: <ReloadOutlined />, danger: true }
+             ],
+             onClick: ({ key }) => {
+               if (key === 'detail') {
+@@ -542,84 +560,84 @@ const GlobalPage: React.FC = () => {
+                 handleViewChangelog(record.name)
+               } else if (key === 'uninstall') {
+                 localizedModal.confirm({
+-                  title: '纭鍗歌浇',
+-                  content: `纭畾瑕佸嵏杞?${record.name} 鍚楋紵`,
++                  title: t('npm.confirmUninstallTitle'),
++                  content: t('npm.confirmUninstall', { name: record.name }),
+                   onOk: () => handleUninstall(record.name)
+                 })
+               }
+             }
+           }}>
+-            <Button size="small">鏇村</Button>
++            <Button size="small">{t('npm.more')}</Button>
+           </Dropdown>
+         </Space>
+       )
+     }
+   ]
+-  
++
+   return (
+     <div className={styles.container}>
+       <div className={styles.header}>
+-        <h2 className={styles.title}>鍏ㄥ眬渚濊禆</h2>
++        <h2 className={styles.title}>{t('npm.globalDependenciesTitle')}</h2>
+         <div className={styles.actions}>
+           <Button type="primary" icon={<PlusOutlined />} onClick={() => setInstallVisible(true)}>
+-            鍏ㄥ眬瀹夎鍖?+            {t('npm.installGlobalPackage')}
+           </Button>
+           <Button icon={<CheckCircleOutlined />} onClick={handleCheckAllOutdated} loading={checkingAll}>
+-            妫€鏌ユ洿鏂?+            {t('npm.checkUpdates')}
+           </Button>
+-          <Button 
+-            icon={<SyncOutlined />} 
++          <Button
++            icon={<SyncOutlined />}
+             onClick={handleUpdateSelected}
+             loading={updatingSelected}
+             disabled={selectedRowKeys.length === 0}
+             type={selectedRowKeys.length > 0 ? 'primary' : 'default'}
+           >
+-            鏇存柊閫変腑 ({selectedRowKeys.length})
++            {t('package.updateSelected', { count: selectedRowKeys.length })}
+           </Button>
+-          <Button 
++          <Button
+             danger
+-            icon={<ReloadOutlined />} 
++            icon={<ReloadOutlined />}
+             onClick={handleUninstallSelected}
+             loading={uninstallingSelected}
+             disabled={selectedRowKeys.length === 0}
+           >
+-            鍗歌浇閫変腑 ({selectedRowKeys.length})
++            {t('npm.uninstallSelected', { count: selectedRowKeys.length })}
+           </Button>
+           <Button icon={<SyncOutlined />} onClick={handleUpdateAll}>
+-            鏇存柊鍏ㄩ儴
++            {t('common.updateAll')}
+           </Button>
+-          <Button 
+-            icon={<ApartmentOutlined />} 
++          <Button
++            icon={<ApartmentOutlined />}
+             onClick={() => setDepTreeVisible(true)}
+           >
+-            渚濊禆鏍?+            {t('npm.dependencyTree')}
+           </Button>
+           <Button icon={<SecurityScanOutlined />} onClick={() => setAuditVisible(true)}>
+-            瀹夊叏瀹¤
++            {t('common.securityAudit')}
+           </Button>
+-          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading}>
+-            鍒锋柊
++          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={globalLoading}>
++            {t('common.refresh')}
+           </Button>
+         </div>
+       </div>
+-      
++
+       <Descriptions size="small" column={1} bordered style={{ marginBottom: 16 }}>
+-        <Descriptions.Item label="鍏ㄥ眬鍓嶇紑">
++        <Descriptions.Item label={t('npm.globalPrefix')}>
+           <Space>
+             <span>{globalPrefix || '-'}</span>
+             {globalPrefix && (
+               <Button size="small" icon={<FolderOpenOutlined />} onClick={() => window.electronAPI.system.openPath(globalPrefix)}>
+-                鎵撳紑
++                {t('common.open')}
+               </Button>
+             )}
+           </Space>
+         </Descriptions.Item>
+-        <Descriptions.Item label="npm 缂撳瓨">
++        <Descriptions.Item label={t('npm.cachePath')}>
+           <Space>
+             <span>{cachePath || '-'}</span>
+             {cachePath && (
+               <Button size="small" icon={<FolderOpenOutlined />} onClick={() => window.electronAPI.system.openPath(cachePath)}>
+-                鎵撳紑
++                {t('common.open')}
+               </Button>
+             )}
+           </Space>
+@@ -627,11 +645,11 @@ const GlobalPage: React.FC = () => {
+       </Descriptions>
+ 
+       <div className={styles.content}>
+-        <Spin spinning={loading}>
++        <Spin spinning={globalLoading}>
+           {globalPackages.length === 0 ? (
+-            <Empty description="鏆傛棤鍏ㄥ眬渚濊禆" />
++            <Empty description={t('npm.noGlobalDependencies')} />
+           ) : (
+-            <Table 
++            <Table
+               dataSource={globalPackages}
+               columns={columns}
+               rowKey="name"
+@@ -642,40 +660,41 @@ const GlobalPage: React.FC = () => {
+           )}
+         </Spin>
+       </div>
+-      
++
+       <Modal
+-        title="鍏ㄥ眬瀹夎鍖?
++        title={t('npm.installGlobalPackage')}
+         open={installVisible}
+         onCancel={() => setInstallVisible(false)}
+         onOk={() => installForm.submit()}
+-        okText="瀹夎"
+-        cancelText="鍙栨秷"
++        okText={t('npm.install')}
++        cancelText={t('common.cancel')}
+       forceRender
+       >
+         <Form form={installForm} onFinish={handleInstall} layout="vertical">
+-          <Form.Item name="package" label="鍖呭悕" rules={[{ required: true, message: '璇疯緭鍏ュ寘鍚? }]}>
++          <Form.Item name="package" label={t('package.columnName')} rules={[{ required: true, message: t('npm.enterPackageName') }]}>
+             <AutoComplete
+               options={packageOptions}
+               onSearch={searchInstallPackages}
+               onPopupScroll={handlePackagePopupScroll}
+-              popupRender={(menu) => renderPagedPopup(menu, packageSearchHasMore, packageSearchLoadingMore, SEARCH_PAGE_SIZE)}
++              popupRender={(menu) => renderPagedPopup(t, menu, packageSearchHasMore, packageSearchLoadingMore, SEARCH_PAGE_SIZE)}
+               onChange={() => {
+                 setInstallVersionMetadata(null)
+                 setInstallVersionOptions([])
+                 installForm.setFieldValue('version', undefined)
+               }}
+-              placeholder="渚嬪: typescript"
++              placeholder={t('npm.exampleTypescript')}
+             />
+           </Form.Item>
+-          <Form.Item label="鐗堟湰锛堝彲閫夛級">
++          <Form.Item label={t('npm.versionOptional')}>
+             <Space.Compact style={{ width: '100%' }}>
+               <Form.Item name="version" noStyle>
+                 <AutoComplete
+                   options={installVersionOptions}
+-                  placeholder="榛樿 latest锛岀ǔ瀹氱増浼樺厛锛涘彲鍔犺浇鏇村鎴栭瑙堢増"
++                  placeholder={t('npm.versionPlaceholder')}
+                   style={{ width: '100%' }}
+                   onPopupScroll={handleVersionPopupScroll}
+                   popupRender={(menu) => renderPagedPopup(
++                    t,
+                     menu,
+                     !!installVersionMetadata && versionsForFilter(installVersionMetadata, installVersionFilter).length > installVersionPage * VERSION_PAGE_SIZE,
+                     false,
+@@ -688,26 +707,29 @@ const GlobalPage: React.FC = () => {
+                 onChange={handleInstallVersionFilterChange}
+                 style={{ width: 120 }}
+                 options={[
+-                  { value: 'stable', label: '绋冲畾鐗? },
+-                  { value: 'prerelease', label: '棰勮鐗? },
+-                  { value: 'all', label: '鍏ㄩ儴' }
++                  { value: 'stable', label: t('npm.stable') },
++                  { value: 'prerelease', label: t('npm.prerelease') },
++                  { value: 'all', label: t('npm.all') }
+                 ]}
+               />
+-              <Button onClick={loadInstallVersions}>鑾峰彇鐗堟湰</Button>
++              <Button onClick={loadInstallVersions}>{t('npm.loadVersions')}</Button>
+             </Space.Compact>
+             {installVersionMetadata && (
+               <Space className={styles.installVersionActions} wrap>
+-                <Tag color="green">绋冲畾鐗?{installVersionMetadata.stable.length}</Tag>
+-                <Tag color="gold">棰勮鐗?{installVersionMetadata.prerelease.length}</Tag>
+-                <Tag>{versionFilterLabel(installVersionFilter)}鏄剧ず {Math.min(versionsForFilter(installVersionMetadata, installVersionFilter).length, installVersionPage * VERSION_PAGE_SIZE)}</Tag>
++                <Tag color="green">{t('npm.stableCount', { count: installVersionMetadata.stable.length })}</Tag>
++                <Tag color="gold">{t('npm.prereleaseCount', { count: installVersionMetadata.prerelease.length })}</Tag>
++                <Tag>{t('npm.filterShowing', {
++                  filter: versionFilterLabel(t, installVersionFilter),
++                  count: Math.min(versionsForFilter(installVersionMetadata, installVersionFilter).length, installVersionPage * VERSION_PAGE_SIZE)
++                })}</Tag>
+               </Space>
+             )}
+           </Form.Item>
+         </Form>
+       </Modal>
+-      
++
+       <Modal
+-        title={`鍒囨崲鐗堟湰 - ${selectedPackage?.name}`}
++        title={t('npm.switchVersionTitle', { name: selectedPackage?.name ?? '' })}
+         open={versionVisible}
+         onCancel={() => setVersionVisible(false)}
+         footer={null}
+@@ -715,7 +737,7 @@ const GlobalPage: React.FC = () => {
+       >
+         <div className={styles.versionList}>
+           <p style={{ marginBottom: 12, color: '#999' }}>
+-            褰撳墠鐗堟湰: <Tag color="blue">{selectedPackage?.version}</Tag>
++            {t('package.currentVersionLabel')} <Tag color="blue">{selectedPackage?.version}</Tag>
+           </p>
+           <Spin spinning={versions.length === 0 && !versionMetadata}>
+             <NpmVersionPicker
+@@ -763,7 +785,7 @@ const GlobalPage: React.FC = () => {
+ 
+ export default GlobalPage
+ 
+-function uniqueByName(packages: any[]): any[] {
++function uniqueByName(packages: PackageInfo[]): PackageInfo[] {
+   const seen = new Set<string>()
+   return packages.filter((pkg) => {
+     const key = String(pkg.name || '').toLowerCase()
+@@ -778,14 +800,17 @@ function buildInstallVersionOptions(metadata: NpmVersionMetadata, filter: Versio
+   return toVersionOptions(versions, page)
+ }
+ 
+-function buildPackageOptions(packages: any[], downloads: Record<string, number>) {
+-  return packages.map((pkg: any) => ({
++// Search results optionally carry download stats that stored PackageInfo lacks.
++type SearchPackage = PackageInfo & { downloads?: number }
++
++function buildPackageOptions(packages: SearchPackage[], downloads: Record<string, number>, t: LabelTranslator) {
++  return packages.map((pkg) => ({
+     value: pkg.name,
+-    label: renderPackageOption(pkg, downloads[pkg.name] || pkg.downloads || 0)
++    label: renderPackageOption(t, pkg, downloads[pkg.name] || pkg.downloads || 0)
+   }))
+ }
+ 
+-async function loadSearchDownloads(packages: any[]): Promise<Record<string, number>> {
++async function loadSearchDownloads(packages: SearchPackage[]): Promise<Record<string, number>> {
+   const entries = await Promise.all(packages.map(async (pkg) => {
+     if (pkg.downloads) return [pkg.name, pkg.downloads] as const
+     try {
+@@ -798,7 +823,7 @@ async function loadSearchDownloads(packages: any[]): Promise<Record<string, numb
+   return Object.fromEntries(entries)
+ }
+ 
+-function renderPackageOption(pkg: any, downloads: number): React.ReactNode {
++function renderPackageOption(t: LabelTranslator, pkg: any, downloads: number): React.ReactNode {
+   return (
+     <div className={styles.packageOption}>
+       <Space size={6} className={styles.packageOptionHeader}>
+@@ -808,28 +833,28 @@ function renderPackageOption(pkg: any, downloads: number): React.ReactNode {
+           <Tag icon={<CloudDownloadOutlined />}>{formatCompactNumber(downloads)}</Tag>
+         )}
+       </Space>
+-      <span className={styles.packageOptionDesc}>{cleanPackageSummary(pkg.description) || '鏆傛棤鎻忚堪'}</span>
++      <span className={styles.packageOptionDesc}>{cleanPackageSummary(pkg.description) || t('common.noDescription')}</span>
+     </div>
+   )
+ }
+ 
+-function versionFilterLabel(filter: VersionChannelFilter): string {
+-  if (filter === 'stable') return '绋冲畾鐗?
+-  if (filter === 'prerelease') return '棰勮鐗?
+-  return '鍏ㄩ儴鐗堟湰'
++function versionFilterLabel(t: LabelTranslator, filter: VersionChannelFilter): string {
++  if (filter === 'stable') return t('npm.stable')
++  if (filter === 'prerelease') return t('npm.prerelease')
++  return t('npm.allVersions')
+ }
+ 
+ function isNearPopupBottom(element: HTMLDivElement): boolean {
+   return element.scrollHeight - element.scrollTop - element.clientHeight < 48
+ }
+ 
+-function renderPagedPopup(menu: React.ReactElement, hasMore: boolean, loading: boolean, pageSize: number): React.ReactElement {
++function renderPagedPopup(t: LabelTranslator, menu: React.ReactElement, hasMore: boolean, loading: boolean, pageSize: number): React.ReactElement {
+   return (
+     <>
+       {menu}
+       {(hasMore || loading) && (
+         <div className={styles.loadMoreOption}>
+-          {loading ? '姝ｅ湪鍔犺浇鏇村...' : `婊戝姩鍒板簳閮ㄨ嚜鍔ㄥ姞杞斤紝姣忔 ${pageSize} 涓猔}
++          {loading ? t('npm.loadingMore') : t('npm.scrollHint', { count: pageSize })}
+         </div>
+       )}
+     </>
+diff --git a/src/features/managers/npm/scopes/project/Project.tsx b/src/features/managers/npm/scopes/project/Project.tsx
+index d7f1e3f..1e065c7 100644
+--- a/src/features/managers/npm/scopes/project/Project.tsx
++++ b/src/features/managers/npm/scopes/project/Project.tsx
+@@ -14,6 +14,7 @@ import { NpmVersionPicker } from '../../../../../components/Package/NpmVersionPi
+ import ProjectToolchainPanel from '../../../../../components/Toolchain/ProjectToolchainPanel'
+ import ProjectPathBar from '../../../../../components/ProjectPathBar/ProjectPathBar'
+ import { localizedModal } from '../../../../../utils/localizedFeedback'
++import { useT, type LabelTranslator } from '../../../../../i18n'
+ import { VERSION_PAGE_SIZE, VersionChannelFilter, toVersionOptions, versionsForFilter } from '../../../../../utils/npmVersions'
+ import { cleanPackageSummary, formatCompactNumber } from '../../../../../utils/npmDisplay'
+ import { useDependencyHealthReminder } from '../../../../../hooks/useDependencyHealthReminder'
+@@ -21,6 +22,10 @@ import styles from './Project.module.css'
+ 
+ const SEARCH_PAGE_SIZE = 10
+ 
++// Monotonic request id so a stale paged-search response cannot overwrite a
++// newer one when the user types quickly in the install autocomplete.
++let packageOptionsRequestId = 0
++
+ interface ProjectPageProps {
+   hideToolchainPanel?: boolean
+   hideProjectSelector?: boolean
+@@ -65,50 +70,68 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+   
+   const currentPath = useAppStore((state) => state.currentPath)
+   const addNotification = useAppStore((state) => state.addNotification)
++  const t = useT()
+   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
+   const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
+   const setTerminalVisible = useCommandLogStore((state) => state.setVisible)
+-  const { projectPackages, loading, projectError, fetchProjectPackages, installPackage, uninstallPackage, installSpecificVersion } = usePackageStore()
++  const projectPackages = usePackageStore((state) => state.projectPackages)
++  const projectLoading = usePackageStore((state) => state.projectLoading)
++  const projectError = usePackageStore((state) => state.projectError)
++  const fetchProjectPackages = usePackageStore((state) => state.fetchProjectPackages)
++  const installPackage = usePackageStore((state) => state.installPackage)
++  const uninstallPackage = usePackageStore((state) => state.uninstallPackage)
++  const installSpecificVersion = usePackageStore((state) => state.installSpecificVersion)
+ 
+   useDependencyHealthReminder('npm', currentPath, !!currentPath && projectPackages.length > 0)
+   
+   useEffect(() => {
++    let watcherActive = false
+     if (currentPath) {
+       fetchProjectPackages(currentPath)
+       loadScripts()
+-      startWatcher()
++      watcherActive = true
++      void startWatcher(currentPath, () => watcherActive)
+     }
+-    
++
+     return () => {
++      watcherActive = false
+       stopWatcher()
+     }
+   }, [currentPath])
+-  
+-  const startWatcher = async () => {
+-    if (currentPath) {
+-      // 鍏堟鏌ユ槸鍚︽槸鏈夋晥鐨勯」鐩矾寰?-      try {
+-        const projectInfo = await window.electronAPI.project.detect(currentPath)
+-        if (projectInfo.hasPackageJson) {
+-          await window.electronAPI.watcher.start(currentPath)
+-          window.electronAPI.watcher.onChange((data) => {
+-            if (data.path === currentPath) {
+-              addNotification({
+-                type: 'info',
+-                message: `${data.file || 'dependency manifest'} 宸插彉鏇碻,
+-                description: '姝ｅ湪鑷姩鍒锋柊...'
+-              })
+-              fetchProjectPackages(currentPath, true)
+-              loadScripts()
+-            }
+-          })
++
++  const startWatcher = async (path: string, isActive: () => boolean) => {
++    if (!path) return
++    try {
++      // Disarm any listener left over from a previous path before arming a new
++      // one: registration is async, so the previous effect's cleanup may have
++      // already run by the time this continuation resumes.
++      window.electronAPI?.watcher?.stop()
++      window.electronAPI?.watcher?.removeChangeListener()
++      const projectInfo = await window.electronAPI.project.detect(path)
++      if (!isActive()) return
++      if (projectInfo.hasPackageJson) {
++        await window.electronAPI.watcher.start(path)
++        if (!isActive()) {
++          window.electronAPI?.watcher?.stop()
++          window.electronAPI?.watcher?.removeChangeListener()
++          return
+         }
+-      } catch (error) {
+-        console.warn('Failed to start watcher:', error)
++        window.electronAPI.watcher.onChange((data) => {
++          if (!isActive() || data.path !== path) return
++          addNotification({
++            type: 'info',
++            message: `${data.file || 'dependency manifest'} 宸插彉鏇碻,
++            description: '姝ｅ湪鑷姩鍒锋柊...'
++          })
++          fetchProjectPackages(path, true)
++          loadScripts()
++        })
+       }
++    } catch (error) {
++      console.warn('Failed to start watcher:', error)
+     }
+   }
+-  
++
+   const stopWatcher = () => {
+     window.electronAPI?.watcher?.stop()
+     window.electronAPI?.watcher?.removeChangeListener()
+@@ -153,7 +176,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+     await loadScripts()
+     addNotification({
+       type: 'success',
+-      message: '鍒锋柊鎴愬姛'
++      message: t('npm.refreshSucceeded')
+     })
+   }
+   
+@@ -216,13 +239,13 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+       })
+       addNotification({
+         type: 'success',
+-        message: '鍗歌浇鎴愬姛',
+-        description: `${packageName} 宸插嵏杞絗
++        message: t('npm.uninstallSucceeded'),
++        description: t('npm.uninstalledDescription', { name: packageName })
+       })
+     } catch (error: any) {
+       addNotification({
+         type: 'error',
+-        message: '鍗歌浇澶辫触',
++        message: t('npm.uninstallFailed'),
+         description: error.message
+       })
+     }
+@@ -285,7 +308,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+     } catch (error: any) {
+       addNotification({
+         type: 'error',
+-        message: '鎵撳紑璺緞澶辫触',
++        message: t('npm.openPathFailed'),
+         description: error.message
+       })
+     }
+@@ -308,7 +331,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+     setTerminalVisible(true)
+     addNotification({
+       type: 'success',
+-      message: '缁堢宸叉墦寮€',
++      message: t('npm.terminalOpened'),
+       description: currentPath
+     })
+   }
+@@ -327,18 +350,22 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+   const loadPackageOptions = async (query: string, page: number) => {
+     const trimmedQuery = query.trim()
+     if (!trimmedQuery) return
++    const requestId = ++packageOptionsRequestId
+     try {
+       const limit = page * SEARCH_PAGE_SIZE
+       const result = await window.electronAPI.npm.search(trimmedQuery, limit + 1)
++      if (requestId !== packageOptionsRequestId) return
+       const packages = uniqueByName(result)
+       const visiblePackages = packages.slice(0, limit)
+       const downloads = await loadSearchDownloads(visiblePackages)
++      if (requestId !== packageOptionsRequestId) return
+       const hasMore = packages.length > visiblePackages.length
+       setPackageSearchQuery(trimmedQuery)
+       setPackageSearchPage(page)
+       setPackageSearchHasMore(hasMore)
+-      setPackageOptions(buildPackageOptions(visiblePackages, downloads))
++      setPackageOptions(buildPackageOptions(visiblePackages, downloads, t))
+     } catch {
++      if (requestId !== packageOptionsRequestId) return
+       setPackageOptions([])
+       setPackageSearchHasMore(false)
+     }
+@@ -426,7 +453,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+   const handleCheckAllOutdated = async () => {
+     setCheckingAll(true)
+     try {
+-      await fetchProjectPackages(currentPath)
++      // Bypass the 5-minute cache: this entry must show fresh outdated info.
++      await fetchProjectPackages(currentPath, true)
+       addNotification({
+         type: 'success',
+         message: '妫€鏌ュ畬鎴?
+@@ -547,15 +575,15 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+     } catch (error: any) {
+       addNotification({
+         type: 'error',
+-        message: '鑾峰彇鐗堟湰鍒楄〃澶辫触',
++        message: t('npm.loadVersionsFailed'),
+         description: error.message
+       })
+     }
+   }
+-  
++
+   const handleInstallVersion = async (version: string) => {
+     if (!selectedPackage) return
+-    
++
+     try {
+       await installSpecificVersion({
+         packageName: selectedPackage.name,
+@@ -565,15 +593,15 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+       })
+       addNotification({
+         type: 'success',
+-        message: '鐗堟湰鍒囨崲鎴愬姛',
+-        description: `${selectedPackage.name}@${version} 宸插畨瑁卄
++        message: t('npm.versionSwitched'),
++        description: t('npm.versionInstalledDescription', { name: selectedPackage.name, version })
+       })
+       setVersionVisible(false)
+       await fetchProjectPackages(currentPath)
+     } catch (error: any) {
+       addNotification({
+         type: 'error',
+-        message: '鐗堟湰鍒囨崲澶辫触',
++        message: t('npm.versionSwitchFailed'),
+         description: error.message
+       })
+     }
+@@ -634,22 +662,22 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+ 
+   const columns = [
+     {
+-      title: '鍖呭悕',
++      title: t('package.columnName'),
+       dataIndex: 'name',
+       key: 'name',
+       width: 180,
+       render: (text: string, record: PackageInfo) => (
+         <Space>
+-          <Button 
+-            type="link" 
+-            size="small" 
++          <Button
++            type="link"
++            size="small"
+             style={{ padding: 0 }}
+             onClick={() => handleShowDetail(text)}
+           >
+             {text}
+           </Button>
+           {record.outdated && (
+-            <Tooltip title="鏈夋柊鐗堟湰鍙敤">
++            <Tooltip title={t('package.updateAvailable')}>
+               <WarningOutlined style={{ color: '#faad14' }} />
+             </Tooltip>
+           )}
+@@ -657,26 +685,26 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+       )
+     },
+     {
+-      title: '鎻忚堪',
++      title: t('common.description'),
+       dataIndex: 'description',
+       key: 'description',
+       ellipsis: true,
+       render: (text: string) => text || '-'
+     },
+     {
+-      title: '绫诲瀷',
++      title: t('common.type'),
+       dataIndex: 'type',
+       key: 'type',
+       width: 80,
+       render: (text: PackageInfo['type']) => {
+-        if (text === 'devDependencies') return <Tag color="orange">寮€鍙?/Tag>
+-        if (text === 'optionalDependencies') return <Tag color="blue">鍙€?/Tag>
+-        if (text === 'peerDependencies') return <Tag color="purple">鍚屼即</Tag>
+-        return <Tag color="green">鐢熶骇</Tag>
++        if (text === 'devDependencies') return <Tag color="orange">{t('package.devShort')}</Tag>
++        if (text === 'optionalDependencies') return <Tag color="blue">{t('npm.tagOptional')}</Tag>
++        if (text === 'peerDependencies') return <Tag color="purple">{t('npm.tagPeer')}</Tag>
++        return <Tag color="green">{t('package.prodShort')}</Tag>
+       }
+     },
+     {
+-      title: '鐘舵€?,
++      title: t('common.status'),
+       dataIndex: 'status',
+       key: 'status',
+       width: 110,
+@@ -687,18 +715,18 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+       )
+     },
+     {
+-      title: '鐗堟湰',
++      title: t('common.version'),
+       dataIndex: 'version',
+       key: 'version',
+       width: 80,
+       render: (text: string) => <Tag>v{text}</Tag>
+     },
+     {
+-      title: '鏈€鏂?,
++      title: t('npm.columnLatest'),
+       dataIndex: 'latest',
+       key: 'latest',
+       width: 80,
+-      render: (text: string, record: PackageInfo) => 
++      render: (text: string, record: PackageInfo) =>
+         text ? (
+           <Tag color={text !== record.version ? 'blue' : 'green'}>
+             v{text}
+@@ -706,37 +734,37 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+         ) : '-'
+     },
+     {
+-      title: '澶у皬',
++      title: t('npm.columnSize'),
+       key: 'size',
+       width: 90,
+       render: (_: any, record: PackageInfo) => {
+         const size = packageSizes[record.name]
+         return size ? (
+-          <Tooltip title={`${size.fileCount} 涓枃浠禶}>
++          <Tooltip title={t('npm.fileCountTooltip', { count: size.fileCount })}>
+             <Tag icon={<DownloadOutlined />}>{size.prettySize}</Tag>
+           </Tooltip>
+         ) : '-'
+       }
+     },
+     {
+-      title: '鎿嶄綔',
++      title: t('common.actions'),
+       key: 'action',
+       width: 130,
+       render: (_: any, record: PackageInfo) => (
+         <Space>
+           {record.outdated && (
+-            <Tooltip title="鏇存柊">
++            <Tooltip title={t('common.update')}>
+               <Button size="small" icon={<SyncOutlined />} onClick={() => handleUpdate(record.name)} />
+             </Tooltip>
+           )}
+           <Dropdown menu={{
+             items: [
+-              { key: 'detail', label: '鏌ョ湅璇︽儏', icon: <InfoCircleOutlined /> },
+-              { key: 'version', label: '鍒囨崲鐗堟湰', icon: <SwapOutlined /> },
+-              { key: 'move', label: '鍒囨崲绫诲瀷', icon: <SwapOutlined /> },
+-              { key: 'open', label: '鎵撳紑璺緞', icon: <FolderFilled /> },
+-              { key: 'changelog', label: '鏇存柊鏃ュ織', icon: <HistoryOutlined /> },
+-              { key: 'uninstall', label: '鍗歌浇', icon: <ReloadOutlined />, danger: true }
++              { key: 'detail', label: t('package.viewDetail'), icon: <InfoCircleOutlined /> },
++              { key: 'version', label: t('npm.switchVersion'), icon: <SwapOutlined /> },
++              { key: 'move', label: t('npm.switchType'), icon: <SwapOutlined /> },
++              { key: 'open', label: t('npm.openPath'), icon: <FolderFilled /> },
++              { key: 'changelog', label: t('npm.changelog'), icon: <HistoryOutlined /> },
++              { key: 'uninstall', label: t('package.uninstall'), icon: <ReloadOutlined />, danger: true }
+             ],
+             onClick: ({ key }) => {
+               if (key === 'detail') {
+@@ -756,14 +784,14 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+                 handleViewChangelog(record.name)
+               } else if (key === 'uninstall') {
+                 localizedModal.confirm({
+-                  title: '纭鍗歌浇',
+-                  content: `纭畾瑕佸嵏杞?${record.name} 鍚楋紵`,
++                  title: t('npm.confirmUninstallTitle'),
++                  content: t('npm.confirmUninstall', { name: record.name }),
+                   onOk: () => handleUninstall(record.name)
+                 })
+               }
+             }
+           }}>
+-            <Button size="small">鏇村</Button>
++            <Button size="small">{t('npm.more')}</Button>
+           </Dropdown>
+         </Space>
+       )
+@@ -773,53 +801,53 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+   return (
+     <div className={styles.container}>
+       <div className={styles.header}>
+-        <h2 className={styles.title}>椤圭洰渚濊禆</h2>
++        <h2 className={styles.title}>{t('npm.projectDependenciesTitle')}</h2>
+         <div className={styles.actions}>
+           {!hideProjectSelector && <ProjectPathBar compact />}
+           <Button type="primary" icon={<PlusOutlined />} onClick={() => setInstallVisible(true)} disabled={!currentPath}>
+-            瀹夎鍖?+            {t('npm.installPackageTitle')}
+           </Button>
+           <Button icon={<CheckCircleOutlined />} onClick={handleCheckAllOutdated} loading={checkingAll} disabled={!currentPath}>
+-            妫€鏌ユ洿鏂?+            {t('npm.checkUpdates')}
+           </Button>
+-          <Button 
+-            icon={<SyncOutlined />} 
++          <Button
++            icon={<SyncOutlined />}
+             onClick={handleUpdateSelected}
+             loading={updatingSelected}
+             disabled={!currentPath || selectedRowKeys.length === 0}
+             type={selectedRowKeys.length > 0 ? 'primary' : 'default'}
+           >
+-            鏇存柊閫変腑 ({selectedRowKeys.length})
++            {t('package.updateSelected', { count: selectedRowKeys.length })}
+           </Button>
+-          <Button 
++          <Button
+             danger
+-            icon={<ReloadOutlined />} 
++            icon={<ReloadOutlined />}
+             onClick={handleUninstallSelected}
+             loading={uninstallingSelected}
+             disabled={!currentPath || selectedRowKeys.length === 0}
+           >
+-            鍗歌浇閫変腑 ({selectedRowKeys.length})
++            {t('npm.uninstallSelected', { count: selectedRowKeys.length })}
+           </Button>
+           <Button icon={<SyncOutlined />} onClick={handleUpdateAll} disabled={!currentPath}>
+-            鏇存柊鍏ㄩ儴
++            {t('common.updateAll')}
+           </Button>
+-          <Button 
+-            icon={<SecurityScanOutlined />} 
++          <Button
++            icon={<SecurityScanOutlined />}
+             onClick={() => setAuditVisible(true)} disabled={!currentPath}
+           >
+-            瀹夊叏瀹¤
++            {t('common.securityAudit')}
+           </Button>
+-          <Button 
+-            icon={<ApartmentOutlined />} 
++          <Button
++            icon={<ApartmentOutlined />}
+             onClick={() => setDepTreeVisible(true)} disabled={!currentPath}
+           >
+-            渚濊禆鏍?+            {t('npm.dependencyTree')}
+           </Button>
+           <Button icon={<WarningOutlined />} onClick={() => setHealthVisible(true)} disabled={!currentPath}>
+-            渚濊禆璇婃柇
++            {t('common.dependencyDiagnostics')}
+           </Button>
+-          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} disabled={!currentPath}>
+-            鍒锋柊
++          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={projectLoading} disabled={!currentPath}>
++            {t('common.refresh')}
+           </Button>
+         </div>
+       </div>
+@@ -829,8 +857,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+         <Alert
+           type="info"
+           showIcon
+-          title="鍏堥€夋嫨椤圭洰鐩綍"
+-          description="閫夋嫨鍖呭惈 package.json 鐨勭洰褰曞悗锛屽嵆鍙煡鐪嬩緷璧栥€佽繍琛岃剼鏈拰鎵ц鏇存柊銆?
++          title={t('common.selectProjectFirst')}
++          description={t('npm.selectDirHint')}
+           action={<ProjectPathBar compact />}
+           style={{ marginBottom: 16 }}
+         />
+@@ -839,34 +867,34 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+         <Alert
+           type="error"
+           showIcon
+-          title="椤圭洰渚濊禆璇诲彇澶辫触"
++          title={t('npm.depsLoadFailed')}
+           description={projectError}
+-          action={<Button size="small" onClick={() => fetchProjectPackages(currentPath, true)}>閲嶈瘯</Button>}
++          action={<Button size="small" onClick={() => fetchProjectPackages(currentPath, true)}>{t('health.retry')}</Button>}
+           style={{ marginBottom: 16 }}
+         />
+       )}
+-      
++
+       <Tabs items={[
+         {
+           key: 'deps',
+-          label: '渚濊禆绠＄悊',
++          label: t('npm.depsTab'),
+           children: (
+             <div className={styles.depsContent}>
+               <Space style={{ marginBottom: 16 }}>
+                 <Button icon={<FolderFilled />} onClick={handleOpenPackageJson} disabled={!currentPath}>
+-                  鎵撳紑 package.json
++                  {t('npm.openPackageJson')}
+                 </Button>
+               </Space>
+-              
+-              <Spin spinning={loading}>
++
++              <Spin spinning={projectLoading}>
+                 {!currentPath ? (
+-                  <Empty description="璇烽€夋嫨椤圭洰鐩綍寮€濮嬬鐞? />
++                  <Empty description={t('npm.selectDirToStart')} />
+                 ) : projectError ? (
+-                  <Empty description="渚濊禆璇诲彇澶辫触锛岃閲嶈瘯" />
++                  <Empty description={t('npm.depsLoadFailedRetry')} />
+                 ) : projectPackages.length === 0 ? (
+-                  <Empty description="鏆傛棤渚濊禆锛岃閫夋嫨椤圭洰鐩綍鎴栧畨瑁呮柊鍖? />
++                  <Empty description={t('npm.noDependencies')} />
+                 ) : (
+-                  <Table 
++                  <Table
+                     dataSource={projectPackages}
+                     columns={columns}
+                     rowKey="name"
+@@ -882,33 +910,33 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+         },
+         {
+           key: 'scripts',
+-          label: '鑴氭湰鍛戒护',
++          label: t('npm.scriptsTab'),
+           children: (
+             <div className={styles.scriptsContent}>
+               <Space style={{ marginBottom: 16 }}>
+                 <Button icon={<FolderOpenOutlined />} onClick={handleOpenTerminal}>
+-                  鎵撳紑缁堢
++                  {t('npm.openTerminal')}
+                 </Button>
+                 <Button icon={<ReloadOutlined />} onClick={loadScripts}>
+-                  鍒锋柊鑴氭湰
++                  {t('npm.refreshScripts')}
+                 </Button>
+               </Space>
+-              
++
+               {scripts.length === 0 ? (
+-                <Empty description="鏆傛棤鑴氭湰鍛戒护" />
++                <Empty description={t('npm.noScripts')} />
+               ) : (
+                 <div className={styles.scriptsList}>
+                   {scripts.map(script => (
+                     <Card key={script} className={styles.scriptCard}>
+                       <div className={styles.scriptName}>{script}</div>
+-                      <Button 
++                      <Button
+                         type="primary"
+                         size="small"
+                         icon={<PlayCircleOutlined />}
+                         onClick={() => handleRunScript(script)}
+                         loading={runningScript === script}
+                       >
+-                        杩愯
++                        {t('common.run')}
+                       </Button>
+                     </Card>
+                   ))}
+@@ -918,40 +946,41 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+           )
+         }
+       ]} />
+-      
++
+       <Modal
+-        title="瀹夎鍖?
++        title={t('npm.installPackageTitle')}
+         open={installVisible}
+         onCancel={() => setInstallVisible(false)}
+         onOk={() => installForm.submit()}
+-        okText="瀹夎"
+-        cancelText="鍙栨秷"
++        okText={t('npm.install')}
++        cancelText={t('common.cancel')}
+       forceRender
+       >
+         <Form form={installForm} onFinish={handleInstall} layout="vertical" initialValues={{ dev: false }}>
+-          <Form.Item name="package" label="鍖呭悕" rules={[{ required: true, message: '璇疯緭鍏ュ寘鍚? }]}>
++          <Form.Item name="package" label={t('package.columnName')} rules={[{ required: true, message: t('npm.enterPackageName') }]}>
+             <AutoComplete
+               options={packageOptions}
+               onSearch={searchInstallPackages}
+               onPopupScroll={handlePackagePopupScroll}
+-              popupRender={(menu) => renderPagedPopup(menu, packageSearchHasMore, packageSearchLoadingMore, SEARCH_PAGE_SIZE)}
++              popupRender={(menu) => renderPagedPopup(t, menu, packageSearchHasMore, packageSearchLoadingMore, SEARCH_PAGE_SIZE)}
+               onChange={() => {
+                 setInstallVersionMetadata(null)
+                 setInstallVersionOptions([])
+                 installForm.setFieldValue('version', undefined)
+               }}
+-              placeholder="渚嬪: lodash"
++              placeholder={t('npm.exampleLodash')}
+             />
+           </Form.Item>
+-          <Form.Item label="鐗堟湰锛堝彲閫夛級">
++          <Form.Item label={t('npm.versionOptional')}>
+             <Space.Compact style={{ width: '100%' }}>
+               <Form.Item name="version" noStyle>
+                 <AutoComplete
+                   options={installVersionOptions}
+-                  placeholder="榛樿 latest锛岀ǔ瀹氱増浼樺厛锛涘彲鍔犺浇鏇村鎴栭瑙堢増"
++                  placeholder={t('npm.versionPlaceholder')}
+                   style={{ width: '100%' }}
+                   onPopupScroll={handleVersionPopupScroll}
+                   popupRender={(menu) => renderPagedPopup(
++                    t,
+                     menu,
+                     !!installVersionMetadata && versionsForFilter(installVersionMetadata, installVersionFilter).length > installVersionPage * VERSION_PAGE_SIZE,
+                     false,
+@@ -964,57 +993,60 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+                 onChange={handleInstallVersionFilterChange}
+                 style={{ width: 120 }}
+                 options={[
+-                  { value: 'stable', label: '绋冲畾鐗? },
+-                  { value: 'prerelease', label: '棰勮鐗? },
+-                  { value: 'all', label: '鍏ㄩ儴' }
++                  { value: 'stable', label: t('npm.stable') },
++                  { value: 'prerelease', label: t('npm.prerelease') },
++                  { value: 'all', label: t('npm.all') }
+                 ]}
+               />
+-              <Button onClick={loadInstallVersions}>鑾峰彇鐗堟湰</Button>
++              <Button onClick={loadInstallVersions}>{t('npm.loadVersions')}</Button>
+             </Space.Compact>
+             {installVersionMetadata && (
+               <Space className={styles.installVersionActions} wrap>
+-                <Tag color="green">绋冲畾鐗?{installVersionMetadata.stable.length}</Tag>
+-                <Tag color="gold">棰勮鐗?{installVersionMetadata.prerelease.length}</Tag>
+-                <Tag>{versionFilterLabel(installVersionFilter)}鏄剧ず {Math.min(versionsForFilter(installVersionMetadata, installVersionFilter).length, installVersionPage * VERSION_PAGE_SIZE)}</Tag>
++                <Tag color="green">{t('npm.stableCount', { count: installVersionMetadata.stable.length })}</Tag>
++                <Tag color="gold">{t('npm.prereleaseCount', { count: installVersionMetadata.prerelease.length })}</Tag>
++                <Tag>{t('npm.filterShowing', {
++                  filter: versionFilterLabel(t, installVersionFilter),
++                  count: Math.min(versionsForFilter(installVersionMetadata, installVersionFilter).length, installVersionPage * VERSION_PAGE_SIZE)
++                })}</Tag>
+               </Space>
+             )}
+           </Form.Item>
+-          <Form.Item name="dev" label="浣滀负寮€鍙戜緷璧? valuePropName="checked">
++          <Form.Item name="dev" label={t('npm.asDevDependency')} valuePropName="checked">
+             <Switch />
+           </Form.Item>
+         </Form>
+       </Modal>
+-      
++
+       <Modal
+-        title="鍒囨崲渚濊禆绫诲瀷"
++        title={t('npm.switchDepType')}
+         open={moveDepVisible}
+         onCancel={() => setMoveDepVisible(false)}
+         onOk={() => moveDepForm.submit()}
+-        okText="鍒囨崲"
+-        cancelText="鍙栨秷"
++        okText={t('npm.switch')}
++        cancelText={t('common.cancel')}
+       forceRender
+       >
+         <Form form={moveDepForm} onFinish={handleMoveDep} layout="vertical">
+-          <Form.Item name="packageName" label="鍖呭悕">
++          <Form.Item name="packageName" label={t('package.columnName')}>
+             <Input disabled />
+           </Form.Item>
+-          <Form.Item name="from" label="褰撳墠绫诲瀷">
++          <Form.Item name="from" label={t('npm.currentType')}>
+             <Select disabled>
+-              <Select.Option value="dependencies">鐢熶骇渚濊禆</Select.Option>
+-              <Select.Option value="devDependencies">寮€鍙戜緷璧?/Select.Option>
++              <Select.Option value="dependencies">{t('package.prodDependency')}</Select.Option>
++              <Select.Option value="devDependencies">{t('package.devDependency')}</Select.Option>
+             </Select>
+           </Form.Item>
+-          <Form.Item name="to" label="鐩爣绫诲瀷" rules={[{ required: true }]}>
++          <Form.Item name="to" label={t('npm.targetType')} rules={[{ required: true }]}>
+             <Select>
+-              <Select.Option value="dependencies">鐢熶骇渚濊禆</Select.Option>
+-              <Select.Option value="devDependencies">寮€鍙戜緷璧?/Select.Option>
++              <Select.Option value="dependencies">{t('package.prodDependency')}</Select.Option>
++              <Select.Option value="devDependencies">{t('package.devDependency')}</Select.Option>
+             </Select>
+           </Form.Item>
+         </Form>
+       </Modal>
+-      
++
+       <Modal
+-        title={`鍒囨崲鐗堟湰 - ${selectedPackage?.name}`}
++        title={t('npm.switchVersionTitle', { name: selectedPackage?.name ?? '' })}
+         open={versionVisible}
+         onCancel={() => setVersionVisible(false)}
+         footer={null}
+@@ -1022,7 +1054,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
+       >
+         <div className={styles.versionList}>
+           <p style={{ marginBottom: 12, color: 'var(--text-secondary, #999)' }}>
+-            褰撳墠鐗堟湰: <Tag color="blue">{selectedPackage?.version}</Tag>
++            {t('package.currentVersionLabel')} <Tag color="blue">{selectedPackage?.version}</Tag>
+           </p>
+           <Spin spinning={versions.length === 0 && !versionMetadata}>
+             <NpmVersionPicker
+@@ -1104,10 +1136,10 @@ function buildInstallVersionOptions(metadata: NpmVersionMetadata, filter: Versio
+   return toVersionOptions(versions, page)
+ }
+ 
+-function buildPackageOptions(packages: any[], downloads: Record<string, number>) {
++function buildPackageOptions(packages: any[], downloads: Record<string, number>, t: LabelTranslator) {
+   return packages.map((pkg: any) => ({
+     value: pkg.name,
+-    label: renderPackageOption(pkg, downloads[pkg.name] || pkg.downloads || 0)
++    label: renderPackageOption(t, pkg, downloads[pkg.name] || pkg.downloads || 0)
+   }))
+ }
+ 
+@@ -1124,7 +1156,7 @@ async function loadSearchDownloads(packages: any[]): Promise<Record<string, numb
+   return Object.fromEntries(entries)
+ }
+ 
+-function renderPackageOption(pkg: any, downloads: number): React.ReactNode {
++function renderPackageOption(t: LabelTranslator, pkg: any, downloads: number): React.ReactNode {
+   return (
+     <div className={styles.packageOption}>
+       <Space size={6} className={styles.packageOptionHeader}>
+@@ -1134,28 +1166,28 @@ function renderPackageOption(pkg: any, downloads: number): React.ReactNode {
+           <Tag icon={<CloudDownloadOutlined />}>{formatCompactNumber(downloads)}</Tag>
+         )}
+       </Space>
+-      <span className={styles.packageOptionDesc}>{cleanPackageSummary(pkg.description) || '鏆傛棤鎻忚堪'}</span>
++      <span className={styles.packageOptionDesc}>{cleanPackageSummary(pkg.description) || t('common.noDescription')}</span>
+     </div>
+   )
+ }
+ 
+-function versionFilterLabel(filter: VersionChannelFilter): string {
+-  if (filter === 'stable') return '绋冲畾鐗?
+-  if (filter === 'prerelease') return '棰勮鐗?
+-  return '鍏ㄩ儴鐗堟湰'
++function versionFilterLabel(t: LabelTranslator, filter: VersionChannelFilter): string {
++  if (filter === 'stable') return t('npm.stable')
++  if (filter === 'prerelease') return t('npm.prerelease')
++  return t('npm.allVersions')
+ }
+ 
+ function isNearPopupBottom(element: HTMLDivElement): boolean {
+   return element.scrollHeight - element.scrollTop - element.clientHeight < 48
+ }
+ 
+-function renderPagedPopup(menu: React.ReactElement, hasMore: boolean, loading: boolean, pageSize: number): React.ReactElement {
++function renderPagedPopup(t: LabelTranslator, menu: React.ReactElement, hasMore: boolean, loading: boolean, pageSize: number): React.ReactElement {
+   return (
+     <>
+       {menu}
+       {(hasMore || loading) && (
+         <div className={styles.loadMoreOption}>
+-          {loading ? '姝ｅ湪鍔犺浇鏇村...' : `婊戝姩鍒板簳閮ㄨ嚜鍔ㄥ姞杞斤紝姣忔 ${pageSize} 涓猔}
++          {loading ? t('npm.loadingMore') : t('npm.scrollHint', { count: pageSize })}
+         </div>
+       )}
+     </>
+diff --git a/src/features/workspace/MultiManager.tsx b/src/features/workspace/MultiManager.tsx
+index d1ab9f1..4c283d2 100644
+--- a/src/features/workspace/MultiManager.tsx
++++ b/src/features/workspace/MultiManager.tsx
+@@ -19,7 +19,28 @@ const MultiManagerPage: React.FC<MultiManagerPageProps> = ({ initialManager = 'n
+   const managers = getImplementedManagerDefinitions()
+ 
+   useEffect(() => {
++    let active = true
++
++    const loadProjectInfo = async () => {
++      if (!currentPath) {
++        setProjectInfo(null)
++        return
++      }
++
++      try {
++        const info = await window.electronAPI.project.detect(currentPath)
++        // Fast project switches: a stale detect result must not clobber the
++        // info of the now-current path.
++        if (active) setProjectInfo(info)
++      } catch {
++        if (active) setProjectInfo(null)
++      }
++    }
++
+     void loadProjectInfo()
++    return () => {
++      active = false
++    }
+   }, [currentPath])
+ 
+   const detectedManagers = useMemo(() => {
+@@ -32,19 +53,6 @@ const MultiManagerPage: React.FC<MultiManagerPageProps> = ({ initialManager = 'n
+     ? initialManager
+     : detectedManagers[0] || initialManager
+ 
+-  const loadProjectInfo = async () => {
+-    if (!currentPath) {
+-      setProjectInfo(null)
+-      return
+-    }
+-
+-    try {
+-      setProjectInfo(await window.electronAPI.project.detect(currentPath))
+-    } catch {
+-      setProjectInfo(null)
+-    }
+-  }
+-
+   const openManager = (managerId: PackageManagerId) => {
+     navigate(implementedManagerRoutes[managerId])
+   }
+diff --git a/src/stores/packageStore.ts b/src/stores/packageStore.ts
+index b79f584..4c8577e 100644
+--- a/src/stores/packageStore.ts
++++ b/src/stores/packageStore.ts
+@@ -29,15 +29,16 @@ interface CacheData {
+ interface PackageState {
+   projectPackages: PackageInfo[]
+   globalPackages: PackageInfo[]
+-  loading: boolean
++  projectLoading: boolean
++  globalLoading: boolean
++  mutating: boolean
+   projectError: string | null
+   packageDetails: Record<string, any>
+   cache: Record<string, CacheData>
+   currentProjectPath: string
+-  
++
+   setProjectPackages: (packages: PackageInfo[]) => void
+   setGlobalPackages: (packages: PackageInfo[]) => void
+-  setLoading: (loading: boolean) => void
+   setPackageDetails: (name: string, details: any) => void
+   setCurrentProjectPath: (path: string) => void
+   
+@@ -86,11 +87,24 @@ interface InstallVersionArgs {
+ 
+ const CACHE_EXPIRY = 5 * 60 * 1000 // 5鍒嗛挓缂撳瓨杩囨湡
+ let projectRequestId = 0
++// Separate counter: global refreshes race independently of project refreshes.
++let globalRequestId = 0
+ 
+ function normalizeProjectPath(path: string): string {
+   return path.trim().replace(/[\\/]+$/, '').toLowerCase()
+ }
+ 
++function isCacheShape(value: unknown): value is Record<string, CacheData> {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
++  return Object.values(value).every((entry) =>
++    !!entry &&
++    typeof entry === 'object' &&
++    typeof (entry as CacheData).lastUpdate === 'number' &&
++    Array.isArray((entry as CacheData).projectPackages) &&
++    Array.isArray((entry as CacheData).globalPackages)
++  )
++}
++
+ async function fetchPackageDetailsBatch(packageNames: string[], batchSize = 5): Promise<Record<string, any>> {
+   const results: Record<string, any> = {}
+   
+@@ -122,15 +136,16 @@ export const usePackageStore = create<PackageState>()(
+     (set, get) => ({
+       projectPackages: [],
+       globalPackages: [],
+-      loading: false,
++      projectLoading: false,
++      globalLoading: false,
++      mutating: false,
+       projectError: null,
+       packageDetails: {},
+       cache: {},
+       currentProjectPath: '',
+-      
++
+       setProjectPackages: (packages) => set({ projectPackages: packages }),
+       setGlobalPackages: (packages) => set({ globalPackages: packages }),
+-      setLoading: (loading) => set({ loading }),
+       setPackageDetails: (name, details) => set((state) => ({
+         packageDetails: { ...state.packageDetails, [name]: details }
+       })),
+@@ -149,7 +164,9 @@ export const usePackageStore = create<PackageState>()(
+         if (path) {
+           set((state) => {
+             const newCache = { ...state.cache }
+-            delete newCache[path]
++            // Keys are stored normalized (see setCache), so removals must
++            // normalize too or case/slash variants miss the entry.
++            delete newCache[normalizeProjectPath(path)]
+             return { cache: newCache }
+           })
+         } else {
+@@ -180,7 +197,7 @@ export const usePackageStore = create<PackageState>()(
+           return
+         }
+         
+-        set({ loading: true, projectError: null, currentProjectPath: projectPath })
++        set({ projectLoading: true, projectError: null, currentProjectPath: projectPath })
+         
+         try {
+           const listResult = await window.electronAPI.npm.list(projectPath, false)
+@@ -299,27 +316,30 @@ export const usePackageStore = create<PackageState>()(
+             set({ projectPackages: cached?.projectPackages || [], projectError: message })
+           }
+         } finally {
+-          if (requestId === projectRequestId) set({ loading: false })
++          if (requestId === projectRequestId) set({ projectLoading: false })
+         }
+       },
+       
+       fetchGlobalPackages: async (forceRefresh = false) => {
++        const requestId = ++globalRequestId
+         const state = get()
+-        
++
+         // 鍏ㄥ眬鍖呯紦瀛橀敭
+         const globalCacheKey = '__global_packages__'
+-        
++
+         if (!forceRefresh && state.isCacheValid(globalCacheKey) && state.cache[globalCacheKey]?.globalPackages) {
+           const cached = state.cache[globalCacheKey]
+           set({ globalPackages: cached.globalPackages })
+           return
+         }
+-        
+-        set({ loading: true })
+-        
++
++        set({ globalLoading: true })
++
+         try {
+           const listResult = await window.electronAPI.npm.list('', true)
++          if (requestId !== globalRequestId) return
+           const outdatedResult = await window.electronAPI.npm.globalOutdated()
++          if (requestId !== globalRequestId) return
+           
+           const packages: PackageInfo[] = []
+           const allPackageNames: string[] = []
+@@ -333,14 +353,15 @@ export const usePackageStore = create<PackageState>()(
+           
+           // 鍒嗘壒骞惰鑾峰彇璇︽儏
+           const detailsMap = await fetchPackageDetailsBatch([...new Set(allPackageNames)], 10)
+-          
++          if (requestId !== globalRequestId) return
++
+           if (listResult.dependencies) {
+             Object.entries(listResult.dependencies).forEach(([name, info]: [string, any]) => {
+               const outdated = outdatedResult[name]
+               const details = detailsMap[name]
+               const currentVersion = info.version
+               const latestVersion = outdated?.latest || details?.version
+-              
++
+               let isOutdated = !!outdated
+               if (!isOutdated && currentVersion && latestVersion) {
+                 try {
+@@ -348,7 +369,7 @@ export const usePackageStore = create<PackageState>()(
+                 } catch {
+                 }
+               }
+-              
++
+               packages.push({
+                 name,
+                 version: currentVersion,
+@@ -372,28 +393,34 @@ export const usePackageStore = create<PackageState>()(
+           }
+ 
+           // 鏇存柊缂撳瓨
++          if (requestId !== globalRequestId) return
+           get().setCache(globalCacheKey, {
+             projectPackages: [],
+             globalPackages: packages,
+             lastUpdate: Date.now(),
+             projectPath: globalCacheKey
+           })
+-          
++
+           set({ globalPackages: packages })
+         } catch (error) {
+           console.error('Failed to fetch global packages:', error)
++          // Rethrow only when still current: the "check updates" entry must not
++          // report success on failure, while a superseded request stays silent.
++          if (requestId === globalRequestId) throw error
+         } finally {
+-          set({ loading: false })
++          if (requestId === globalRequestId) set({ globalLoading: false })
+         }
+       },
+       
+       installPackage: async (args: InstallArgs) => {
+-        set({ loading: true })
++        set({ mutating: true })
+         try {
+           await window.electronAPI.npm.install(args)
+           if (args.global) {
+             get().clearCache('__global_packages__')
+-            await get().fetchGlobalPackages()
++            // The operation already succeeded; a failed background refresh
++            // (fetchGlobalPackages rethrows) must not surface as a failure.
++            await get().fetchGlobalPackages().catch(() => {})
+           } else if (args.cwd) {
+             get().clearCache(args.cwd)
+             await get().fetchProjectPackages(args.cwd, true)
+@@ -402,12 +429,12 @@ export const usePackageStore = create<PackageState>()(
+           console.error('Failed to install package:', error)
+           throw error
+         } finally {
+-          set({ loading: false })
++          set({ mutating: false })
+         }
+       },
+       
+       uninstallPackage: async (args: UninstallArgs) => {
+-        set({ loading: true })
++        set({ mutating: true })
+         try {
+           await window.electronAPI.npm.uninstall(args)
+           if (args.global) {
+@@ -421,12 +448,12 @@ export const usePackageStore = create<PackageState>()(
+           console.error('Failed to uninstall package:', error)
+           throw error
+         } finally {
+-          set({ loading: false })
++          set({ mutating: false })
+         }
+       },
+       
+       updatePackage: async (args: UpdateArgs) => {
+-        set({ loading: true })
++        set({ mutating: true })
+         try {
+           await window.electronAPI.npm.update(args)
+           if (args.global) {
+@@ -440,17 +467,17 @@ export const usePackageStore = create<PackageState>()(
+           console.error('Failed to update package:', error)
+           throw error
+         } finally {
+-          set({ loading: false })
++          set({ mutating: false })
+         }
+       },
+       
+       installSpecificVersion: async (args: InstallVersionArgs) => {
+-        set({ loading: true })
++        set({ mutating: true })
+         try {
+           await window.electronAPI.npm.installVersion(args)
+           if (args.global) {
+             get().clearCache('__global_packages__')
+-            await get().fetchGlobalPackages()
++            await get().fetchGlobalPackages().catch(() => {})
+           } else if (args.cwd) {
+             get().clearCache(args.cwd)
+             await get().fetchProjectPackages(args.cwd, true)
+@@ -459,7 +486,7 @@ export const usePackageStore = create<PackageState>()(
+           console.error('Failed to install specific version:', error)
+           throw error
+         } finally {
+-          set({ loading: false })
++          set({ mutating: false })
+         }
+       }
+     }),
+@@ -468,7 +495,13 @@ export const usePackageStore = create<PackageState>()(
+       partialize: (state) => ({
+         cache: state.cache,
+         currentProjectPath: state.currentProjectPath
+-      })
++      }),
++      // Persisted cache may be corrupted (null / non-object) in localStorage;
++      // drop it instead of letting every fetch index into garbage.
++      merge: (persisted, current) => {
++        const persistedState = (persisted ?? {}) as Partial<PackageState>
++        return { ...current, ...persistedState, cache: isCacheShape(persistedState.cache) ? persistedState.cache : {} }
++      }
+     }
+   )
+ )
+diff --git a/src/stores/searchStore.ts b/src/stores/searchStore.ts
+index 0c1e83a..8c017b7 100644
+--- a/src/stores/searchStore.ts
++++ b/src/stores/searchStore.ts
+@@ -13,47 +13,62 @@ interface SearchState {
+   results: SearchResult[]
+   selectedPackage: any | null
+   loading: boolean
+-  
++  detailLoading: boolean
++
+   search: (query: string) => Promise<void>
+   viewPackage: (packageName: string) => Promise<void>
+   clearResults: () => void
+ }
+ 
++// Monotonic request id: stale search responses must not overwrite newer ones.
++let searchRequestId = 0
++
++// Independent counter: viewPackage races (quickly viewing A then B) must not
++// be judged against search requests or vice versa.
++let viewRequestId = 0
++
+ export const useSearchStore = create<SearchState>((set) => ({
+   results: [],
+   selectedPackage: null,
+   loading: false,
+-  
++  detailLoading: false,
++
+   search: async (query: string) => {
+     if (!query.trim()) {
+       set({ results: [] })
+       return
+     }
+-    
++
++    const requestId = ++searchRequestId
+     set({ loading: true })
+     try {
+       const results = await window.electronAPI.npm.search(query)
++      if (requestId !== searchRequestId) return
+       set({ results: results || [] })
+     } catch (error) {
+       console.error('Search failed:', error)
++      if (requestId !== searchRequestId) return
+       set({ results: [] })
+     } finally {
+-      set({ loading: false })
++      if (requestId === searchRequestId) set({ loading: false })
+     }
+   },
+-  
++
+   viewPackage: async (packageName: string) => {
+-    set({ loading: true })
++    const requestId = ++viewRequestId
++    set({ detailLoading: true })
+     try {
+       const info = await window.electronAPI.npm.view(packageName)
++      if (requestId !== viewRequestId) return
+       set({ selectedPackage: info })
+     } catch (error) {
+       console.error('Failed to view package:', error)
++      if (requestId !== viewRequestId) return
+       set({ selectedPackage: null })
+     } finally {
+-      set({ loading: false })
++      if (requestId === viewRequestId) set({ detailLoading: false })
+     }
+   },
+-  
++
+   clearResults: () => set({ results: [], selectedPackage: null })
+ }))
+\ No newline at end of file

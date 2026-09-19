@@ -1,0 +1,2 @@
+﻿[engineering-debt] remaining: 6 oversized files, 76 long functions, 626 explicit any types
+[engineering-debt] passed: new files/functions respect 1500/100-line limits; existing debt does not grow

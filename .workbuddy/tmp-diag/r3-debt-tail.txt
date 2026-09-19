@@ -1,0 +1,25 @@
+﻿
+node.exe : file:///E:/npmManager/scripts/verify-engineering-debt.mjs:19
+所在位置 行:1 字符: 1
++ & "C:\Users\yixun\.workbuddy\binaries\node\versions\22.22.2-3/node.ex ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (file:///E:/npmM...ing-debt.mjs:19:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+if (failures.length) throw new Error(failures.join('\n'))
+                           ^
+
+Error: electron/main.ts: 2167 lines exceeds 2140
+src/features/managers/cargo/Cargo.tsx: function #1 is 543 lines, exceeds 535
+src/features/managers/extended/ExtendedEcosystems.tsx: function #1 is 499 lines, exceeds 475
+src/features/managers/flutter/Flutter.tsx: function #1 is 1012 lines, exceeds 1008
+src/features/managers/go/Go.tsx: function #1 is 570 lines, exceeds 562
+src/features/managers/gradle/Gradle.tsx: function #1 is 604 lines, exceeds 596
+src/features/managers/maven/MavenManagerPage.tsx: function #1 is 1043 lines, exceeds 1027
+src/features/managers/npm/scopes/global/Global.tsx: function #1 is 767 lines, exceeds 765
+src/features/managers/npm/scopes/project/Project.tsx: function #1 is 1091 lines, exceeds 1087
+src/features/managers/pip/PipManagerPage.tsx: function #1 is 1128 lines, exceeds 1113
+src/features/search/Search.tsx: function #1 is 894 lines, exceeds 883
+    at file:///E:/npmManager/scripts/verify-engineering-debt.mjs:19:28
+
+Node.js v22.22.2

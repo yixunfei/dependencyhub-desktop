@@ -1,0 +1,18 @@
+﻿
+> dependencyhub-desktop@1.0.3 verify:hardening
+> node scripts/verify-hardening-behaviors.mjs
+
+node.exe : file:///C:/Users/yixun/AppData/Local/Temp/dependencyhub-hardening-verifier-qntrLp/hardening-verifier.mjs:921
+所在位置 行:1 字符: 1
++ & "C:\Users\yixun\.workbuddy\binaries\node\versions\22.22.2-3/node.ex ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (file:///C:/User...erifier.mjs:921:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  testCmdArgumentQuoting();
+  ^
+
+ReferenceError: testCmdArgumentQuoting is not defined
+    at file:///C:/Users/yixun/AppData/Local/Temp/dependencyhub-hardening-verifier-qntrLp/hardening-verifier.mjs:921:3
+
+Node.js v22.22.2

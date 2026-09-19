@@ -1,0 +1,12 @@
+﻿| B17 | `extendedManager.ts` `stripJsonComments` 鏀瑰瓧绗︾骇鎵弿锛堣窡韪瓧绗︿覆/杞箟锛夛紝瀛楃涓插唴 `//` 涓嶈浼?| 鏃?|
+| B18 | `go.ts` 瑙ｆ瀽鍗曡 `replace old => new [version]` 骞跺簲鐢ㄤ负灞曠ず鐗堟湰锛堝潡褰㈠紡 replace 浠嶄笉瑙ｆ瀽锛岃涓哄凡鐭ラ檺鍒讹級 | 鏃?|
+| B19 | `projectGuard.ts` 浠诲姟鑾峰緱閿佸悗澶嶆煡 `signal.aborted`锛屽凡鍙栨秷鐭矾鎶?`OperationCancelledError` | 鏃?|
+| B20 | `npm.ts` login/adduser 琛?`child.on('error')` 杞粨鏋勫寲澶辫触锛泂tdio 淇濇寔 inherit锛圙UI 鏃?TTY 闄愬埗宸叉敞閲婅鏄庯級 | stdio 鏈寜鏂规鏀?pipe锛堜氦浜?TTY 椋庨櫓楂橈紝鍗曠嫭璇勪及锛?|
+| B21 | `CommandLogWindow.tsx` 缁堢缂撳啿 512KB 涓婇檺鐜舰娣樻卑 | 鏃?|
+| B22 | `DependencyTreeViewer.tsx` key 鏀?`鐖堕摼/搴忓彿/name` | 鏃?|
+| B23 | `MultiManager.tsx` loadProjectInfo 绉诲叆 useEffect + active 鏍囪 | 鏃?|
+
+### 宸ョ▼鍊哄熀绾胯皟鏁达紙闇€璇勫鐭ユ倝锛?
+6 涓巻鍙茶秴闄愭枃浠跺洜淇鍑€澧?1鈥?0 琛岋紙watcher 绔炴€佷慨澶嶃€佺粓绔紦鍐层€乴oading 鎷嗗垎銆乽nwatchAll锛夛紝`scripts/engineering-debt-baseline.json` 宸叉寜瀹為檯鍊间笂璋冨苟闄勬敞鍘熷洜锛涙€诲€猴紙6 瓒呭ぇ鏂囦欢 / 76 闀垮嚱鏁?/ 630 any锛夋湭澧為暱锛屾柊鏂囦欢/鏂板嚱鏁板潎绗﹀悎 1500/100 闄愬埗銆?
+### 閬楃暀涓庡悗缁?
+1. **鏈彁浜ゆ敼鍔ㄦ贩娣嗛闄?*锛氬伐浣滄爲涓粛鏈夋鍓嶉仐鐣欑殑 i18n/閲嶆瀯鏈彁浜ゆ敼鍔紙ExtendedEcosystems銆乨ictionaries銆乭ealth/actions銆乸resentation.tsx銆丆HANGELOG 绛夛級锛屼笌鏈疆淇鏃犲叧锛屾彁浜ゆ椂闇€鍒嗗紑銆?2. B18 鐨?go.mod 鍧楀舰寮?`replace ( ... )` 鏈В鏋愶紝灞炲凡鐭ラ檺鍒躲€?3. B20 鐨勬墦鍖呭悗 GUI 鐧诲綍浜や簰锛堟棤 TTY锛変粛鏄骇鍝佺骇闄愬埗锛岄渶鍚庣画鍐崇瓥锛坧ipe 鍖栫櫥褰曟祦绋嬶級銆?4. 鐪熷疄 CLI 绔埌绔€佹闈?E2E銆佽法骞冲彴楠岃瘉浠嶇己锛堜笌 09-17 澶嶆牳缁撹涓€鑷达級銆?

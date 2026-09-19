@@ -1,0 +1,25 @@
+﻿> tsc --noEmit --pretty false
+
+src/features/managers/extended/ExtendedEcosystems.tsx(183,18): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(184,29): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(186,35): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(187,34): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(187,79): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(189,36): error TS2339: Property 'command' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(189,57): error TS2339: Property 'stdout' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(189,73): error TS2339: Property 'stderr' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(189,94): error TS2339: Property 'stderr' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(190,103): error TS2339: Property 'command' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(268,18): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(268,46): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(269,35): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(270,34): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(270,79): error TS2339: Property 'backup' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(272,35): error TS2339: Property 'dryRun' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(273,36): error TS2339: Property 'command' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(273,57): error TS2339: Property 'stdout' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(273,73): error TS2339: Property 'stderr' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(273,94): error TS2339: Property 'stderr' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(274,58): error TS2339: Property 'dryRun' does not exist on type 'never'.
+src/features/managers/extended/ExtendedEcosystems.tsx(274,150): error TS2339: Property 'command' does not exist on type 'never'.
+src/features/managers/extended/managerCommands.ts(8,65): error TS2304: Cannot find name 'IpcFailureEnvelope'.
