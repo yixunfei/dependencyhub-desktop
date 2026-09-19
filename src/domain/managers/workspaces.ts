@@ -104,9 +104,9 @@ export const MANAGER_WORKSPACE_GROUPS: readonly ManagerWorkspaceGroup[] = [
     route: '/ai',
     label: 'AI Dependencies',
     shortLabel: 'AI',
-    description: 'MCP servers, agent skills, and agent instruction dependencies with pinning, provenance, and lock evidence.',
+    description: 'MCP servers, agent skills, agent instruction dependencies, and A2A agent endpoints with pinning, provenance, and lock evidence.',
     iconManagerId: 'mcp',
-    managerIds: ['mcp', 'skills', 'ai-agents']
+    managerIds: ['mcp', 'skills', 'ai-agents', 'a2a']
   },
   {
     key: 'polyglot',

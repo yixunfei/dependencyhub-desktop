@@ -34,7 +34,8 @@ const DECLARATIVE_MANAGERS = new Set<DependencyManagerId>([
   'ansible',
   'mcp',
   'skills',
-  'ai-agents'
+  'ai-agents',
+  'a2a'
 ])
 
 const RUNTIME_MANAGERS = new Set<DependencyManagerId>([

@@ -5,8 +5,8 @@ import { writeFileAtomic } from '../../../services/atomicWrite'
 import type { ManagerBackup } from '../../../../shared/managerWorkspace'
 import { asRecord, asString, parseYamlDocument, readTextIfExists } from '../../structuredData'
 
-/** The three AI dependency surfaces DependencyHub manages as first-class ecosystems. */
-export type AiManagerId = 'mcp' | 'skills' | 'ai-agents'
+/** The AI dependency surfaces DependencyHub manages as first-class ecosystems. */
+export type AiManagerId = 'mcp' | 'skills' | 'ai-agents' | 'a2a'
 
 /** Reuses the extended-manager backup layout so restoreBackup keeps working unchanged. */
 const AI_BACKUP_DIR = '.npmDesktopManager/backups/extended'
@@ -27,6 +27,11 @@ export const SKILLS_MANIFEST_FILE = 'skills.json'
 export const SKILLS_LOCK_FILE = 'skills.lock.json'
 export const AGENTS_MANIFEST_FILE = 'agents.json'
 export const AGENTS_LOCK_FILE = 'agents.lock.json'
+export const A2A_MANIFEST_FILE = 'a2a.json'
+export const A2A_LOCK_FILE = 'a2a-lock.json'
+
+/** A2A endpoint configuration files: the served agent card and client-side endpoint declarations. */
+export const A2A_CONFIG_FILES = ['.well-known/agent-card.json', 'a2a.config.json'] as const
 
 /** Root directories scanned for SKILL.md packages. */
 export const SKILL_ROOTS = ['.', 'skills', '.workbuddy-ai/skills', '.claude/skills', '.codebuddy/skills', '.agents/skills', '.cursor/skills'] as const
@@ -261,7 +266,15 @@ export async function createAiBackup(
 ): Promise<ManagerBackup> {
   const entries: AiBackupFileEntry[] = []
   for (const file of [...new Set(files)]) {
-    const content = await readTextIfExists(join(cwd, file))
+    // A path can exist but be unreadable (for example a directory shadowing a
+    // manifest name). Recording it as "did not exist" is safe: restore treats
+    // such entries with a best-effort unlink and never overwrites anything.
+    let content: string | undefined
+    try {
+      content = await readTextIfExists(join(cwd, file))
+    } catch {
+      content = undefined
+    }
     entries.push(content === undefined
       ? { file, hash: sha256(''), size: 0, exists: false, content: '' }
       : { file, hash: sha256(content), size: Buffer.byteLength(content, 'utf-8'), exists: true, content })

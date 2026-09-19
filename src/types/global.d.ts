@@ -1,5 +1,10 @@
 import type { IpcFailureEnvelope } from '../../shared/ipcFailure'
 import type {
+  AiProviderConfig,
+  AiProviderInput,
+  AiProviderTestResult
+} from '../../shared/aiProviders'
+import type {
   ManagerCommandResult,
   ManagerDependency,
   ManagerDescriptor,
@@ -496,6 +501,16 @@ declare global {
         list: (filter?: CredentialFilter) => Promise<CredentialMetadata[]>
         save: (input: CredentialInput) => Promise<CredentialMetadata>
         delete: (id: string) => Promise<boolean>
+      }
+
+      ai: {
+        providersStatus: () => Promise<{ storage: string; encrypted: boolean; activeId: string | null; providerCount: number }>
+        listProviders: () => Promise<AiProviderConfig[]>
+        upsertProvider: (input: AiProviderInput) => Promise<AiProviderConfig>
+        removeProvider: (id: string) => Promise<boolean>
+        setActiveProvider: (id: string | null) => Promise<string | null>
+        getActiveProvider: () => Promise<string | null>
+        testProvider: (id: string) => Promise<AiProviderTestResult>
       }
 
       dependencyHealth: {
@@ -1104,7 +1119,7 @@ declare global {
     | 'dnf'
     | 'apk'
     | 'pacman'
-    | 'nix' | 'mcp' | 'skills' | 'ai-agents'
+    | 'nix' | 'mcp' | 'skills' | 'ai-agents' | 'a2a'
   type DependencyManagerId = PackageManagerId | FuturePackageManagerId
   type ManagerImplementationStatus = 'stable' | 'preview' | 'planned'
   type ManagerScope = 'project' | 'environment' | 'global' | 'repository' | 'publish'

@@ -69,6 +69,7 @@ export const zhCN = {
   'layout.environmentToolchains': '环境与工具链',
   'layout.healthSecurity': '健康与安全',
   'layout.extendedEcosystems': '扩展生态',
+  'layout.aiProviders': 'AI 供应商',
   'path.label': '项目路径',
   'path.select': '选择目录',
   'path.recent': '最近目录',

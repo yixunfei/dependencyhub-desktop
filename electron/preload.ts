@@ -2,6 +2,10 @@ import { unwrapIpcResult } from '../shared/ipcFailure'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DependencyManagerId as RegistryDependencyManagerId } from '../shared/managerRegistry'
 import type {
+  AiProviderInput,
+  AiProviderTestResult
+} from '../shared/aiProviders'
+import type {
   ManagerExecuteOptions,
   ManagerOperationRequest,
   ManagerSearchQuery
@@ -243,6 +247,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     search: (cwd: string | undefined, managerId: RegistryDependencyManagerId, query: ManagerSearchQuery) => invoke('manager:search', cwd, managerId, query),
     health: (cwd: string, managerId: RegistryDependencyManagerId) => invoke('manager:health', cwd, managerId),
     restoreBackup: (cwd: string, backupPath: string) => invoke('manager:restore-backup', cwd, backupPath)
+  },
+
+  ai: {
+    providersStatus: () => invoke('ai:providers:status'),
+    listProviders: () => invoke('ai:providers:list'),
+    upsertProvider: (input: AiProviderInput) => invoke('ai:providers:upsert', input),
+    removeProvider: (id: string) => invoke('ai:providers:remove', id),
+    setActiveProvider: (id: string | null) => invoke('ai:providers:set-active', id),
+    getActiveProvider: () => invoke('ai:providers:get-active'),
+    testProvider: (id: string): Promise<AiProviderTestResult> => invoke('ai:providers:test', id)
   },
 
   operations: {
@@ -825,6 +839,7 @@ export type FuturePackageManagerId =
   | 'mcp'
   | 'skills'
   | 'ai-agents'
+  | 'a2a'
 export type DependencyManagerId = PackageManagerId | FuturePackageManagerId
 export type DependencyHealthManager = PackageManagerId
 export type DependencyHealthSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info'

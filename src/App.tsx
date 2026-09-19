@@ -19,6 +19,7 @@ const PythonEnvironmentManagersPage = lazy(() => import('./features/managers/pyt
 const BackendPackageManagersPage = lazy(() => import('./features/managers/backend/BackendPackageManagersPage'))
 const CloudNativeManagersPage = lazy(() => import('./features/managers/cloud/CloudNativeManagersPage'))
 const AiManagersPage = lazy(() => import('./features/managers/ai/AiManagersPage'))
+const AiProvidersPage = lazy(() => import('./features/ai/AiProvidersPage'))
 const PlatformManagersPage = lazy(() => import('./features/managers/platform/PlatformManagersPage'))
 const PolyglotManagersPage = lazy(() => import('./features/managers/polyglot/PolyglotManagersPage'))
 const DataScienceManagersPage = lazy(() => import('./features/managers/data/DataScienceManagersPage'))
@@ -72,6 +73,7 @@ const App: React.FC = () => {
             <Route path="/backend" element={<BackendPackageManagersPage />} />
             <Route path="/cloud" element={<CloudNativeManagersPage />} />
             <Route path="/ai" element={<AiManagersPage />} />
+            <Route path="/ai-providers" element={<AiProvidersPage />} />
             <Route path="/platform" element={<PlatformManagersPage />} />
             <Route path="/polyglot" element={<PolyglotManagersPage />} />
             <Route path="/data" element={<DataScienceManagersPage />} />

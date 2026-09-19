@@ -35,7 +35,7 @@ export function managerIcon(id: DependencyManagerId): React.ReactNode {
   if (id === 'docker') return <DockerOutlined />
   if (id === 'terraform' || id === 'opentofu' || id === 'ansible') return <CloudServerOutlined />
   if (id === 'github-actions' || id === 'gitlab-ci' || id === 'pre-commit') return <DeploymentUnitOutlined />
-  if (id === 'mcp' || id === 'skills' || id === 'ai-agents') return <ExperimentOutlined />
+  if (id === 'mcp' || id === 'skills' || id === 'ai-agents' || id === 'a2a') return <ExperimentOutlined />
   if (id === 'bazel' || id === 'pants' || id === 'buck') return <ToolOutlined />
   if (id === 'opam' || id === 'cpan' || id === 'luarocks' || id === 'shards' || id === 'zig') return <ApiOutlined />
   if (id === 'homebrew' || id === 'chocolatey' || id === 'scoop' || id === 'winget' || id === 'asdf' || id === 'mise' || id === 'sdkman' || id === 'apt' || id === 'dnf' || id === 'apk' || id === 'pacman' || id === 'nix') return <ToolOutlined />
@@ -56,7 +56,7 @@ export function managerColor(id: DependencyManagerId): string {
   if (id === 'kustomize' || id === 'helmfile' || id === 'skaffold' || id === 'argocd' || id === 'flux') return 'blue'
   if (id === 'terraform' || id === 'opentofu' || id === 'ansible') return 'blue'
   if (id === 'github-actions' || id === 'gitlab-ci' || id === 'pre-commit') return 'geekblue'
-  if (id === 'mcp' || id === 'skills' || id === 'ai-agents') return 'purple'
+  if (id === 'mcp' || id === 'skills' || id === 'ai-agents' || id === 'a2a') return 'purple'
   if (id === 'bazel' || id === 'pants' || id === 'buck') return 'gold'
   if (id === 'opam' || id === 'cpan' || id === 'luarocks' || id === 'shards' || id === 'zig') return 'volcano'
   if (id === 'homebrew' || id === 'chocolatey' || id === 'scoop' || id === 'winget' || id === 'asdf' || id === 'mise' || id === 'sdkman' || id === 'apt' || id === 'dnf' || id === 'apk' || id === 'pacman' || id === 'nix') return 'cyan'

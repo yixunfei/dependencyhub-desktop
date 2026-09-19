@@ -653,6 +653,8 @@ async function hasAiManifest(directory: string): Promise<boolean> {
     || await exists(join(directory, 'mcp.json'))
     || await exists(join(directory, 'skills.json'))
     || await exists(join(directory, 'agents.json'))
+    || await exists(join(directory, 'a2a.json'))
+    || await exists(join(directory, '.well-known', 'agent-card.json'))
 }
 
 async function readWorkspaceIdentity(directory: string): Promise<{ packageName?: string; version?: string }> {

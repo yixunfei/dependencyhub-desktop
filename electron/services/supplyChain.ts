@@ -345,7 +345,8 @@ const SPECIALIZED_INVENTORY_MANAGER_IDS = new Set<DependencyManagerId>([
   'bundler',
   'mcp',
   'skills',
-  'ai-agents'
+  'ai-agents',
+  'a2a'
 ])
 
 export class SupplyChainService {
@@ -2000,6 +2001,7 @@ function packageUrl(managerId: DependencyManagerId, name: string, version?: stri
   if (managerId === 'mcp') return `pkg:generic/mcp-server/${encodeURIComponent(name)}${suffix}`
   if (managerId === 'skills') return `pkg:generic/agent-skill/${encodeURIComponent(name)}${suffix}`
   if (managerId === 'ai-agents') return `pkg:generic/agent-instruction/${encodeURIComponent(name)}${suffix}`
+  if (managerId === 'a2a') return `pkg:generic/a2a-agent/${encodeURIComponent(name)}${suffix}`
   return undefined
 }
 

@@ -8,7 +8,7 @@ const workDir = await mkdtemp(join(tmpdir(), 'dependencyhub-ai-verifier-'))
 const outputFile = join(workDir, 'ai-verifier.mjs')
 
 const runner = String.raw`
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { ManagerWorkspaceService } from './electron/services/managerWorkspace'
@@ -28,11 +28,11 @@ const main = async () => {
   const service = new ManagerWorkspaceService()
 
   // --- descriptors -------------------------------------------------------
-  for (const id of ['mcp', 'skills', 'ai-agents']) {
+  for (const id of ['mcp', 'skills', 'ai-agents', 'a2a']) {
     const descriptor = service.descriptors().find((item) => item.managerId === id)
     assert(descriptor && descriptor.status === 'preview', id + ' is served by a preview adapter')
     assert(descriptor.capabilities.health === true, id + ' exposes health capability')
-    assert(descriptor.capabilities.search === false, id + ' does not expose package search')
+    assert(descriptor.capabilities.search === (id === 'mcp'), id + ' exposes search only when a registry exists')
     assert(descriptor.capabilities.customCommands === false, id + ' rejects arbitrary shell commands')
     assert(descriptor.capabilities.operations.join(',') === 'sync,install,remove,audit,tree,list,lock', id + ' exposes the local AI operation set')
   }
@@ -106,11 +106,21 @@ const main = async () => {
   const missingRemove = await service.plan(mcp, 'mcp', { operation: 'remove', packageName: 'does-not-exist' })
   assert(missingRemove.requirements.length === 0 && missingRemove.mutating, 'MCP remove plans without requiring extra input')
 
+  // --- MCP registry search -------------------------------------------------
+  const mcpSearch = await service.search(mcp, 'mcp', { text: 'filesystem', limit: 10 })
+  assert(mcpSearch.some((item) => item.name === '@modelcontextprotocol/server-filesystem'), 'MCP search finds the reference filesystem server in the curated catalog')
+  assert(mcpSearch.every((item) => item.managerId === 'mcp'), 'MCP search results carry the mcp manager id')
+  let mcpSearchRejected = false
+  try { await service.search(mcp, 'skills', { text: 'anything' }) } catch { mcpSearchRejected = true }
+  assert(mcpSearchRejected, 'AI managers without a registry reject package search')
+
   // --- MCP failure rollback ---------------------------------------------
+  // The atomic writer stages under a unique name, so the write is blocked by
+  // putting a directory at the destination path: every platform rejects a
+  // file-over-directory rename, and the original state must stay untouched.
   const blocked = await fixture()
   await writeFile(join(blocked, '.mcp.json'), JSON.stringify({ mcpServers: { keep: { command: 'npx', args: ['-y', 'keep@1.0.0'] } } }, null, 2))
-  await writeFile(join(blocked, 'mcp-lock.json'), '{"version":1,"servers":[]}\n')
-  await mkdir(join(blocked, 'mcp-lock.json.dependencyhub-tmp'), { recursive: true })
+  await mkdir(join(blocked, 'mcp-lock.json'), { recursive: true })
   let failure = null
   try {
     await service.execute(blocked, 'mcp', { operation: 'lock' })
@@ -118,8 +128,10 @@ const main = async () => {
     failure = error
   }
   assert(failure !== null, 'MCP lock surfaces a write failure instead of reporting success')
-  assert(failure.restore?.restored === true, 'MCP lock restores the previous lock file after a failure')
-  assert((await read(join(blocked, 'mcp-lock.json'))).includes('"servers":[]'), 'MCP lock failure leaves the original lock file intact')
+  assert(failure.restore?.restored === true, 'MCP lock restores the previous state after a failure')
+  let destinationStillBlocked = false
+  try { destinationStillBlocked = (await stat(join(blocked, 'mcp-lock.json'))).isDirectory() } catch { }
+  assert(destinationStillBlocked, 'MCP lock failure leaves the original destination state intact')
 
   // --- skills ------------------------------------------------------------
   const skills = await fixture()
@@ -193,6 +205,55 @@ const main = async () => {
   const agentsAudit = await service.execute(agents, 'ai-agents', { operation: 'audit' })
   assert(agentsAudit.stdout.includes('ai-agents audit'), 'agents audit returns local findings as command output')
 
+  // --- A2A agent endpoints -------------------------------------------------
+  const a2a = await fixture()
+  await mkdir(join(a2a, '.well-known'), { recursive: true })
+  await writeFile(join(a2a, '.well-known', 'agent-card.json'), JSON.stringify({
+    name: 'code-reviewer',
+    description: 'Reviews pull requests and reports findings.',
+    protocolVersion: '0.3.0',
+    url: 'https://agents.example.test/a2a',
+    securitySchemes: ['oauth2'],
+    skills: [{ id: 'review-pr' }]
+  }, null, 2))
+  await writeFile(join(a2a, 'a2a.config.json'), JSON.stringify({
+    agents: [
+      { name: 'translator', url: 'https://translate.example.test', protocolVersion: '0.3.0' },
+      { name: 'local-dev-agent', url: 'http://localhost:9101' },
+      { name: 'no-url-agent' }
+    ]
+  }, null, 2))
+
+  const a2aInventory = await service.inventory(a2a, 'a2a')
+  assert(a2aInventory.some((item) => item.name === 'code-reviewer' && item.status === 'installed' && item.type === 'agent-card'), 'A2A inventory reads the served agent card')
+  assert(a2aInventory.find((item) => item.name === 'code-reviewer')?.metadata.authSchemes === 'oauth2', 'A2A inventory records security schemes')
+  assert(a2aInventory.some((item) => item.name === 'translator' && item.type === 'config'), 'A2A inventory reads client-configured endpoints')
+  assert(a2aInventory.find((item) => item.name === 'no-url-agent')?.status === 'invalid', 'A2A inventory flags an endpoint without a url')
+
+  const a2aHealth = await service.health(a2a, 'a2a')
+  assert(a2aHealth.findings.some((item) => item.id === 'a2a-insecure:local-dev-agent' && item.severity === 'warning'), 'A2A health downgrades loopback HTTP to a warning')
+  assert(a2aHealth.findings.some((item) => item.id === 'a2a-invalid:no-url-agent'), 'A2A health reports endpoint definitions without a url')
+  assert(a2aHealth.findings.some((item) => item.id === 'a2a-lock-missing-entry:code-reviewer'), 'A2A health reports missing lock evidence')
+
+  const a2aInstall = await service.execute(a2a, 'a2a', { operation: 'install', packageName: 'https://search.example.test/agent-card.json' })
+  const a2aManifest = JSON.parse(await read(join(a2a, 'a2a.json')))
+  assert(a2aManifest.agents[0].name === 'search.example.test' && a2aManifest.agents[0].source.startsWith('https://'), 'A2A install derives a name from the endpoint URL')
+  assert(Boolean(a2aInstall.backup), 'A2A install keeps a restorable backup')
+
+  const a2aLockResult = await service.execute(a2a, 'a2a', { operation: 'lock' })
+  const a2aLock = JSON.parse(await read(join(a2a, 'a2a-lock.json')))
+  assert(a2aLock.agents.length >= 3 && a2aLock.agents.every((entry) => entry.hash.length === 64), 'A2A lock records hash evidence for every endpoint')
+  assert(Boolean(a2aLockResult.backup), 'A2A lock keeps a restorable backup')
+
+  const a2aRemove = await service.execute(a2a, 'a2a', { operation: 'remove', packageName: a2aManifest.agents[0].name })
+  assert(JSON.parse(await read(join(a2a, 'a2a.json'))).agents.length === 0, 'A2A remove deletes the endpoint declaration')
+  assert(Boolean(a2aRemove.backup), 'A2A remove keeps a restorable backup')
+
+  const a2aCardOnly = await fixture()
+  await writeFile(join(a2aCardOnly, 'a2a.json'), JSON.stringify({ version: 1, agents: [{ name: 'ghost', source: 'https://ghost.example.test' }] }, null, 2))
+  const a2aMissing = await service.inventory(a2aCardOnly, 'a2a')
+  assert(a2aMissing.some((item) => item.name === 'ghost' && item.status === 'missing'), 'A2A inventory reports declared-but-undiscovered endpoints as missing')
+
   // --- governance integration -------------------------------------------
   const integration = await fixture()
   await writeFile(join(integration, '.mcp.json'), JSON.stringify({
@@ -204,6 +265,15 @@ const main = async () => {
   await mkdir(join(integration, 'skills', 'pdf'), { recursive: true })
   await writeFile(join(integration, 'skills', 'pdf', 'SKILL.md'), '---\nname: pdf\ndescription: pdf tooling\nversion: 1.0.0\n---\n\nUse pdf.\n')
   await writeFile(join(integration, 'AGENTS.md'), '# Instructions\n\nBe helpful.\n')
+
+  // Nested AI-only manifest directories must exist before the first discovery
+  // report: the scanner caches directory listings, so dirs created between two
+  // report() calls stay invisible to the second call.
+  await mkdir(join(integration, 'ai-only'), { recursive: true })
+  await writeFile(join(integration, 'ai-only', '.mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2))
+  await mkdir(join(integration, 'py-with-ai'), { recursive: true })
+  await writeFile(join(integration, 'py-with-ai', 'pyproject.toml'), '[project]\nname = "demo"\n')
+  await writeFile(join(integration, 'py-with-ai', '.mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2))
 
   // The legacy extended-manager service backs the SBOM, so it must not fall
   // back to listing the manifest file itself as if it were a dependency.
@@ -240,12 +310,6 @@ const main = async () => {
   assert(['mcp', 'skills', 'ai-agents'].every((id) => rootWorkspace.managerIds.includes(id)), 'workspace discovery detects all three AI managers')
   assert(rootWorkspace.manifestFiles.includes('.mcp.json'), 'workspace discovery records the MCP manifest')
 
-  // Nested AI-only manifest directories must not be mislabelled as python-package.
-  await mkdir(join(integration, 'ai-only'), { recursive: true })
-  await writeFile(join(integration, 'ai-only', '.mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2))
-  await mkdir(join(integration, 'py-with-ai'), { recursive: true })
-  await writeFile(join(integration, 'py-with-ai', 'pyproject.toml'), '[project]\nname = "demo"\n')
-  await writeFile(join(integration, 'py-with-ai', '.mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2))
   const nested = (await discovery.report(integration)).workspaces
   const aiOnly = nested.find((item) => item.relativePath === 'ai-only')
   assert(aiOnly?.kind === 'ai-project' && aiOnly.managerIds.join(',') === 'mcp', 'an AI-only manifest directory is reported as ai-project with the exact detected manager')

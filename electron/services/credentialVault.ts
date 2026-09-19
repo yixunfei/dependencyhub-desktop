@@ -7,7 +7,11 @@ import {
   type CredentialStorage
 } from './credentialVaultCore'
 
-function createElectronCredentialCipher(): CredentialCipher {
+/**
+ * Shared safeStorage-backed cipher. Exported so sibling stores (AI provider API
+ * keys) use the same at-rest encryption instead of reinventing it.
+ */
+export function createElectronCredentialCipher(): CredentialCipher {
   if (!safeStorage.isEncryptionAvailable()) {
     // Product decision: keep saving on Linux hosts without a keyring, but the
     // degraded state must be visible. CredentialMetadata.storage/encrypted

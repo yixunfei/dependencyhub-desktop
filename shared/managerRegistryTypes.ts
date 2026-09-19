@@ -66,6 +66,7 @@ export type FuturePackageManagerId =
   | 'mcp'
   | 'skills'
   | 'ai-agents'
+  | 'a2a'
 
 export type DependencyManagerId = ImplementedPackageManagerId | FuturePackageManagerId
 export type ManagerImplementationStatus = 'stable' | 'preview' | 'planned'

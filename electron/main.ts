@@ -60,6 +60,8 @@ import { SmartUpdateService } from './services/smartUpdate'
 import { PluginCatalogService } from './services/pluginCatalog'
 import { exportOperationHistory, listOperationHistory } from './services/operationHistory'
 import { credentialVaultService, type CredentialInput } from './services/credentialVault'
+import { aiProviderStore } from './services/aiProviders'
+import type { AiProviderInput } from './services/aiProviders'
 import { TerminalService, setTerminalWindow } from './services/terminal'
 import { checkTools, openToolDownload, setToolPath, clearToolPath, getProjectToolchainConfig, checkTool, TOOL_NAMES } from './services/toolchain'
 import { fileWatcher } from './services/watcher'
@@ -716,6 +718,35 @@ function setupIpcHandlers() {
 
   handleIpc('credentials:delete', async (_, id: string) => {
     return await credentialVaultService.delete(id)
+  })
+
+  // --- AI provider management (MCP / LLM providers) ------------------------
+  handleIpc('ai:providers:status', async () => {
+    return await aiProviderStore.status()
+  })
+
+  handleIpc('ai:providers:list', async () => {
+    return await aiProviderStore.list()
+  })
+
+  handleIpc('ai:providers:upsert', async (_, input: AiProviderInput) => {
+    return await aiProviderStore.upsert(input)
+  })
+
+  handleIpc('ai:providers:remove', async (_, id: string) => {
+    return await aiProviderStore.remove(id)
+  })
+
+  handleIpc('ai:providers:set-active', async (_, id: string | null) => {
+    return await aiProviderStore.setActive(id)
+  })
+
+  handleIpc('ai:providers:get-active', async () => {
+    return await aiProviderStore.activeId()
+  })
+
+  handleIpc('ai:providers:test', async (_, id: string) => {
+    return await aiProviderStore.test(id)
   })
 
   handleIpc('open-external', async (_, url: string) => {

@@ -1,5 +1,6 @@
 import type { MenuProps } from 'antd'
 import {
+  ApiOutlined,
   DashboardOutlined,
   DeploymentUnitOutlined,
   ExperimentOutlined,
@@ -59,6 +60,7 @@ export function buildMainMenuEntries(
     { key: '/environment', icon: <ToolOutlined />, label: t('layout.environmentToolchains') },
     { key: '/health', icon: <SafetyCertificateOutlined />, label: t('layout.healthSecurity') },
     { key: '/extended', icon: <ExperimentOutlined />, label: t('layout.extendedEcosystems') },
+    { key: '/ai-providers', icon: <ApiOutlined />, label: t('layout.aiProviders') },
     { key: '/search', icon: <SearchOutlined />, label: t('layout.search') },
     { key: '/plugins', icon: <DeploymentUnitOutlined />, label: t('layout.plugins') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') }

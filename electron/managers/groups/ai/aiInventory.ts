@@ -3,6 +3,7 @@ import type { ManagerDependency } from '../../../../shared/managerWorkspace'
 import { readMcpInventory } from './mcpInventory'
 import { readSkillsInventory } from './skillsInventory'
 import { readAgentsInventory } from './agentsInventory'
+import { readA2aInventory } from './a2aInventory'
 
 /**
  * Resolves AI dependency inventory from a manager id alone, for consumers that
@@ -17,5 +18,6 @@ export async function readAiManagerInventory(
   if (managerId === 'mcp') return await readMcpInventory(cwd)
   if (managerId === 'skills') return await readSkillsInventory(cwd)
   if (managerId === 'ai-agents') return await readAgentsInventory(cwd)
+  if (managerId === 'a2a') return await readA2aInventory(cwd)
   return undefined
 }

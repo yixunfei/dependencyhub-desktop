@@ -69,6 +69,7 @@ export const enUS = {
   'layout.environmentToolchains': 'Environment & Toolchains',
   'layout.healthSecurity': 'Health & Security',
   'layout.extendedEcosystems': 'Extended Ecosystems',
+  'layout.aiProviders': 'AI Providers',
   'common.listSeparator': '; ',
   'path.label': 'Project path',
   'path.select': 'Select folder',
