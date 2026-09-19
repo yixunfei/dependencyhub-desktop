@@ -18,6 +18,7 @@ import { useT, type LabelTranslator } from '../../../../../i18n'
 import { VERSION_PAGE_SIZE, VersionChannelFilter, toVersionOptions, versionsForFilter } from '../../../../../utils/npmVersions'
 import { cleanPackageSummary, formatCompactNumber } from '../../../../../utils/npmDisplay'
 import { useDependencyHealthReminder } from '../../../../../hooks/useDependencyHealthReminder'
+import { pagedPagination } from '../../../../../utils/tablePagination'
 import styles from './Project.module.css'
 
 const SEARCH_PAGE_SIZE = 10
@@ -955,7 +956,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
                     columns={columns}
                     rowKey="name"
                     size="small"
-                    pagination={false}
+                    pagination={pagedPagination(projectPackages, t)}
                     scroll={{ x: 900 }}
                     rowSelection={rowSelection}
                   />

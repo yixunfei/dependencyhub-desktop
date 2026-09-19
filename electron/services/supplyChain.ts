@@ -9,6 +9,9 @@ import {
 } from '../../shared/managerRegistry'
 import { ExtendedManagerService } from './extendedManager'
 import { existingPatternMatches, readdirSafe } from '../managers/patternFiles'
+import { writeFileAtomic } from './atomicWrite'
+import { writeTextReport, writeJsonReport } from './reportWriter'
+import { pruneDirectory } from './retention'
 
 export interface SupplyChainComponent {
   managerId: DependencyManagerId
@@ -265,6 +268,9 @@ export interface LicenseComplianceExportResult {
 
 const REPORT_DIR = '.npmDesktopManager/reports'
 const SNAPSHOT_DIR = '.npmDesktopManager/snapshots'
+/** Recent enough to undo a bad change, bounded enough to never surprise the user. */
+const MAX_SNAPSHOTS = 20
+const MAX_SNAPSHOT_DIR_BYTES = 64 * 1024 * 1024
 const POLICY_FILE = '.npmDesktopManager/dependency-policy.json'
 const SNAPSHOT_MAX_SCAN_DEPTH = 5
 const SNAPSHOT_IGNORED_DIRECTORIES = new Set([
@@ -514,7 +520,17 @@ export class SupplyChainService {
     }
     const path = join(cwd, SNAPSHOT_DIR, `${id}.json`)
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, JSON.stringify(snapshot, null, 2), 'utf-8')
+    // A snapshot is the only thing standing between the user and a broken
+    // manifest, so it must be durable: a plain write can leave a half-written
+    // file behind if the process dies mid write.
+    await writeFileAtomic(path, JSON.stringify(snapshot, null, 2))
+    // Every mutation stores a full copy of the manifests; keeping only recent
+    // ones stops the folder filling the user's repository over time.
+    await pruneDirectory(dirname(path), '.json', {
+      maxFiles: MAX_SNAPSHOTS,
+      maxBytes: MAX_SNAPSHOT_DIR_BYTES,
+      keepPath: path
+    })
     return {
       id,
       createdAt: snapshot.createdAt,
@@ -2102,14 +2118,7 @@ function normalizeRuleSeverity(value: unknown): DependencyPolicyViolation['sever
 }
 
 async function writeReport(cwd: string, fileName: string, payload: unknown): Promise<string> {
-  return await writeTextReport(cwd, fileName, JSON.stringify(payload, null, 2))
-}
-
-async function writeTextReport(cwd: string, fileName: string, content: string): Promise<string> {
-  const path = join(cwd, REPORT_DIR, fileName)
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, content, 'utf-8')
-  return path
+  return await writeJsonReport(cwd, fileName, payload)
 }
 
 async function readSupplyChainFiles(cwd: string): Promise<SnapshotFile[]> {

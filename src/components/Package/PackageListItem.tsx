@@ -16,7 +16,11 @@ interface PackageListItemProps {
   showType?: boolean
 }
 
-export const PackageListItem: React.FC<PackageListItemProps> = ({
+/**
+ * Memoised because this renders once per dependency: without it any parent state
+ * change (filter term, selection, pending install) re-rendered every row.
+ */
+export const PackageListItem: React.FC<PackageListItemProps> = React.memo(({
   pkg,
   onUpdate,
   onUninstall,
@@ -78,4 +82,4 @@ export const PackageListItem: React.FC<PackageListItemProps> = ({
       </Space>
     </div>
   )
-}
+})

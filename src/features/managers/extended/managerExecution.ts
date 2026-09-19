@@ -2,6 +2,9 @@ import type { Dispatch,RefObject,SetStateAction } from 'react'
 import type { ManagerBackup,ManagerCommandResult,ManagerOperationFailure } from '@shared/managerWorkspace'
 import type { DependencyManagerId } from '../../../domain/managers/registry'
 import type { Notification } from '../../../stores/appStore'
+import { translate } from '../../../i18n'
+import { useSettingsStore } from '../../../stores/settingsStore'
+import { describeFailure } from '../../../components/OperationFailure/failureGuidance'
 
 type Setter<T>=Dispatch<SetStateAction<T>>
 export interface ManagerExecutionContext {
@@ -69,12 +72,16 @@ export async function executeManagerCommand(context: ManagerExecutionContext,ope
       failure? `[category] ${failure.category}${failure.exitCode!==undefined? ` (exit ${failure.exitCode})`:''}`:'',
       error?.restore?.attempted? `[restore] ${error.restore.restored? 'Manifest and lockfile backup restored':error.restore.error||'Restore failed'}`:''
     ].filter(Boolean).join('\n'))
+    // Explain the failure instead of forwarding raw stderr: users were left to
+    // recognise things like "EAI_AGAIN" or "ENEEDAUTH" on their own.
+    const { language }=useSettingsStore.getState()
+    const text=describeFailure((key,params) => translate(language,key,params),failure)
     if(failure?.category==='cancelled') {
-      addNotification({ type: 'info',message: 'Command cancelled',description: error.message })
+      addNotification({ type: 'info',message: text.title,description: text.reason })
     } else if(failure?.category==='timeout') {
-      addNotification({ type: 'warning',message: 'Command timed out',description: 'The process was stopped; you can retry or restore the last backup.' })
+      addNotification({ type: 'warning',message: text.title,description: text.reason })
     } else {
-      addNotification({ type: 'error',message: failure?.retryable? 'Command failed (retryable)':'Command failed',description: error.message })
+      addNotification({ type: 'error',message: text.title,description: text.reason })
     }
   } finally {
     if(isCurrent()) {

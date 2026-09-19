@@ -1,13 +1,15 @@
 import { randomUUID } from 'crypto'
 import { projectIdentity } from './projectIdentity'
 import { AsyncLocalStorage } from 'async_hooks'
+import {
+  classifyFailureText,
+  type FailureClassification,
+  type FailureEvidence,
+  type FailureReason,
+  type OperationFailureCategory
+} from './failureClassifier'
 
-export type OperationFailureCategory =
-  | 'cancelled'
-  | 'timeout'
-  | 'exit-code'
-  | 'output-limit'
-  | 'unknown'
+export type { OperationFailureCategory, FailureClassification, FailureEvidence, FailureReason }
 
 /** Failure shape every operation rejects with, so the renderer can offer 重试 / 回滚 / 查看日志. */
 export interface OperationFailure {
@@ -15,6 +17,9 @@ export interface OperationFailure {
   operationId: string
   message: string
   retryable: boolean
+  /** Why it failed, as a translatable key plus evidence instead of raw stderr. */
+  reason?: FailureReason
+  evidence?: FailureEvidence
   exitCode?: number | string | null
   backupPath?: string
 }
@@ -75,8 +80,11 @@ export interface BeginOperationResult {
 export function beginOperation(input: OperationContextInput = {}): BeginOperationResult {
   const operationId = input.operationId?.trim() || randomUUID()
   if (activeOperations.has(operationId)) throw new Error(`Operation already active: ${operationId}`)
+  // Disabling the timeout is legitimate for a long read, but a mutation without
+  // one could hold the project queue forever if its child never exits, so it
+  // keeps the generous mutation default instead of running unbounded.
   const timeoutMs = input.timeoutMs === null
-    ? undefined
+    ? (input.kind === 'read' ? undefined : DEFAULT_TIMEOUT_MS.mutation)
     : input.timeoutMs ?? DEFAULT_TIMEOUT_MS[input.kind || 'mutation']
   const controller = new AbortController()
   activeOperations.set(operationId, {
@@ -149,6 +157,8 @@ export function attachOperationFailure(error: unknown, operationId?: string): Er
 const CANCEL_MESSAGE = /was cancelled/i
 const TIMEOUT_MESSAGE = /timed out after/i
 const OUTPUT_MESSAGE = /output exceeded/i
+/** Bounded so scanning garbage output cannot dominate a failure report. */
+const MAX_CLASSIFY_TEXT = 8000
 
 export function classifyOperationFailure(
   error: unknown,
@@ -158,30 +168,59 @@ export function classifyOperationFailure(
     code?: number | string | null
     failure?: OperationFailure
     backup?: { path?: string }
+    stdout?: string
+    stderr?: string
   }
   if (value.failure) return { ...value.failure, backupPath: value.backup?.path || value.failure.backupPath }
   const message = typeof value.message === 'string' && value.message.trim() ? value.message : String(error ?? 'Operation failed')
-  const explicit = value.category
-  const category: OperationFailureCategory = explicit === 'cancelled' || explicit === 'timeout' || explicit === 'exit-code' || explicit === 'output-limit' || explicit === 'unknown'
-    ? explicit
-    : CANCEL_MESSAGE.test(message)
-      ? 'cancelled'
-      : TIMEOUT_MESSAGE.test(message)
-        ? 'timeout'
-        : OUTPUT_MESSAGE.test(message)
-          ? 'output-limit'
-          : value.code !== undefined && value.code !== null && value.code !== 0
-            ? 'exit-code'
-            : 'unknown'
+  const category = lifecycleCategory(value.category, message, value.code)
   const exitCode = typeof value.code === 'number' || typeof value.code === 'string' ? value.code : undefined
+
+  // "exit-code" and "unknown" are what the user sees before this step: they say
+  // that something stopped, never what went wrong. Anything more meaningful is
+  // buried in stderr, so read it before deciding what to tell them.
+  const classification = (category === 'exit-code' || category === 'unknown')
+    ? classifyFailureText(failureText(message, value))
+    : undefined
+
   return {
-    category,
+    category: classification?.category ?? category,
     operationId: typeof value.operationId === 'string' && value.operationId ? value.operationId : fallbackOperationId,
     message,
-    retryable: value.retryable ?? (category !== 'unknown' || exitCode === undefined),
+    retryable: value.retryable ?? classification?.retryable ?? (category !== 'unknown' || exitCode === undefined),
+    reason: classification?.reason,
+    evidence: classification?.evidence,
     exitCode,
     backupPath: value.backupPath || value.backup?.path
   }
+}
+
+/** Keeps a stray `category` field from turning into an unrenderable value downstream. */
+const KNOWN_CATEGORIES = new Set<OperationFailureCategory>([
+  'cancelled', 'timeout', 'output-limit', 'exit-code', 'unknown',
+  'network', 'certificate', 'proxy', 'permission', 'toolchain-missing', 'auth', 'registry', 'conflict'
+])
+
+function lifecycleCategory(
+  explicit: string | undefined,
+  message: string,
+  code?: number | string | null
+): OperationFailureCategory {
+  if (explicit && KNOWN_CATEGORIES.has(explicit as OperationFailureCategory)) return explicit as OperationFailureCategory
+  if (CANCEL_MESSAGE.test(message)) return 'cancelled'
+  if (TIMEOUT_MESSAGE.test(message)) return 'timeout'
+  if (OUTPUT_MESSAGE.test(message)) return 'output-limit'
+  return code !== undefined && code !== null && code !== 0 ? 'exit-code' : 'unknown'
+}
+
+function failureText(message: string, value: { stdout?: string; stderr?: string }): string {
+  const parts = [message, value.stderr, value.stdout].filter((part): part is string =>
+    typeof part === 'string' && part.trim().length > 0)
+  // stderr is what package managers use to explain themselves; stdout rarely
+  // matters, so it only gets a small share of the bounded window.
+  return parts.map((part, index) => (index === 2 ? part.slice(-2000) : part))
+    .join('\n')
+    .slice(0, MAX_CLASSIFY_TEXT)
 }
 
 /** Attaches a structured `failure` field to any rejected operation result. */

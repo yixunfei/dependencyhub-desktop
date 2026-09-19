@@ -1,17 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button, Layout, Menu, Segmented, Tooltip } from 'antd'
 import {
-  SearchOutlined,
-  SettingOutlined,
   DesktopOutlined,
   BulbOutlined,
   BulbFilled,
-  DashboardOutlined,
-  ToolOutlined,
-  DeploymentUnitOutlined,
-  ExperimentOutlined,
-  SafetyCertificateOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   FolderOpenOutlined
@@ -19,10 +12,9 @@ import {
 import { ThemeMode, useThemeStore } from '../../stores/themeStore'
 import { useResolvedTheme } from '../../hooks/useResolvedTheme'
 import { useT } from '../../i18n'
-import { getImplementedManagerDefinitions } from '../../domain/managers/registry'
 import { useAppStore } from '../../stores/appStore'
-import { managerIcon } from '../../domain/managers/presentation'
-import { MANAGER_WORKSPACE_GROUPS, findWorkspaceGroupByPath } from '../../domain/managers/workspaces'
+import { findWorkspaceGroupByPath } from '../../domain/managers/workspaces'
+import { buildMainMenuEntries, buildManagerMenuEntries } from './layoutMenu'
 import styles from './MainLayout.module.css'
 
 const { Sider, Content, Footer } = Layout
@@ -57,63 +49,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     document.documentElement.setAttribute('data-theme', resolvedMode)
   }, [resolvedMode])
   
-  const groupedManagerIds = new Set(MANAGER_WORKSPACE_GROUPS.flatMap((group) => group.managerIds))
-  const managerItems = [
-    ...MANAGER_WORKSPACE_GROUPS.map((group) => ({
-      key: group.route,
-      icon: managerIcon(group.iconManagerId),
-      label: group.shortLabel
-    })),
-    ...getImplementedManagerDefinitions().filter((manager) => !groupedManagerIds.has(manager.id)).map((manager) => ({
-      key: manager.route || `/${manager.id}`,
-      icon: managerIcon(manager.id),
-      label: manager.shortName
-    }))
-  ]
-
-  const menuItems = [
-    {
-      key: '/workspace',
-      icon: <DashboardOutlined />,
-      label: t('layout.workspace')
-    },
-    {
-      key: 'managers',
-      label: t('layout.ecosystemManagement'),
-      type: 'group' as const,
-      children: managerItems
-    },
-    {
-      key: '/environment',
-      icon: <ToolOutlined />,
-      label: t('layout.environmentToolchains')
-    },
-    {
-      key: '/health',
-      icon: <SafetyCertificateOutlined />,
-      label: t('layout.healthSecurity')
-    },
-    {
-      key: '/extended',
-      icon: <ExperimentOutlined />,
-      label: t('layout.extendedEcosystems')
-    },
-    {
-      key: '/search',
-      icon: <SearchOutlined />,
-      label: t('layout.search')
-    },
-    {
-      key: '/plugins',
-      icon: <DeploymentUnitOutlined />,
-      label: t('layout.plugins')
-    },
-    {
-      key: '/settings',
-      icon: <SettingOutlined />,
-      label: t('layout.settings')
-    }
-  ]
+  // Dozens of entries per rebuild would defeat Menu's own diffing, so both
+  // menus are derived once per language and only rebuilt when that changes.
+  const managerItems = useMemo(() => buildManagerMenuEntries(), [])
+  const menuItems = useMemo(() => buildMainMenuEntries(t, managerItems), [t, managerItems])
   
   return (
     <Layout 

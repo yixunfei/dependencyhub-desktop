@@ -2,7 +2,7 @@ import {
   ApartmentOutlined, ExperimentOutlined, HistoryOutlined, ReloadOutlined,
   RollbackOutlined, SafetyCertificateOutlined, SettingOutlined, WarningOutlined
 } from '@ant-design/icons'
-import { Alert, Button, Space, Typography } from 'antd'
+import { Alert, Button, Progress, Space, Typography } from 'antd'
 import React from 'react'
 import ProjectPathBar from '../../components/ProjectPathBar/ProjectPathBar'
 import { useT } from '../../i18n'
@@ -58,7 +58,7 @@ import { ReproducibilityGovernanceOverview } from './reproducibilityGovernance'
 import { RiskGovernanceOverview } from './riskGovernance'
 import { useHealthCenterModel } from './useHealthCenterModel'
 import { WorkspaceGovernanceOverview } from './workspaceGovernance'
-const { Paragraph, Title } = Typography
+const { Paragraph, Title, Text } = Typography
 
 const HealthCenter: React.FC = () => {
   const currentPath = useAppStore((state) => state.currentPath)
@@ -86,9 +86,11 @@ export default HealthCenter
 import type { HealthCenterModel } from './useHealthCenterModel'
 
 function HealthHeader(model: Pick<HealthCenterModel,
-  'loadOverview' | 'loading' | 'failedReports' | 'retryReport' | 'reloadFailedReports'
+  'loadOverview' | 'loading' | 'failedReports' | 'retryReport' | 'reloadFailedReports' |
+  'total' | 'settled'
 >) {
   const t = useT()
+  const percent = model.total > 0 ? Math.round((model.settled / model.total) * 100) : 0
   return (<><div className={styles.header}>
     <div>
       <Title level={2} className={styles.title}>{t('health.title')}</Title>
@@ -96,6 +98,12 @@ function HealthHeader(model: Pick<HealthCenterModel,
     </div>
     <Space wrap>
       <ProjectPathBar compact />
+      {model.loading && (
+        <Space size={8}>
+          <Progress type="line" percent={percent} size="small" style={{ width: 160, marginBottom: 0 }} />
+          <Text type="secondary">{t('health.loadingReports', { settled: model.settled, total: model.total })}</Text>
+        </Space>
+      )}
       <Button icon={<ReloadOutlined />} onClick={model.loadOverview} loading={model.loading}>{t('health.redetect')}</Button>
     </Space>
   </div>

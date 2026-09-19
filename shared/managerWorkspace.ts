@@ -132,7 +132,41 @@ export interface ManagerExecuteOptions {
   operationId?: string
 }
 
-export type ManagerFailureCategory = 'cancelled' | 'timeout' | 'exit-code' | 'output-limit' | 'unknown'
+/**
+ * Failure outcomes shared by the main process classifier and the renderer.
+ * The first five describe how the process ended; the rest describe why, so the
+ * UI can offer the right remedy instead of repeating raw stderr.
+ */
+export type ManagerFailureCategory =
+  | 'cancelled'
+  | 'timeout'
+  | 'output-limit'
+  | 'exit-code'
+  | 'unknown'
+  | 'network'
+  | 'certificate'
+  | 'proxy'
+  | 'permission'
+  | 'toolchain-missing'
+  | 'auth'
+  | 'registry'
+  | 'conflict'
+
+/** Evidence gathered from the command output, used to fill the reason template. */
+export interface OperationFailureEvidence {
+  host?: string
+  endpoint?: string
+  statusCode?: number
+  errorCode?: string
+  tool?: string
+  managerId?: DependencyManagerId
+}
+
+/** Why it failed, as a key plus parameters the renderer resolves with i18n. */
+export interface OperationFailureReason {
+  key: string
+  params?: Record<string, string | number>
+}
 
 /** Structured failure every mutating operation rejects with, so the UI can offer retry / rollback. */
 export interface ManagerOperationFailure {
@@ -140,6 +174,8 @@ export interface ManagerOperationFailure {
   operationId: string
   message: string
   retryable: boolean
+  reason?: OperationFailureReason
+  evidence?: OperationFailureEvidence
   exitCode?: number | string
   backupPath?: string
 }

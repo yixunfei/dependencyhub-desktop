@@ -1,9 +1,11 @@
 import React, { Suspense, lazy, useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import MainLayout from './components/Layout/MainLayout'
 import { NotificationContainer } from './components/Notification/NotificationContainer'
 import CommandLogWindow from './components/CommandLog/CommandLogWindow'
 import ToolchainStatusModal from './components/Toolchain/ToolchainStatusModal'
+import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary'
+import { UnexpectedErrorNotifier } from './components/ErrorBoundary/UnexpectedErrorNotifier'
 import { LanguageStartupGate } from './components/Localization/LanguageStartupGate'
 import { RuntimeLocalizer } from './components/Localization/RuntimeLocalizer'
 import { useAppStore } from './stores/appStore'
@@ -40,6 +42,8 @@ const ExtendedEcosystems = lazy(() => import('./features/managers/extended/Exten
 
 const App: React.FC = () => {
   const initCurrentPath = useAppStore((state) => state.initCurrentPath)
+  // Drives the route-level error boundary: switching page clears a previous failure.
+  const location = useLocation()
   
   useEffect(() => {
     initCurrentPath()
@@ -49,8 +53,12 @@ const App: React.FC = () => {
     <>
       <RuntimeLocalizer />
       <LanguageStartupGate />
+      <UnexpectedErrorNotifier />
       <MainLayout>
-        <Suspense fallback={null}>
+        {/* The sidebar lives outside this boundary, so a failing page no longer
+            blanks the whole window: the user can navigate away and back. */}
+        <ErrorBoundary resetKey={location.pathname} variant="inline">
+          <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<ManagerHub />} />
             <Route path="/workspace" element={<ManagerHub />} />
@@ -91,9 +99,10 @@ const App: React.FC = () => {
             <Route path="/plugins" element={<PluginComponents />} />
             <Route path="/settings" element={<Settings />} />
             {/* Catch unknown hash routes (e.g. a stray "#section" anchor) instead of rendering a blank content area. */}
-            <Route path="*" element={<Navigate to="/workspace" replace />} />
-          </Routes>
-        </Suspense>
+              <Route path="*" element={<Navigate to="/workspace" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </MainLayout>
       <NotificationContainer />
       <CommandLogWindow />

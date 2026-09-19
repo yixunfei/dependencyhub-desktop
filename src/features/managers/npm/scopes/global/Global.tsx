@@ -13,6 +13,7 @@ import { localizedModal } from '../../../../../utils/localizedFeedback'
 import { useT, type LabelTranslator } from '../../../../../i18n'
 import { VERSION_PAGE_SIZE, VersionChannelFilter, toVersionOptions, versionsForFilter } from '../../../../../utils/npmVersions'
 import { cleanPackageSummary, formatCompactNumber } from '../../../../../utils/npmDisplay'
+import { pagedPagination } from '../../../../../utils/tablePagination'
 import styles from './Global.module.css'
 
 const SEARCH_PAGE_SIZE = 10
@@ -687,7 +688,7 @@ const GlobalPage: React.FC = () => {
               columns={columns}
               rowKey="name"
               size="small"
-              pagination={false}
+              pagination={pagedPagination(globalPackages, t)}
               rowSelection={rowSelection}
             />
           )}

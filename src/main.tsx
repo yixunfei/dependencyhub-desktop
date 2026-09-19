@@ -10,6 +10,10 @@ import { useThemeStore } from './stores/themeStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useResolvedTheme } from './hooks/useResolvedTheme'
 import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary'
+import { installRendererGuards } from './components/ErrorBoundary/errors'
+
+// Installed before React mounts so a failure during the first render is caught too.
+installRendererGuards()
 
 const Root: React.FC = () => {
   const mode = useThemeStore((state) => state.mode)

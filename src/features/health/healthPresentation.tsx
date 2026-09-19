@@ -240,7 +240,10 @@ export function releaseApprovalColor(decision: ReleaseApprovalDecision): string 
 export function registryStatusColor(status: RegistryReachabilityStatus | 'not checked'): string {
   if (status === 'reachable') return 'green'
   if (status === 'unreachable') return 'red'
-  if (status === 'unknown') return 'orange'
+  // Both of these mean "the endpoint exists but you cannot use it today", which
+  // deserves attention rather than the neutral colour unknown problems got.
+  if (status === 'unauthorized' || status === 'not-found') return 'volcano'
+  if (status === 'unknown' || status === 'slow') return 'orange'
   return 'default'
 }
 

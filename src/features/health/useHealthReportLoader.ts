@@ -49,5 +49,20 @@ export function useHealthReportLoader(buildBlocks: () => HealthReportBlock[]) {
   const reloadFailedReports = async () => {
     await Promise.all(failedReports.map(({ key }) => retryReport(key)))
   }
-  return { loading, loadOverview, failedReports, retryReport, reloadFailedReports }
+  // Forty reports load concurrently on mount, and until each one answers the
+  // page looks half-built. Reporting progress turns that wait into something
+  // legible instead of looking like a frozen or empty page.
+  const total = Object.keys(status).length
+  const settled = Object.values(status).filter((entry) =>
+    entry.status === 'ready' || entry.status === 'error').length
+  return {
+    loading,
+    loadOverview,
+    failedReports,
+    retryReport,
+    reloadFailedReports,
+    total,
+    settled,
+    failedCount: failedReports.length
+  }
 }

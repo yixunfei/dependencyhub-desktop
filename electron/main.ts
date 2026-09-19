@@ -1,7 +1,12 @@
 import { handleIpc } from './ipcHandler'
+import { installProcessGuards } from './services/processGuard'
+import {
+  getStartupLanguageInfo,
+  type AppLanguage,
+  type StartupLanguageInfo
+} from './services/startupLanguage'
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import { join } from 'path'
-import { existsSync, readFileSync } from 'fs'
 import { NpmService, setNpmServiceWindow } from './services/npm'
 import { ProjectService } from './services/project'
 import { PublishService } from './services/publish'
@@ -80,18 +85,9 @@ import type {
 } from '../shared/managerWorkspace'
 
 const mainDir = __dirname
-type AppLanguage = 'zh-CN' | 'en-US'
 
 if (process.platform === 'win32' && !process.env.ELECTRON_ENABLE_CHROMIUM_LOGGING) {
   app.commandLine.appendSwitch('log-level', '3')
-}
-
-interface StartupLanguageInfo {
-  language: AppLanguage
-  source: 'installer' | 'default'
-  shouldPrompt: boolean
-  isPackaged: boolean
-  isPortable: boolean
 }
 
 const menuLabels: Record<AppLanguage, Record<string, string>> = {
@@ -546,6 +542,10 @@ if (!app.requestSingleInstanceLock()) {
     setupIpcHandlers()
   })
 }
+
+// Installed before any window exists so a failure during startup is still
+// captured instead of silently closing the app.
+installProcessGuards({ getWindow: () => mainWindow })
 
 app.on('will-quit', () => {
   // Quitting without closing the window first (e.g. Cmd+Q on macOS) would
@@ -2160,50 +2160,4 @@ function setupApplicationMenu(language: AppLanguage) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-function getStartupLanguageInfo(): StartupLanguageInfo {
-  const installerLanguage = readInstallerLanguage()
-  const isPortable = Boolean(
-    process.env.PORTABLE_EXECUTABLE_DIR ||
-    process.env.PORTABLE_EXECUTABLE_FILE ||
-    process.env.PORTABLE_EXECUTABLE_APP_FILENAME
-  )
 
-  if (installerLanguage) {
-    return {
-      language: installerLanguage,
-      source: 'installer',
-      shouldPrompt: false,
-      isPackaged: app.isPackaged,
-      isPortable
-    }
-  }
-
-  return {
-    language: 'en-US',
-    source: 'default',
-    shouldPrompt: true,
-    isPackaged: app.isPackaged,
-    isPortable
-  }
-}
-
-function readInstallerLanguage(): AppLanguage | null {
-  const candidates = [
-    join(process.resourcesPath || '', 'default-language.json'),
-    join(mainDir, '../default-language.json'),
-    join(mainDir, '../../default-language.json')
-  ]
-
-  for (const filePath of candidates) {
-    try {
-      if (!existsSync(filePath)) continue
-
-      const data = JSON.parse(readFileSync(filePath, 'utf8')) as { language?: string }
-      if (data.language === 'zh-CN') return 'zh-CN'
-      if (data.language === 'en-US') return 'en-US'
-    } catch {
-    }
-  }
-
-  return null
-}

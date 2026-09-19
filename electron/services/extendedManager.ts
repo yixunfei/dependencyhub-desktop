@@ -1,6 +1,6 @@
 import { recoverCommandFailure } from './commandRecovery'
 import { createHash } from 'crypto'
-import { access, mkdir, readFile, unlink, writeFile } from 'fs/promises'
+import { access, mkdir, readFile, readdir, unlink, writeFile } from 'fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import { writeFileAtomic } from './atomicWrite'
 import {
@@ -149,6 +149,8 @@ interface ExtendedManagerBackupPayload extends Omit<ExtendedManagerBackup, 'file
 }
 
 const BACKUP_DIR = '.npmDesktopManager/backups/extended'
+/** One backup per mutation is plenty of history; older ones are unreachable anyway. */
+const MAX_COMMAND_BACKUPS = 25
 const NIX_TOKEN_STOP_WORDS = new Set([
   'inherit',
   'let',
@@ -1143,12 +1145,30 @@ async function createCommandBackup(
   }
 
   await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, JSON.stringify(payload, null, 2), 'utf-8')
+  // Same guarantee as the snapshot store: the fallback must be readable even if
+  // the process died while writing it.
+  await writeFileAtomic(path, JSON.stringify(payload, null, 2))
+  await pruneCommandBackups(cwd)
 
   return {
     ...payload,
     files: backedUpFiles.map(({ content: _content, ...file }) => file)
   }
+}
+
+/** Command backups accumulate one per mutation and nothing ever removed them. */
+async function pruneCommandBackups(cwd: string): Promise<void> {
+  const dir = join(cwd, BACKUP_DIR)
+  const files = await readdir(dir).catch(() => [] as string[])
+  if (files.length <= MAX_COMMAND_BACKUPS) return
+
+  const stale = files
+    .filter((file) => file.endsWith('.json'))
+    .sort()
+    .reverse()
+    .slice(MAX_COMMAND_BACKUPS)
+
+  await Promise.all(stale.map((file) => unlink(join(dir, file)).catch(() => undefined)))
 }
 
 function resolveBackupPath(cwd: string, backupPath: string): string {

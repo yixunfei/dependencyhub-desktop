@@ -2169,7 +2169,14 @@ declare global {
   }
 
   type RegistryEndpointKind = 'registry' | 'mirror' | 'proxy' | 'repository' | 'image-registry'
-  type RegistryReachabilityStatus = 'reachable' | 'unreachable' | 'unknown' | 'skipped'
+  type RegistryReachabilityStatus =
+    | 'reachable'
+    | 'unreachable'
+    | 'unauthorized'
+    | 'not-found'
+    | 'slow'
+    | 'unknown'
+    | 'skipped'
   type RegistryReachabilityExportFormat = 'markdown' | 'json'
 
   interface RegistryEndpoint {
