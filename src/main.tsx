@@ -9,6 +9,7 @@ import './styles/global.css'
 import { useThemeStore } from './stores/themeStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useResolvedTheme } from './hooks/useResolvedTheme'
+import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary'
 
 const Root: React.FC = () => {
   const mode = useThemeStore((state) => state.mode)
@@ -29,7 +30,9 @@ const Root: React.FC = () => {
           }}
         >
           <AntdApp>
-            <App />
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
           </AntdApp>
         </ConfigProvider>
       </HashRouter>

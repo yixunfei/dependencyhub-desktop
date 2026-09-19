@@ -522,7 +522,8 @@ export class MavenService {
     } catch {
       return {
         issues: [],
-        reportPath
+        reportPath,
+        error: 'Maven security audit completed without producing a report'
       }
     }
   }

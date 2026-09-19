@@ -80,7 +80,10 @@ const MavenManagerPage: React.FC = () => {
   const [mavenMirror, setMavenMirror] = useState<MavenMirrorPreset>('central')
   const [customMavenGoals, setCustomMavenGoals] = useState<string[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem('custom-maven-goals') || '[]')
+      const parsed: unknown = JSON.parse(localStorage.getItem('custom-maven-goals') || '[]')
+      return Array.isArray(parsed) && parsed.every((goal): goal is string => typeof goal === 'string')
+        ? parsed
+        : []
     } catch {
       return []
     }

@@ -10,12 +10,17 @@ import { basename, extname } from 'path'
 const BLOCKED_EXECUTABLE_EXTENSIONS = new Set([
   '.exe', '.bat', '.cmd', '.com', '.scr', '.pif', '.msi', '.msp', '.mst',
   '.ps1', '.psm1', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.wsb',
-  '.hta', '.jar', '.lnk', '.reg', '.cpl', '.gadget'
+  '.hta', '.jar', '.lnk', '.reg', '.cpl', '.gadget', '.url', '.inf', '.msix',
+  '.appx', '.msu', '.settingcontent-ms', '.chm'
 ])
 
 export async function assertSafeShellTarget(targetPath: string): Promise<void> {
   if (!targetPath || !targetPath.trim()) {
     throw new Error('A non-empty path is required')
+  }
+
+  if (/^(?:\\\\|\/\/)/.test(targetPath.trim())) {
+    throw new Error('Refusing to open remote network paths')
   }
 
   // Windows strips trailing dots/spaces when it resolves a path, so
