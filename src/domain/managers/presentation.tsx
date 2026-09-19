@@ -14,6 +14,7 @@ import {
   RubyOutlined,
   ToolOutlined
 } from '@ant-design/icons'
+import type { LabelTranslator } from '../../i18n'
 import type { DependencyManagerId, ManagerImplementationStatus } from './registry'
 
 export function managerIcon(id: DependencyManagerId): React.ReactNode {
@@ -62,8 +63,8 @@ export function managerColor(id: DependencyManagerId): string {
   return 'default'
 }
 
-export function implementationStatusText(status: ManagerImplementationStatus): string {
-  if (status === 'stable') return '可用'
-  if (status === 'preview') return '预览'
-  return '规划中'
+export function implementationStatusText(status: ManagerImplementationStatus, t: LabelTranslator): string {
+  if (status === 'stable') return t('status.available')
+  if (status === 'preview') return t('status.preview')
+  return t('status.planned')
 }

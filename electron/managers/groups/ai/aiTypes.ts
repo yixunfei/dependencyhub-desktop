@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
-import { mkdir, rename, writeFile } from 'fs/promises'
+import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
+import { writeFileAtomic } from '../../../services/atomicWrite'
 import type { ManagerBackup } from '../../../../shared/managerWorkspace'
 import { asRecord, asString, parseYamlDocument, readTextIfExists } from '../../structuredData'
 
@@ -242,9 +243,10 @@ export function groupFilesByName(items: ReadonlyArray<{ name: string; file: stri
 
 export async function writeFileAtomically(path: string, content: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.dependencyhub-tmp`
-  await writeFile(temporary, content, 'utf-8')
-  await rename(temporary, path)
+  // Delegate to the shared atomic write: the previous local implementation used
+  // a fixed `${path}.dependencyhub-tmp` staging name and never cleaned up on a
+  // failed rename, leaving debris that the next write would silently clobber.
+  await writeFileAtomic(path, content)
 }
 
 /**

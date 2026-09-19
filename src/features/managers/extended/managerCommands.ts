@@ -1,9 +1,16 @@
 import { unwrapIpcResult } from '@shared/ipcFailure'
+import type { IpcFailureEnvelope } from '@shared/ipcFailure'
 
-/** Reconstruct errors in the renderer, after both IPC and contextBridge have copied the data. */
+type RawExecute = Window['electronAPI']['managers']['execute']
+type RawRunCustom = Window['electronAPI']['managers']['runCustom']
+// execute/runCustom return the raw failure envelope: contextBridge strips
+// custom properties from thrown Errors, so the envelope must cross the bridge
+// intact and be unwrapped here to keep failure/backup/restore details usable.
+type UnwrappedResult = Exclude<Awaited<ReturnType<RawExecute>>, IpcFailureEnvelope>
+
 export const managerCommands = {
-  execute: async (...args: Parameters<Window['electronAPI']['managers']['execute']>) =>
-    unwrapIpcResult(await window.electronAPI.managers.execute(...args)),
-  runCustom: async (...args: Parameters<Window['electronAPI']['managers']['runCustom']>) =>
-    unwrapIpcResult(await window.electronAPI.managers.runCustom(...args))
+  execute: async (...args: Parameters<RawExecute>): Promise<UnwrappedResult> =>
+    unwrapIpcResult(await window.electronAPI.managers.execute(...args)) as UnwrappedResult,
+  runCustom: async (...args: Parameters<RawRunCustom>): Promise<UnwrappedResult> =>
+    unwrapIpcResult(await window.electronAPI.managers.runCustom(...args)) as UnwrappedResult
 }

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Input, Space, Table, Tag, Tooltip, Typography } fr
 import { DeleteOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { TOOL_LABELS, TOOL_ORDER, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
 import { useT } from '../../i18n'
+import { useAppStore } from '../../stores/appStore'
 
 const { Text } = Typography
 
@@ -22,6 +23,7 @@ interface ProjectToolchainPanelProps {
 
 const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPath, compact = false }) => {
   const t = useT()
+  const addNotification = useAppStore((state) => state.addNotification)
   const [statuses, setStatuses] = useState<ToolStatus[]>([])
   const [paths, setPaths] = useState<Record<ToolName, string>>(emptyPaths)
   const [loading, setLoading] = useState(false)
@@ -46,16 +48,32 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
       ])
       setPaths(pathsFromConfig(config))
       setStatuses(result)
+    } catch (error) {
+      // A silent failure here would leave stale/empty version columns and the
+      // user would not know the toolchain check never ran.
+      addNotification({
+        type: 'error',
+        message: t('toolchain.loadFailed'),
+        description: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setLoading(false)
     }
   }
 
   const chooseDirectory = async (tool: ToolName) => {
-    const directory = await window.electronAPI.selectDirectory()
-    if (!directory) return
-    setPaths((prev) => ({ ...prev, [tool]: directory }))
-    await savePath(tool, directory)
+    try {
+      const directory = await window.electronAPI.selectDirectory()
+      if (!directory) return
+      setPaths((prev) => ({ ...prev, [tool]: directory }))
+      await savePath(tool, directory)
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        message: t('toolchain.saveFailed'),
+        description: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
 
   const savePath = async (tool: ToolName, explicitPath?: string) => {
@@ -64,6 +82,12 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
     try {
       await window.electronAPI.project.toolchain.set(projectPath, tool, explicitPath ?? paths[tool] ?? '')
       await loadProjectToolchain()
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        message: t('toolchain.saveFailed'),
+        description: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setLoading(false)
     }
@@ -75,6 +99,12 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
     try {
       await window.electronAPI.project.toolchain.clear(projectPath, tool)
       await loadProjectToolchain()
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        message: t('toolchain.saveFailed'),
+        description: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setLoading(false)
     }

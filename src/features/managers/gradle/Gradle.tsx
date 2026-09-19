@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Descriptions, Empty, Form, Modal, Popconfirm, Space, Spin, Table, Tag, Tooltip } from 'antd'
 import {
   ApartmentOutlined,
@@ -67,6 +67,12 @@ const GradlePage: React.FC = () => {
   const [versionOptions, setVersionOptions] = useState<Array<{ value: string; label: string }>>([])
   const [dependencyForm] = Form.useForm()
   const [commandForm] = Form.useForm()
+  // Monotonic epoch so a stale list() reply from a previous currentPath cannot
+  // overwrite the freshly loaded project data.
+  const loadEpochRef = useRef(0)
+  // Version loads are keyed to the coordinate currently in the form; a stale
+  // reply for a replaced coordinate must not fill the version select.
+  const versionRequestRef = useRef(0)
 
   const dependencyStats = useMemo(() => {
     const configurations = new Set(dependencies.map((item) => item.configuration))
@@ -150,6 +156,7 @@ const GradlePage: React.FC = () => {
   }
 
   const loadGradleProject = async () => {
+    const epoch = ++loadEpochRef.current
     if (!currentPath) {
       setBuildInfo(null)
       setDependencies([])
@@ -159,17 +166,21 @@ const GradlePage: React.FC = () => {
     setLoading(true)
     try {
       const detected = await window.electronAPI.gradle.detect(currentPath)
+      if (epoch !== loadEpochRef.current) return
       setBuildInfo(detected)
       if (!detected.hasGradleBuild) {
         setDependencies([])
         return
       }
-      setDependencies(await window.electronAPI.gradle.list(currentPath))
+      const deps = await window.electronAPI.gradle.list(currentPath)
+      if (epoch !== loadEpochRef.current) return
+      setDependencies(deps)
     } catch (error: any) {
+      if (epoch !== loadEpochRef.current) return
       setDependencies([])
       addNotification({ type: 'error', message: '加载 Gradle 项目失败', description: error.message })
     } finally {
-      setLoading(false)
+      if (epoch === loadEpochRef.current) setLoading(false)
     }
   }
 
@@ -229,14 +240,18 @@ const GradlePage: React.FC = () => {
   const loadDependencyVersions = async () => {
     const values = dependencyForm.getFieldsValue()
     if (!values.groupId || !values.artifactId) return
+    const requestId = ++versionRequestRef.current
 
     try {
       const versions = await window.electronAPI.gradle.versions(values.groupId, values.artifactId)
+      const current = dependencyForm.getFieldsValue()
+      if (requestId !== versionRequestRef.current || current.groupId !== values.groupId || current.artifactId !== values.artifactId) return
       setVersionOptions(versions.map((version) => ({ value: version, label: version })))
       if (versions.length === 0) {
         addNotification({ type: 'info', message: '未返回版本信息', description: `${values.groupId}:${values.artifactId}` })
       }
     } catch (error: any) {
+      if (requestId !== versionRequestRef.current) return
       setVersionOptions([])
       addNotification({ type: 'error', message: '加载 Gradle 版本失败', description: error.message })
     }

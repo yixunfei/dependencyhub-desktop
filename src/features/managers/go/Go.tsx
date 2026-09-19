@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Descriptions, Empty, Form, Modal, Popconfirm, Space, Spin, Table, Tag, Tooltip } from 'antd'
 import {
   BranchesOutlined,
@@ -47,6 +47,12 @@ const GoPage: React.FC = () => {
   const [versionOptions, setVersionOptions] = useState<Array<{ value: string; label: string }>>([])
   const [moduleForm] = Form.useForm()
   const [commandForm] = Form.useForm()
+  // Monotonic epoch so a stale list() reply from a previous currentPath cannot
+  // overwrite the freshly loaded project data.
+  const loadEpochRef = useRef(0)
+  // Same guard for the version dialog: opening module A then B must not let
+  // A's slower reply fill B's version list (installing would use it).
+  const versionRequestRef = useRef(0)
 
   const moduleStats = useMemo(() => {
     const indirectCount = modules.filter((item) => item.indirect).length
@@ -141,6 +147,7 @@ const GoPage: React.FC = () => {
   }
 
   const loadGoProject = async () => {
+    const epoch = ++loadEpochRef.current
     if (!currentPath) {
       setModuleInfo(null)
       setModules([])
@@ -150,17 +157,21 @@ const GoPage: React.FC = () => {
     setLoading(true)
     try {
       const detected = await window.electronAPI.go.detect(currentPath)
+      if (epoch !== loadEpochRef.current) return
       setModuleInfo(detected)
       if (!detected.hasGoMod) {
         setModules([])
         return
       }
-      setModules(await window.electronAPI.go.list(currentPath))
+      const mods = await window.electronAPI.go.list(currentPath)
+      if (epoch !== loadEpochRef.current) return
+      setModules(mods)
     } catch (error: any) {
+      if (epoch !== loadEpochRef.current) return
       setModules([])
       addNotification({ type: 'error', message: '加载 Go 项目失败', description: error.message })
     } finally {
-      setLoading(false)
+      if (epoch === loadEpochRef.current) setLoading(false)
     }
   }
 
@@ -309,17 +320,20 @@ const GoPage: React.FC = () => {
   }
 
   const showModuleVersions = async (record: GoModuleInfo) => {
+    const requestId = ++versionRequestRef.current
     setSelectedModule(record)
     setVersionOptions([])
     setVersionVisible(true)
     setLoading(true)
     try {
       const versions = await window.electronAPI.go.versions(record.path, currentPath)
+      if (requestId !== versionRequestRef.current) return
       setVersionOptions(versions.map((version) => ({ value: version, label: version })))
     } catch (error: any) {
+      if (requestId !== versionRequestRef.current) return
       addNotification({ type: 'error', message: '加载 Go 模块版本失败', description: error.message })
     } finally {
-      setLoading(false)
+      if (requestId === versionRequestRef.current) setLoading(false)
     }
   }
 

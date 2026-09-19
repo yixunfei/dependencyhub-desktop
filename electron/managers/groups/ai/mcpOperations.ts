@@ -1,6 +1,6 @@
 import { join } from 'path'
 import type { ManagerOperationRequest } from '../../../../shared/managerWorkspace'
-import { asRecord, readTextIfExists } from '../../structuredData'
+import { readTextIfExists } from '../../structuredData'
 import {
   MCP_CONFIG_FILES,
   MCP_LOCK_FILE,
@@ -14,7 +14,9 @@ import {
   splitPackageSpec,
   writeFileAtomically
 } from './aiTypes'
-import { mcpLockEntry, mcpServerMap, readMcpServers, type McpServerRecord } from './mcpInventory'
+import { mcpLockEntry, mcpServerBinding, readMcpServers, withServerMap, type McpServerRecord } from './mcpInventory'
+
+const configSources = new WeakMap<object, string>()
 
 const MCP_OPERATION_ARGS: Record<string, string[]> = {
   sync: ['sync'],
@@ -92,7 +94,8 @@ export async function planMcpMutation(cwd: string, request: ManagerOperationRequ
 async function planMcpAddition(cwd: string, spec: string, version: string | undefined): Promise<AiMutationPlan> {
   const target = await primaryConfigFile(cwd)
   const existing = await readConfigDocument(cwd, target)
-  const servers = { ...mcpServerMap(existing) }
+  const binding = mcpServerBinding(existing)
+  const servers = { ...binding.servers }
   const entry = buildServerEntry(spec, version)
   const name = entry.name
 
@@ -100,8 +103,11 @@ async function planMcpAddition(cwd: string, spec: string, version: string | unde
     files: [target],
     apply: async () => {
       servers[name] = entry.definition
-      const next = { ...asRecord(existing) || {}, mcpServers: servers }
-      await writeFileAtomically(join(cwd, target), `${JSON.stringify(next, null, 2)}\n`)
+      // Update the same key the file already uses: writing a second
+      // `mcpServers` map next to `servers` would make the edit invisible to
+      // VS Code and duplicate the configuration.
+      const next = withServerMap(existing, binding.keyPath, servers)
+      await writeFileAtomically(join(cwd, target), formatConfigWithComments(configSources.get(existing as object) || '', next))
       return `Added MCP server "${name}" to ${target} as ${entry.spec}.\n`
     }
   }
@@ -111,20 +117,34 @@ async function planMcpRemoval(cwd: string, name: string): Promise<AiMutationPlan
   for (const file of MCP_CONFIG_FILES) {
     const text = await readTextIfExists(join(cwd, file))
     if (text === undefined) continue
-    const document = parseConfigDocument(text, file)
-    const servers = { ...mcpServerMap(document) }
+    // A corrupt config elsewhere must not block removal from a healthy file:
+    // the inventory reader tolerates invalid files the same way.
+    let document: ReturnType<typeof parseConfigDocument>
+    try {
+      document = parseConfigDocument(text, file)
+    } catch {
+      continue
+    }
+    const binding = mcpServerBinding(document)
+    const servers = { ...binding.servers }
     if (!(name in servers)) continue
     return {
       files: [file],
       apply: async () => {
         delete servers[name]
-        const next = { ...asRecord(document) || {}, mcpServers: servers }
-        await writeFileAtomically(join(cwd, file), `${JSON.stringify(next, null, 2)}\n`)
+        const next = withServerMap(document, binding.keyPath, servers)
+        await writeFileAtomically(join(cwd, file), formatConfigWithComments(configSources.get(document as object) || text, next))
         return `Removed MCP server "${name}" from ${file}.\n`
       }
     }
   }
   throw new Error(`No MCP configuration declares a server named "${name}".`)
+}
+
+function formatConfigWithComments(original: string, value: unknown): string {
+  const comments = original.match(/^\s*(?:\/\/|\/\*|\*|\*\/).*$/gm) || []
+  const prefix = comments.length > 0 ? `${comments.join('\n')}\n` : ''
+  return `${prefix}${JSON.stringify(value, null, 2)}\n`
 }
 
 function buildServerEntry(spec: string, version: string | undefined): { name: string; spec: string; definition: Record<string, unknown> } {
@@ -165,12 +185,16 @@ async function primaryConfigFile(cwd: string): Promise<string> {
 async function readConfigDocument(cwd: string, file: string): Promise<unknown> {
   const text = await readTextIfExists(join(cwd, file))
   if (text === undefined || !text.trim()) return {}
-  return parseConfigDocument(text, file)
+  const document = parseConfigDocument(text, file)
+  if (document && typeof document === 'object') configSources.set(document as object, text)
+  return document
 }
 
 function parseConfigDocument(text: string, file: string): unknown {
   try {
-    return parseJsonWithComments(text)
+    const document = parseJsonWithComments(text)
+    if (document && typeof document === 'object') configSources.set(document as object, text)
+    return document
   } catch (error) {
     throw new Error(`${file} is not valid JSON: ${(error as Error).message}`)
   }

@@ -93,13 +93,24 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
 
   const runAction = async (issue: DependencyHealthIssue, action: DependencyHealthAction) => {
     if (action.kind === 'copy') {
-      await navigator.clipboard.writeText(action.payload || issue.suggestion)
+      try {
+        await navigator.clipboard.writeText(action.payload || issue.suggestion)
+      } catch (error) {
+        // Clipboard permission can be denied; the user must not wonder whether
+        // the copy actually happened.
+        addNotification({ type: 'error', message: t('health.fixCopyFailed'), description: error instanceof Error ? error.message : String(error) })
+        return
+      }
       addNotification({ type: 'success', message: t('health.fixCopied'), description: issue.dependency || issue.title })
       return
     }
 
     if (action.kind === 'openFile' && action.target) {
-      await window.electronAPI.system.openFile(action.target)
+      try {
+        await window.electronAPI.system.openFile(action.target)
+      } catch (error) {
+        addNotification({ type: 'error', message: 'Open file failed', description: error instanceof Error ? error.message : String(error) })
+      }
       return
     }
 

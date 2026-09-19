@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import MainLayout from './components/Layout/MainLayout'
 import { NotificationContainer } from './components/Notification/NotificationContainer'
 import CommandLogWindow from './components/CommandLog/CommandLogWindow'
@@ -90,6 +90,8 @@ const App: React.FC = () => {
             <Route path="/tool-versions" element={<ToolVersions />} />
             <Route path="/plugins" element={<PluginComponents />} />
             <Route path="/settings" element={<Settings />} />
+            {/* Catch unknown hash routes (e.g. a stray "#section" anchor) instead of rendering a blank content area. */}
+            <Route path="*" element={<Navigate to="/workspace" replace />} />
           </Routes>
         </Suspense>
       </MainLayout>

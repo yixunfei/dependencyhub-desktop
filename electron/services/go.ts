@@ -1,7 +1,9 @@
 import { access, readFile } from 'fs/promises'
 import { join } from 'path'
 import { runLoggedCommand } from './commandRunner'
+import { registryHttpGet } from './registryHttp'
 import { resolveToolBin } from './toolchain'
+import { splitCommandLine } from './splitCommandLine'
 
 export interface GoModuleDependency {
   path: string
@@ -182,7 +184,9 @@ export class GoService {
 
 function parseGoModDependencies(content: string): Map<string, GoModuleDependency> {
   const dependencies = new Map<string, GoModuleDependency>()
+  const replaces = new Map<string, { path: string; version?: string }>()
   let inRequireBlock = false
+  let inReplaceBlock = false
 
   for (const rawLine of content.split(/\r?\n/)) {
     const line = rawLine.trim()
@@ -198,8 +202,28 @@ function parseGoModDependencies(content: string): Map<string, GoModuleDependency
       continue
     }
 
+    if (!inRequireBlock && line === 'replace (') {
+      inReplaceBlock = true
+      continue
+    }
+
+    if (inReplaceBlock && line === ')') {
+      inReplaceBlock = false
+      continue
+    }
+
+    if (!inRequireBlock && line.startsWith('replace ')) {
+      applyGoReplace(line.slice('replace '.length), replaces)
+      continue
+    }
+
+    if (inReplaceBlock) {
+      applyGoReplace(line, replaces)
+      continue
+    }
+
     const requireLine = inRequireBlock ? line : line.replace(/^require\s+/, '')
-    if (!inRequireBlock && !line.startsWith('require ')) continue
+    if (!inRequireBlock && !/^require\s+/.test(line)) continue
 
     const match = requireLine.match(/^(\S+)\s+(\S+)(?:\s+\/\/\s*(indirect))?/)
     if (!match) continue
@@ -211,7 +235,23 @@ function parseGoModDependencies(content: string): Map<string, GoModuleDependency
     })
   }
 
+  for (const [replacedPath, target] of replaces) {
+    const entry = dependencies.get(replacedPath)
+    if (!entry) continue
+    entry.replace = `${target.path}${target.version ? `@${target.version}` : ''}`
+    // A versioned replace changes the effective module, so show its version.
+    if (target.version) entry.version = target.version
+  }
+
   return dependencies
+}
+
+function applyGoReplace(entry: string, replaces: Map<string, { path: string; version?: string }>): void {
+  // Block entries can carry a trailing comment: `old => new v1.2 // note`.
+  const match = entry.replace(/\s+\/\/.*$/, '').match(/^(\S+)\s+=>\s+(\S+)(?:\s+(\S+))?$/)
+  if (match) {
+    replaces.set(match[1], { path: match[2], version: match[3] })
+  }
 }
 
 function parseGoJsonStream(stdout: string): any[] {
@@ -314,15 +354,8 @@ async function githubTags(modulePath: string): Promise<string[]> {
   }
 }
 
-async function httpsGet(url: string): Promise<string> {
-  const https = await import('https')
-  return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'DependencyHub Desktop' } }, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => resolve(data))
-    }).on('error', reject)
-  })
+function httpsGet(url: string): Promise<string> {
+  return registryHttpGet(url, { headers: { 'User-Agent': 'DependencyHub Desktop' } })
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -332,11 +365,4 @@ async function fileExists(path: string): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-function splitCommandLine(commandLine: string): string[] {
-  return commandLine
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
 }

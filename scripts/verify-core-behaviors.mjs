@@ -18,7 +18,7 @@ import { ExtendedManagerService } from './electron/services/extendedManager'
 import { NpmService } from './electron/services/npm'
 import { getManagerDefinition } from './shared/managerRegistry'
 import { withProjectMutation } from './electron/services/projectMutation'
-import { getCalls, resetCalls, setCommandFailure } from './commandRunner'
+import { getCalls, resetCalls, setCommandFailure, setCommandStdout } from './commandRunner'
 
 const checks = []
 const assert = (value, message) => { if (!value) throw new Error(message); checks.push(message) }
@@ -128,6 +128,24 @@ async function testRealNpmFixture() {
   assert(result.statuses?.['fixture-extraneous']?.status === 'missing' || result.statuses?.['fixture-extraneous']?.status === 'extraneous', 'F3 real fixture classifies unmanaged or missing package')
   assert(result.statuses?.['fixture-peer']?.status === 'peer-conflict' || result.statuses?.['fixture-peer']?.type === 'peerDependencies', 'F3 real fixture exposes peer conflict classification')
   assert(result.statuses?.['fixture-peer']?.problems !== undefined, 'F3 peer classification preserves problem details')
+
+  // Feed a realistic npm list --json payload so the installed/declared split
+  // is actually exercised; the empty fallback above only proves that missing
+  // dependencies are reported as missing.
+  setCommandStdout(JSON.stringify({
+    name: 'fixture-root',
+    dependencies: {
+      'fixture-real-package': { version: '1.0.0', resolved: 'file:fixture-package' },
+      'fixture-undeclared': { version: '9.9.9' }
+    },
+    problems: ['missing: fixture-missing@1.0.0, required by fixture-root@1.0.0']
+  }))
+  const installed = await npm.list(cwd, false)
+  setCommandStdout(null)
+  assert(installed.statuses?.['fixture-real-package']?.status === 'installed', 'F3 real fixture keeps an installed file: dependency as installed')
+  assert(installed.statuses?.['fixture-missing']?.status === 'missing', 'F3 real fixture reports a declared-but-absent dependency as missing')
+  assert(installed.statuses?.['fixture-dev']?.status === 'missing', 'F3 real fixture reports a declared-but-absent dev dependency as missing')
+  assert(installed.statuses?.['fixture-undeclared']?.status === 'extraneous', 'F3 real fixture classifies an undeclared installed package as extraneous')
 }
 
 async function testNpmManifestResult() {
@@ -175,13 +193,16 @@ try {
 const commandRunnerStub = `
 let calls = []
 let commandFailure = false
+let commandStdout = null
 export function resetCalls() { calls = [] }
 export function getCalls() { return calls }
 export function setCommandFailure(value) { commandFailure = value }
+export function setCommandStdout(value) { commandStdout = value }
 export async function runLoggedCommand(_bin, args, options = {}) {
   calls.push([...args])
   if (commandFailure === 'cancelled') throw Object.assign(new Error('fixture was cancelled'), { failure: { category: 'cancelled' } })
   if (commandFailure) throw Object.assign(new Error('fixture command failure'), { stderr: 'fixture command failure', code: 1 })
+  if (commandStdout !== null) return { stdout: commandStdout, stderr: '' }
   return { stdout: 'ok', stderr: '' }
 }
 export function resolveShellFreeCommand(bin, args) { return { bin, args } }

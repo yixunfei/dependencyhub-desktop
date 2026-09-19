@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Descriptions, Empty, Form, Input, Modal, Segmented, Select, Space, Spin, Switch, Table, Tag, Tooltip } from 'antd'
 import {
   ApartmentOutlined,
@@ -121,8 +121,15 @@ const PluginComponentsPage: React.FC = () => {
     isRuntimeManager(activeManager) && !!currentPath && dependencies.length > 0
   )
 
+  // Monotonic epochs so stale catalog/dependency replies cannot overwrite the
+  // freshly loaded state after a quick path or plugin switch.
+  const catalogEpochRef = useRef(0)
+  const dependenciesEpochRef = useRef(0)
+  const installVersionRequestRef = useRef(0)
+
   useEffect(() => {
-    loadCatalog()
+    const epoch = ++catalogEpochRef.current
+    void loadCatalog(epoch)
   }, [currentPath])
 
   useEffect(() => {
@@ -137,7 +144,8 @@ const PluginComponentsPage: React.FC = () => {
       return
     }
     if (activePlugin?.enabled && currentPath) {
-      void loadDependencies(activeManager)
+      const epoch = ++dependenciesEpochRef.current
+      void loadDependencies(activeManager, epoch)
     } else {
       setDependencies([])
     }
@@ -150,10 +158,11 @@ const PluginComponentsPage: React.FC = () => {
     addNotification({ type: 'info', message: 'Working directory changed', description: path })
   }
 
-  const loadCatalog = async () => {
+  const loadCatalog = async (epoch: number) => {
     setCatalogLoading(true)
     try {
       const result = await window.electronAPI.plugins.catalog(currentPath || undefined)
+      if (epoch !== catalogEpochRef.current) return
       setPlugins(result)
       const preferred = result.find((item) => item.detected && isRuntimeManager(item.id))
         || result.find((item) => item.enabled && isRuntimeManager(item.id))
@@ -162,30 +171,35 @@ const PluginComponentsPage: React.FC = () => {
         setActiveManager((current) => result.some((item) => item.id === current) ? current : preferred.id)
       }
     } catch (error: any) {
+      if (epoch !== catalogEpochRef.current) return
       addNotification({ type: 'error', message: 'Plugin catalog failed', description: error.message })
     } finally {
-      setCatalogLoading(false)
+      if (epoch === catalogEpochRef.current) setCatalogLoading(false)
     }
   }
 
-  const loadDependencies = async (manager = activeManager) => {
+  const loadDependencies = async (manager = activeManager, epoch = ++dependenciesEpochRef.current) => {
     if (!currentPath || !isRuntimeManager(manager)) return
     setLoading(true)
     try {
+      let result: unknown[] = []
       if (manager === 'cargo') {
-        setDependencies(await window.electronAPI.cargo.list(currentPath))
+        result = await window.electronAPI.cargo.list(currentPath)
       } else if (manager === 'gradle') {
-        setDependencies(await window.electronAPI.gradle.list(currentPath))
+        result = await window.electronAPI.gradle.list(currentPath)
       } else if (manager === 'go') {
-        setDependencies(await window.electronAPI.go.list(currentPath))
+        result = await window.electronAPI.go.list(currentPath)
       } else {
-        setDependencies(await window.electronAPI.native.list(currentPath))
+        result = await window.electronAPI.native.list(currentPath)
       }
+      if (epoch !== dependenciesEpochRef.current) return
+      setDependencies(result)
     } catch (error: any) {
+      if (epoch !== dependenciesEpochRef.current) return
       setDependencies([])
       addNotification({ type: 'error', message: `${manager} dependencies failed`, description: error.message })
     } finally {
-      setLoading(false)
+      if (epoch === dependenciesEpochRef.current) setLoading(false)
     }
   }
 
@@ -304,6 +318,8 @@ const PluginComponentsPage: React.FC = () => {
 
   const loadInstallVersions = async () => {
     if (!isRuntimeManager(activeManager)) return
+    const requestId = ++installVersionRequestRef.current
+    const manager = activeManager
 
     try {
       const values = installForm.getFieldsValue()
@@ -317,9 +333,10 @@ const PluginComponentsPage: React.FC = () => {
       } else if (activeManager === 'native' && values.version) {
         versions = [values.version]
       }
+      if (requestId !== installVersionRequestRef.current || manager !== activeManager) return
       setInstallVersionOptions(versions.map((version) => ({ value: version, label: version })))
     } catch {
-      setInstallVersionOptions([])
+      if (requestId === installVersionRequestRef.current) setInstallVersionOptions([])
     }
   }
 
@@ -887,7 +904,7 @@ const PluginComponentsPage: React.FC = () => {
               <DeploymentUnitOutlined />
               <strong>Component Catalog</strong>
             </Space>
-            <Button size="small" icon={<ReloadOutlined />} onClick={loadCatalog}>Reload</Button>
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadCatalog(++catalogEpochRef.current)}>Reload</Button>
           </div>
           <Table
             dataSource={plugins}

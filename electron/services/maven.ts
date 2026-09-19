@@ -1,7 +1,10 @@
 import { access, copyFile, mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { homedir } from 'os'
+import { writeFileAtomic } from './atomicWrite'
 import { runLoggedCommand } from './commandRunner'
+import { registryHttpGet } from './registryHttp'
+import { applyLineEnding, detectLineEnding } from './textLineEndings'
 import { resolveToolBin } from './toolchain'
 
 export interface MavenDependency {
@@ -75,6 +78,18 @@ function dependencyKey(dep: Pick<MavenDependency, 'groupId' | 'artifactId'>): st
   return `${dep.groupId}:${dep.artifactId}`
 }
 
+// Coordinates are interpolated into Groovy strings and XML text nodes, so the
+// whitelist must reject quotes, angle brackets, `${...}` expansion, newlines
+// and absurdly long values before any rendering happens.
+const COORDINATE_PATTERN = /^[\w.:/+-]+$/
+const MAX_COORDINATE_LENGTH = 200
+
+export function assertValidMavenCoordinate(field: 'groupId' | 'artifactId' | 'version', value: string): void {
+  if (!value || value.length > MAX_COORDINATE_LENGTH || !COORDINATE_PATTERN.test(value)) {
+    throw new Error(`Invalid Maven ${field}: "${value}" contains characters that are not allowed in a dependency coordinate`)
+  }
+}
+
 function parsePomDependencies(content: string): MavenDependency[] {
   const dependencies: MavenDependency[] = []
   const dependencyBlocks = content.match(/<dependency>[\s\S]*?<\/dependency>/g) || []
@@ -99,30 +114,84 @@ function parsePomDependencies(content: string): MavenDependency[] {
 }
 
 function renderDependency(dep: MavenDependency): string {
-  const scope = dep.scope ? `\n      <scope>${dep.scope}</scope>` : ''
-  const type = dep.type ? `\n      <type>${dep.type}</type>` : ''
+  const scope = dep.scope ? `\n      <scope>${escapeXml(dep.scope)}</scope>` : ''
+  const type = dep.type ? `\n      <type>${escapeXml(dep.type)}</type>` : ''
   return [
     '    <dependency>',
-    `      <groupId>${dep.groupId}</groupId>`,
-    `      <artifactId>${dep.artifactId}</artifactId>`,
-    `      <version>${dep.version}</version>${scope}${type}`,
+    `      <groupId>${escapeXml(dep.groupId)}</groupId>`,
+    `      <artifactId>${escapeXml(dep.artifactId)}</artifactId>`,
+    `      <version>${escapeXml(dep.version)}</version>${scope}${type}`,
     '    </dependency>'
   ].join('\n')
 }
 
 function removeDependencyBlock(content: string, dep: Pick<MavenDependency, 'groupId' | 'artifactId'>): string {
-  const blocks = content.match(/<dependency>[\s\S]*?<\/dependency>/g) || []
-  let nextContent = content
+  // Only remove from the project-level <dependencies> block. Matching
+  // <dependency> entries across the whole document could delete a
+  // dependencyManagement or profile entry instead of the runtime dependency
+  // the user asked to remove.
+  const span = findProjectDependenciesSpan(content)
+  const blockStart = span ? span.openEnd : 0
+  const blockEnd = span ? span.closeStart : content.length
+  const scoped = content.slice(blockStart, blockEnd)
+  const blocks = scoped.match(/<dependency>[\s\S]*?<\/dependency>/g) || []
 
   for (const block of blocks) {
     const parsed = parsePomDependencies(`<dependencies>${block}</dependencies>`)[0]
     if (parsed && dependencyKey(parsed) === dependencyKey(dep)) {
-      nextContent = nextContent.replace(block, '').replace(/\n{3,}/g, '\n\n')
-      break
+      const nextContent = content.slice(0, blockStart) + scoped.replace(block, '') + content.slice(blockEnd)
+      return nextContent.replace(/\n{3,}/g, '\n\n')
     }
   }
 
-  return nextContent
+  return content
+}
+
+interface PomDependenciesSpan {
+  /** Index just past the opening `<dependencies ...>` tag. */
+  openEnd: number
+  /** Index of the matching `</dependencies>` closing tag. */
+  closeStart: number
+}
+
+/**
+ * Locates the project-level `<dependencies>` block of a pom.xml, skipping
+ * `<dependencyManagement>` and `<profiles>` nesting. A naive
+ * `replace(/<\/dependencies>/)` injected new dependencies into the first
+ * closing tag in the document — the dependencyManagement block on virtually
+ * every Spring Boot project — where the write succeeds but the dependency is
+ * silently never added.
+ */
+function findProjectDependenciesSpan(content: string): PomDependenciesSpan | null {
+  const tagPattern = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[[\s\S]*?\]\]>|<\/([A-Za-z][\w.:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)\/?>|<([A-Za-z][\w.:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)\/?>|<![^>]*>/g
+  const stack: string[] = []
+  let target: { depth: number; openEnd: number } | null = null
+
+  for (const match of content.matchAll(tagPattern)) {
+    const tag = match[0]
+    const index = match.index ?? 0
+    if (tag.startsWith('<!--') || tag.startsWith('<?') || tag.startsWith('<!')) continue
+
+    if (tag.startsWith('</')) {
+      const name = match[1] || ''
+      if (target && name === 'dependencies' && stack.length - 1 === target.depth) {
+        return { openEnd: target.openEnd, closeStart: index }
+      }
+      const openIndex = stack.lastIndexOf(name)
+      if (openIndex >= 0) stack.length = openIndex
+      continue
+    }
+
+    const name = match[3] || ''
+    const selfClosing = tag.endsWith('/>')
+    stack.push(name)
+    if (!selfClosing && name === 'dependencies' && stack.length === 2 && stack[0] === 'project') {
+      target = { depth: stack.length - 1, openEnd: index + tag.length }
+    }
+    if (selfClosing) stack.pop()
+  }
+
+  return null
 }
 
 function parseMavenListOutput(output: string): MavenDependency[] {
@@ -333,7 +402,7 @@ export class MavenService {
       await access(settingsPath)
     } catch {
       await mkdir(dirname(settingsPath), { recursive: true })
-      await writeFile(settingsPath, defaultSettingsXml(), 'utf-8')
+      await writeFileAtomic(settingsPath, defaultSettingsXml())
     }
     return settingsPath
   }
@@ -358,7 +427,7 @@ export class MavenService {
       ? content.replace(/<localRepository>[\s\S]*?<\/localRepository>/, tag)
       : content.replace(/<\/settings>/, `  ${tag}\n</settings>`)
 
-    await writeFile(settingsPath, nextContent, 'utf-8')
+    await writeFileAtomic(settingsPath, nextContent)
   }
 
   async setMirror(id: string, url: string, mirrorOf = 'central'): Promise<void> {
@@ -376,7 +445,7 @@ export class MavenService {
       '    </mirror>'
     ].join('\n')
     const nextContent = upsertSettingsBlock(content, 'mirrors', mirrorXml, id.trim())
-    await writeFile(settingsPath, nextContent, 'utf-8')
+    await writeFileAtomic(settingsPath, nextContent)
   }
 
   async setServer(id: string, username: string, password: string): Promise<void> {
@@ -394,7 +463,7 @@ export class MavenService {
       '    </server>'
     ].join('\n')
     const nextContent = upsertSettingsBlock(content, 'servers', serverXml, id.trim())
-    await writeFile(settingsPath, nextContent, 'utf-8')
+    await writeFileAtomic(settingsPath, nextContent)
   }
 
   async deploy(args: MavenDeployArgs, env?: NodeJS.ProcessEnv): Promise<string> {
@@ -472,26 +541,35 @@ export class MavenService {
     if (!dep.groupId || !dep.artifactId || !dep.version) {
       throw new Error('groupId, artifactId and version are required')
     }
+    assertValidMavenCoordinate('groupId', dep.groupId)
+    assertValidMavenCoordinate('artifactId', dep.artifactId)
+    assertValidMavenCoordinate('version', dep.version)
 
     const pomPath = join(cwd, 'pom.xml')
     const content = await readFile(pomPath, 'utf-8')
+    const lineEnding = detectLineEnding(content)
     const withoutExisting = removeDependencyBlock(content, dep)
-    const dependencyXml = renderDependency(dep)
+    const dependencyXml = applyLineEnding(renderDependency(dep), lineEnding)
 
     let nextContent: string
-    if (withoutExisting.includes('</dependencies>')) {
-      nextContent = withoutExisting.replace(/<\/dependencies>/, `${dependencyXml}\n  </dependencies>`)
+    const span = findProjectDependenciesSpan(withoutExisting)
+    if (span) {
+      nextContent = `${withoutExisting.slice(0, span.closeStart)}${dependencyXml}${lineEnding}  ${withoutExisting.slice(span.closeStart)}`
     } else {
-      nextContent = withoutExisting.replace(/<\/project>/, `  <dependencies>\n${dependencyXml}\n  </dependencies>\n</project>`)
+      const insertion = `  <dependencies>${lineEnding}${dependencyXml}${lineEnding}  </dependencies>${lineEnding}</project>`
+      nextContent = withoutExisting.replace(/<\/project>/, insertion)
+      if (nextContent === withoutExisting) {
+        throw new Error('pom.xml does not contain a closing </project> tag; unable to add the dependency')
+      }
     }
 
-    await writeFile(pomPath, nextContent, 'utf-8')
+    await writeFileAtomic(pomPath, nextContent)
   }
 
   async removeDependency(cwd: string, dep: Pick<MavenDependency, 'groupId' | 'artifactId'>): Promise<void> {
     const pomPath = join(cwd, 'pom.xml')
     const content = await readFile(pomPath, 'utf-8')
-    await writeFile(pomPath, removeDependencyBlock(content, dep), 'utf-8')
+    await writeFileAtomic(pomPath, removeDependencyBlock(content, dep))
   }
 
   private settingsPath(): string {
@@ -518,19 +596,12 @@ export class MavenService {
   }
 }
 
-async function httpsGet(url: string): Promise<string> {
-  const https = await import('https')
-  return new Promise((resolve, reject) => {
-    https.get(url, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'DependencyHubDesktop/1.0'
-      }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => resolve(data))
-    }).on('error', reject)
+function httpsGet(url: string): Promise<string> {
+  return registryHttpGet(url, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'DependencyHubDesktop/1.0'
+    }
   })
 }
 
@@ -556,10 +627,16 @@ function escapeXml(value: string): string {
 
 function upsertSettingsBlock(content: string, blockName: string, itemXml: string, id: string): string {
   const itemName = blockName.endsWith('s') ? blockName.slice(0, -1) : blockName
-  const itemRegex = new RegExp(`<${itemName}>[\\s\\S]*?<id>\\s*${escapeRegExp(id)}\\s*<\\/id>[\\s\\S]*?<\\/${itemName}>`)
+  // Match each item block individually instead of a lazy span from the first
+  // <item>: a single lazy regex can cross a `</item><item>` boundary and
+  // swallow preceding entries when the target id lives in a later block.
+  const blockRegex = new RegExp(`<${itemName}>[\\s\\S]*?<\\/${itemName}>`, 'g')
+  const idRegex = new RegExp(`<id>\\s*${escapeRegExp(id)}\\s*<\\/id>`)
 
-  if (itemRegex.test(content)) {
-    return content.replace(itemRegex, itemXml)
+  for (const match of content.matchAll(blockRegex)) {
+    if (idRegex.test(match[0])) {
+      return content.slice(0, match.index) + itemXml + content.slice(match.index + match[0].length)
+    }
   }
 
   if (content.includes(`<${blockName}>`)) {
@@ -838,8 +915,29 @@ function looksLikeMavenVersion(value: string): boolean {
 function newestVersion(versions: string[]): string {
   const sorted = versions
     .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+    .sort(compareMavenVersions)
   return sorted[sorted.length - 1] || ''
+}
+
+function compareMavenVersions(a: string, b: string): number {
+  const tokenize = (value: string) => value.split(/[.-]/).map((part) => {
+    if (/^\d+$/.test(part)) return { numeric: Number(part), text: '' }
+    return { numeric: undefined, text: part.toLowerCase() }
+  })
+  const left = tokenize(a)
+  const right = tokenize(b)
+  const qualifierRank: Record<string, number> = { snapshot: -5, alpha: -4, beta: -3, milestone: -2, rc: -1, release: 0 }
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const l = left[index] || { numeric: 0, text: '' }
+    const r = right[index] || { numeric: 0, text: '' }
+    if (l.numeric !== undefined || r.numeric !== undefined) {
+      const diff = (l.numeric ?? 0) - (r.numeric ?? 0)
+      if (diff !== 0) return diff
+      continue
+    }
+    if (l.text !== r.text) return (qualifierRank[l.text] ?? 1) - (qualifierRank[r.text] ?? 1) || l.text.localeCompare(r.text)
+  }
+  return 0
 }
 
 function isMavenDependencyDoc(doc: any): boolean {

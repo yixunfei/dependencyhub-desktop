@@ -112,11 +112,14 @@ export class SmartUpdateService {
       const target = semver.parse(targetVersion)
       
       if (!current || !target) return 'unknown'
-      
-      if (target.major > current.major) return 'major'
-      if (target.minor > current.minor) return 'minor'
-      if (target.patch > current.patch) return 'patch'
-      
+
+      // Compare components for inequality rather than "greater than": a
+      // downgrade must still report its real magnitude instead of falling
+      // through to `patch` whenever a lower component happens to be bigger.
+      if (target.major !== current.major) return 'major'
+      if (target.minor !== current.minor) return 'minor'
+      if (target.patch !== current.patch) return 'patch'
+
       return 'unknown'
     } catch {
       return 'unknown'
@@ -167,9 +170,9 @@ export class SmartUpdateService {
 
   private findSafeVersion(versions: string[], currentVersion: string, securityVersions: Set<string>): string | null {
     try {
-      return versions.find((version) => semver.gt(version, currentVersion) && securityVersions.has(version))
-        || versions.find((version) => semver.gt(version, currentVersion))
-        || null
+      // Only versions inside the safe set may be recommended; falling back to
+      // "any newer version" would label a cross-major upgrade as safe.
+      return versions.find((version) => semver.gt(version, currentVersion) && securityVersions.has(version)) || null
     } catch {
       return null
     }

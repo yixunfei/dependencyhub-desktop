@@ -18,7 +18,16 @@ export const useThemeStore = create<ThemeState>()(
       toggleMode: () => set((state) => ({ mode: state.mode === 'dark' ? 'light' : 'dark' }))
     }),
     {
-      name: 'theme-storage'
+      name: 'theme-storage',
+      merge: (persisted, current) => {
+        const persistedMode = (persisted as Partial<ThemeState> | undefined)?.mode
+        // A corrupted or foreign persisted value must not reach the theme
+        // resolver (same guard as the other persisted stores).
+        return {
+          ...current,
+          mode: persistedMode === 'system' || persistedMode === 'dark' || persistedMode === 'light' ? persistedMode : current.mode
+        }
+      }
     }
   )
 )

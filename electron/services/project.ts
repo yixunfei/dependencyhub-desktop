@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, readdir, stat, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
+import { writeFileAtomic } from './atomicWrite'
 import {
   MANAGER_DEFINITIONS,
   getManagerDetectionFiles,
@@ -142,7 +143,7 @@ export class ProjectService {
 
   async writePackageJson(projectPath: string, content: any): Promise<void> {
     const jsonContent = JSON.stringify(content, null, 2)
-    await writeFile(join(projectPath, 'package.json'), jsonContent, 'utf-8')
+    await writeFileAtomic(join(projectPath, 'package.json'), jsonContent)
   }
 
   async inventory(projectPath: string): Promise<ProjectInventory> {
@@ -261,3 +262,4 @@ function wildcardToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
   return new RegExp(`^${escaped}$`, 'i')
 }
+

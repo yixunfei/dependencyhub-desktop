@@ -56,7 +56,7 @@ export const RuntimeLocalizer: FC = () => {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'characterData') {
-          localizeTextNode(mutation.target as Text, language)
+          localizeChangedTextNode(mutation.target as Text, language)
         } else if (mutation.type === 'attributes') {
           localizeElementAttributes(mutation.target as Element, language)
         } else {
@@ -88,7 +88,15 @@ function localizeTextNode(node: Text, language: AppLanguage) {
 
   if (language === 'zh-CN') {
     if (original && current !== original) {
-      node.textContent = original
+      if (hasCjk(current)) {
+        // React just wrote new Chinese source text — it wins (last writer
+        // wins); adopt it immediately so this scan cannot clobber it.
+        originalTextNodes.set(node, current)
+      } else {
+        // The current value is a stale foreign-language translation left by
+        // a previous switch: restore the recorded source text.
+        node.textContent = original
+      }
     }
     return
   }
@@ -107,6 +115,24 @@ function localizeTextNode(node: Text, language: AppLanguage) {
   }
 }
 
+function localizeChangedTextNode(node: Text, language: AppLanguage) {
+  if (language !== 'zh-CN') {
+    localizeTextNode(node, language)
+    return
+  }
+
+  const current = node.textContent || ''
+  const original = originalTextNodes.get(node)
+
+  // In zh-CN the stored original is the untranslated source. A mismatch here
+  // means React just wrote new content (e.g. a live counter) — adopt it as the
+  // new source instead of clobbering it with the stale recorded text
+  // ("last writer wins").
+  if (original && current !== original) {
+    originalTextNodes.set(node, current)
+  }
+}
+
 function localizeElementAttributes(element: Element, language: AppLanguage) {
   if (shouldSkipElement(element)) return
 
@@ -119,7 +145,17 @@ function localizeElementAttributes(element: Element, language: AppLanguage) {
 
     if (language === 'zh-CN') {
       if (original && current !== original) {
-        element.setAttribute(attr, original)
+        if (hasCjk(current)) {
+          // React just rewrote the attribute with new Chinese source text —
+          // adopt it, last writer wins.
+          rememberAttribute(element, attr, current)
+        } else {
+          // The current value is a stale foreign-language translation from a
+          // previous switch. React never rewrites the attribute on a language
+          // switch, so without restoring it here the attribute would stay in
+          // the foreign language until some unrelated prop change.
+          element.setAttribute(attr, original)
+        }
       }
       continue
     }

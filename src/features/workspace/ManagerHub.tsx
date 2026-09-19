@@ -36,21 +36,24 @@ const ManagerHub: React.FC = () => {
   }, [projectInfo])
 
   useEffect(() => {
-    void loadProjectInfo()
+    // A slow detect() reply for the previous path must not label the current
+    // workspace with another project's detected ecosystems.
+    let active = true
+    void (async () => {
+      if (!currentPath) {
+        setProjectInfo(null)
+        return
+      }
+
+      try {
+        const info = await window.electronAPI.project.detect(currentPath)
+        if (active) setProjectInfo(info)
+      } catch {
+        if (active) setProjectInfo(null)
+      }
+    })()
+    return () => { active = false }
   }, [currentPath])
-
-  const loadProjectInfo = async () => {
-    if (!currentPath) {
-      setProjectInfo(null)
-      return
-    }
-
-    try {
-      setProjectInfo(await window.electronAPI.project.detect(currentPath))
-    } catch {
-      setProjectInfo(null)
-    }
-  }
 
   return (
     <div className={styles.container}>
@@ -139,7 +142,7 @@ const ManagerHub: React.FC = () => {
                   {manager.scenarios.slice(0, 3).join(' / ')}
                 </Paragraph>
                 <Space size={6} wrap>
-                  <Tag color={managerColor(manager.id)}>{implementationStatusText(manager.status)}</Tag>
+                  <Tag color={managerColor(manager.id)}>{implementationStatusText(manager.status, t)}</Tag>
                   {detectedIds.has(manager.id) && <Tag color="success">{t('workspace.inProject')}</Tag>}
                   <Tag>{formatManagerFiles(manager.manifestFiles)}</Tag>
                 </Space>

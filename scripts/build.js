@@ -16,7 +16,11 @@ function builderArguments(platform = 'current', type = 'all', host = process.pla
   if (!['all', 'installer', 'portable'].includes(type)) throw new Error(`Invalid type: ${type}`);
   const resolved = platform === 'current' ? nativePlatforms[host] : platform;
   if (!resolved) throw new Error(`Unsupported platform: ${host}`);
-  const platforms = resolved === 'all' ? Object.keys(targets) : [resolved];
+  // dmg/zip mac artifacts can only be produced on macOS; requesting them on
+  // other hosts makes electron-builder fail after a full compile cycle.
+  const platforms = resolved === 'all'
+    ? Object.keys(targets).filter((name) => name !== 'mac' || host === 'darwin')
+    : [resolved];
   return platforms.flatMap((name) => [
     `--${name}`,
     ...(type === 'all' ? [...targets[name].installer, ...targets[name].portable] : targets[name][type])

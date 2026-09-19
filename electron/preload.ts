@@ -11,6 +11,22 @@ async function invoke(...args: Parameters<typeof ipcRenderer.invoke>): ReturnTyp
   return unwrapIpcResult(await ipcRenderer.invoke(...args))
 }
 
+const listenerWrappers = new WeakMap<Function, (...args: any[]) => void>()
+function subscribe(channel: string, callback: (data: any) => void) {
+  const wrapped = (_event: unknown, data: any) => callback(data)
+  listenerWrappers.set(callback, wrapped)
+  ipcRenderer.on(channel, wrapped)
+}
+function unsubscribe(channel: string, callback?: (data: any) => void) {
+  if (callback) {
+    const wrapped = listenerWrappers.get(callback)
+    if (wrapped) ipcRenderer.removeListener(channel, wrapped)
+    listenerWrappers.delete(callback)
+    return
+  }
+  ipcRenderer.removeAllListeners(channel)
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   app: {
     getStartupLanguage: () => invoke('app:get-startup-language'),
@@ -22,21 +38,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (options?: FileSelectOptions) => invoke('select-file', options),
   
   onCommandLog: (callback: (data: any) => void) => {
-    ipcRenderer.on('command-log', (_, data) => callback(data))
+    subscribe('command-log', callback)
   },
-  removeCommandLogListener: () => {
-    ipcRenderer.removeAllListeners('command-log')
+  removeCommandLogListener: (callback?: (data: any) => void) => {
+    unsubscribe('command-log', callback)
   },
 
   onTerminalData: (callback: (data: any) => void) => {
-    ipcRenderer.on('terminal:data', (_, data) => callback(data))
+    subscribe('terminal:data', callback)
   },
   onTerminalExit: (callback: (data: any) => void) => {
-    ipcRenderer.on('terminal:exit', (_, data) => callback(data))
+    subscribe('terminal:exit', callback)
   },
-  removeTerminalListeners: () => {
-    ipcRenderer.removeAllListeners('terminal:data')
-    ipcRenderer.removeAllListeners('terminal:exit')
+  removeTerminalListeners: (callback?: (data: any) => void) => {
+    unsubscribe('terminal:data', callback)
+    if (!callback) unsubscribe('terminal:exit')
   },
   
   npm: {
@@ -218,6 +234,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     detected: (cwd: string) => invoke('manager:detected', cwd),
     inventory: (cwd: string, managerId: RegistryDependencyManagerId) => invoke('manager:inventory', cwd, managerId),
     plan: (cwd: string, managerId: RegistryDependencyManagerId, request: ManagerOperationRequest) => invoke('manager:plan', cwd, managerId, request),
+    // execute/runCustom intentionally bypass the invoke wrapper: contextBridge
+    // strips custom properties from thrown Errors, so unwrapping here would
+    // lose the structured failure/backup/restore payload the renderer needs.
+    // The raw envelope is returned and unwrapped renderer-side instead.
     execute: (cwd: string, managerId: RegistryDependencyManagerId, request: ManagerOperationRequest, options?: ManagerExecuteOptions) => ipcRenderer.invoke('manager:execute', cwd, managerId, request, options),
     runCustom: (cwd: string, managerId: RegistryDependencyManagerId, commandLine: string, options?: { operationId?: string }) => ipcRenderer.invoke('manager:run-custom', cwd, managerId, commandLine, options),
     search: (cwd: string | undefined, managerId: RegistryDependencyManagerId, query: ManagerSearchQuery) => invoke('manager:search', cwd, managerId, query),
@@ -520,10 +540,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     start: (projectPath: string) => invoke('watch:start', projectPath),
     stop: (projectPath?: string) => invoke('watch:stop', projectPath),
     onChange: (callback: (data: any) => void) => {
-      ipcRenderer.on('file-change', (_, data) => callback(data))
+      subscribe('file-change', callback)
     },
-    removeChangeListener: () => {
-      ipcRenderer.removeAllListeners('file-change')
+    removeChangeListener: (callback?: (data: any) => void) => {
+      unsubscribe('file-change', callback)
     }
   },
   

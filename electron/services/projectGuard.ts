@@ -6,6 +6,13 @@ export interface ProjectGuardOptions {
   kind?: 'mutation' | 'read'
   /** Set to false for dry-runs and for callers that already hold the queue. */
   serialize?: boolean
+  /**
+   * Queue key for operations without a project path (for example global npm
+   * installs). Without it every `cwd === undefined` mutation short-circuits the
+   * per-project serialization and concurrent global installs can clobber the
+   * shared global prefix.
+   */
+  serializeKey?: string
 }
 
 export interface ProjectGuardDependencies {
@@ -43,8 +50,18 @@ export async function runProjectOperation<T>(
       if (context.signal.aborted) throw new OperationCancelledError(context.operationId, label)
       return await dependencies.runWithOperationContext(context, () => operation(context))
     }
-    if (!cwd || options.serialize === false) return await run()
-    return await waitForProjectTurn(dependencies, cwd, context, run)
+    const lockKey = cwd || options.serializeKey
+    if (!lockKey) {
+      // A mutation without any queue key would fall through to the default
+      // cwd (the app directory) with no snapshot, no serialization and no
+      // cancellation. Global operations must declare a serializeKey instead.
+      if (options.kind !== 'read') {
+        throw new Error(`${label}: a project path (cwd) is required for mutating operations`)
+      }
+      return await run()
+    }
+    if (options.serialize === false) return await run()
+    return await waitForProjectTurn(dependencies, lockKey, context, run)
   } catch (error) {
     throw dependencies.attachFailure(error, context.operationId)
   } finally {
@@ -65,6 +82,9 @@ function waitForProjectTurn<T>(
     if (context.signal.aborted) cancel()
     void dependencies.withProjectMutation(cwd, async () => {
       context.signal.removeEventListener('abort', cancel)
+      // An abort while queued rejects the caller already; re-check here so the
+      // task short-circuits instead of running a wasted turn once it gets the lock.
+      if (context.signal.aborted) throw new OperationCancelledError(context.operationId, context.label)
       return await run()
     }).then(resolve, reject).finally(() => context.signal.removeEventListener('abort', cancel))
   })

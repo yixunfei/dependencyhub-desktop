@@ -3,9 +3,13 @@ import { Alert, Button, Input, Modal, Space, Table, Tag, Tooltip } from 'antd'
 import { DownloadOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons'
 import { STARTUP_REQUIRED_TOOLS, TOOL_LABELS, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
 import { useT } from '../../i18n'
+import { useAppStore } from '../../stores/appStore'
+
+const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 const ToolchainStatusModal: React.FC = () => {
   const t = useT()
+  const addNotification = useAppStore((state) => state.addNotification)
   const [statuses, setStatuses] = useState<ToolStatus[]>([])
   const [paths, setPaths] = useState<Record<string, string>>({})
   const [visible, setVisible] = useState(false)
@@ -29,6 +33,10 @@ const ToolchainStatusModal: React.FC = () => {
       setStatuses(result)
       setPaths(Object.fromEntries(result.map((item) => [item.tool, item.configuredPath || ''])))
       setVisible(result.some((item) => STARTUP_REQUIRED_TOOLS.includes(item.tool) && !item.available))
+    } catch (error) {
+      // A silent failure left the modal empty (statuses = [] renders null) and
+      // the user never learned that the startup check did not run.
+      addNotification({ type: 'error', message: 'Toolchain check failed', description: describeError(error) })
     } finally {
       setLoading(false)
     }
@@ -40,13 +48,21 @@ const ToolchainStatusModal: React.FC = () => {
       const result = await window.electronAPI.system.setToolPath(tool, paths[tool] || '')
       setStatuses(result)
       setVisible(result.some((item) => STARTUP_REQUIRED_TOOLS.includes(item.tool) && !item.available))
+    } catch (error) {
+      addNotification({ type: 'error', message: `Failed to save path for ${TOOL_LABELS[tool]}`, description: describeError(error) })
     } finally {
       setLoading(false)
     }
   }
 
   const chooseDirectory = async (tool: ToolName) => {
-    const directory = await window.electronAPI.selectDirectory()
+    let directory: string | null | undefined
+    try {
+      directory = await window.electronAPI.selectDirectory()
+    } catch (error) {
+      addNotification({ type: 'error', message: 'Failed to open directory picker', description: describeError(error) })
+      return
+    }
     if (!directory) return
     setPaths((prev) => ({ ...prev, [tool]: directory }))
     setLoading(true)
@@ -54,6 +70,8 @@ const ToolchainStatusModal: React.FC = () => {
       const result = await window.electronAPI.system.setToolPath(tool, directory)
       setStatuses(result)
       setVisible(result.some((item) => STARTUP_REQUIRED_TOOLS.includes(item.tool) && !item.available))
+    } catch (error) {
+      addNotification({ type: 'error', message: `Failed to save path for ${TOOL_LABELS[tool]}`, description: describeError(error) })
     } finally {
       setLoading(false)
     }

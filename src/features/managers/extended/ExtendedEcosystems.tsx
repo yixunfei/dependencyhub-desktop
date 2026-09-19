@@ -1,11 +1,12 @@
 import { managerCommands } from './managerCommands'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Checkbox, Empty, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
-import { CodeOutlined, FolderOpenOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
+import { CodeOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import ProjectPathBar from '../../../components/ProjectPathBar/ProjectPathBar'
 import { useAppStore } from '../../../stores/appStore'
 import { getManagerDefinition, getPlannedManagerDefinitions, type DependencyManagerId } from '../../../domain/managers/registry'
 import { implementationStatusText, managerColor, managerIcon } from '../../../domain/managers/presentation'
+import { useT, type TranslationKey } from '../../../i18n'
 import type {
   ManagerBackup,
   ManagerDependency,
@@ -25,16 +26,17 @@ type OperationFormValues = {
   dev?: boolean
 }
 
-const OPERATION_OPTIONS: Array<{ value: ManagerOperation; label: string }> = [
-  { value: 'sync', label: '同步/安装现有清单' },
-  { value: 'install', label: '添加依赖' },
-  { value: 'remove', label: '移除依赖' },
-  { value: 'update', label: '更新依赖' },
-  { value: 'outdated', label: '检查过期' },
-  { value: 'audit', label: '审计/校验' },
-  { value: 'tree', label: '依赖树' },
-  { value: 'list', label: '列出依赖' },
-  { value: 'lock', label: '生成/刷新锁文件' }
+// Module scope cannot call useT(), so the label stays a key and is resolved at render.
+const OPERATION_OPTIONS: Array<{ value: ManagerOperation; labelKey: TranslationKey }> = [
+  { value: 'sync', labelKey: 'extended.opSync' },
+  { value: 'install', labelKey: 'common.addDependency' },
+  { value: 'remove', labelKey: 'extended.opRemove' },
+  { value: 'update', labelKey: 'extended.opUpdate' },
+  { value: 'outdated', labelKey: 'extended.opOutdated' },
+  { value: 'audit', labelKey: 'extended.opAudit' },
+  { value: 'tree', labelKey: 'package.tabDependencyTree' },
+  { value: 'list', labelKey: 'extended.opList' },
+  { value: 'lock', labelKey: 'extended.opLock' }
 ]
 
 const COMMAND_SUGGESTIONS: Partial<Record<DependencyManagerId, string[]>> = {
@@ -56,19 +58,25 @@ const COMMAND_SUGGESTIONS: Partial<Record<DependencyManagerId, string[]>> = {
 }
 
 const ExtendedEcosystemsPage: React.FC = () => {
+  const t = useT()
   const currentPath = useAppStore((state) => state.currentPath)
-  const setCurrentPath = useAppStore((state) => state.setCurrentPath)
   const addNotification = useAppStore((state) => state.addNotification)
   const managers = useMemo(() => getPlannedManagerDefinitions(), [])
   const [detections, setDetections] = useState<ManagerDetection[]>([])
   const [activeManager, setActiveManager] = useState<DependencyManagerId>(managers[0]?.id || 'pnpm')
   const [dependencies, setDependencies] = useState<ManagerDependency[]>([])
-  const [loading, setLoading] = useState(false)
+  // Split loading flags: the two loads run concurrently and finish at different
+  // times, so one shared flag would clear while the other request is still in flight.
+  const [detectionsLoading, setDetectionsLoading] = useState(false)
+  const [dependenciesLoading, setDependenciesLoading] = useState(false)
+  const loading = detectionsLoading || dependenciesLoading
   const [running, setRunning] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [commandOutput, setCommandOutput] = useState('')
   const [lastBackup, setLastBackup] = useState<ManagerBackup | null>(null)
+  // Project path the backup was produced in; restore must not run it in another project.
+  const lastBackupPathRef = useRef('')
   const [operationPlan, setOperationPlan] = useState<ManagerOperationPlan | null>(null)
   const [commandForm] = Form.useForm<{ commandLine: string }>()
   const [operationForm] = Form.useForm<OperationFormValues>()
@@ -80,12 +88,20 @@ const ExtendedEcosystemsPage: React.FC = () => {
   const detectedMap = useMemo(() => new Map(detections.map((item) => [item.id, item])), [detections])
   const activeDetection = detectedMap.get(activeManager)
   const detectedManagers = useMemo(() => detections.filter((item) => item.detected), [detections])
+  const operationOptions = useMemo(
+    () => OPERATION_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t]
+  )
 
   useEffect(() => {
+    lastBackupPathRef.current = ''
+    setLastBackup(null)
     void loadDetections()
   }, [currentPath])
 
   useEffect(() => {
+    lastBackupPathRef.current = ''
+    setLastBackup(null)
     if (!currentPath) {
       dependenciesCoordinator.invalidate()
       setDependencies([])
@@ -97,13 +113,6 @@ const ExtendedEcosystemsPage: React.FC = () => {
     setOperationPlan(null)
   }, [activeManager, currentPath])
 
-  const chooseDirectory = async () => {
-    const path = await window.electronAPI.selectDirectory()
-    if (!path) return
-    setCurrentPath(path)
-    addNotification({ type: 'info', message: '项目路径已切换', description: path })
-  }
-
   const loadDetections = async () => {
     const path = currentPath
     const token = detectionsCoordinator.begin({ projectPath: path })
@@ -113,7 +122,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
       return
     }
 
-    setLoading(true)
+    setDetectionsLoading(true)
     try {
       const result = await window.electronAPI.managers.detected(path)
       if (detectionsCoordinator.accepts(token, { projectPath: path })) {
@@ -127,12 +136,12 @@ const ExtendedEcosystemsPage: React.FC = () => {
       if (detectionsCoordinator.accepts(token, { projectPath: path })) {
         addNotification({
           type: 'error',
-          message: '扩展生态检测失败',
+          message: t('extended.detectFailed'),
           description: error.message
         })
       }
     } finally {
-      if (detectionsCoordinator.accepts(token, { projectPath: path })) setLoading(false)
+      if (detectionsCoordinator.accepts(token, { projectPath: path })) setDetectionsLoading(false)
     }
   }
 
@@ -140,42 +149,50 @@ const ExtendedEcosystemsPage: React.FC = () => {
     if (!currentPath) return
     const path = currentPath
     const token = dependenciesCoordinator.begin({ projectPath: path, managerId })
-    setLoading(true)
+    setDependenciesLoading(true)
     try {
+      const inventory = await window.electronAPI.managers.inventory(path, managerId)
       if (!dependenciesCoordinator.accepts(token, { projectPath: path, managerId })) return
-      setDependencies(await window.electronAPI.managers.inventory(path, managerId))
+      setDependencies(inventory)
     } catch (error: any) {
       if (dependenciesCoordinator.accepts(token, { projectPath: path, managerId })) {
         addNotification({
           type: 'error',
-          message: '读取扩展生态依赖失败',
+          message: t('extended.inventoryFailed'),
           description: error.message
         })
         setDependencies([])
       }
     } finally {
-      if (dependenciesCoordinator.accepts(token, { projectPath: path, managerId })) setLoading(false)
+      if (dependenciesCoordinator.accepts(token, { projectPath: path, managerId })) setDependenciesLoading(false)
     }
+  }
+
+  // A backup is only valid inside the project it was produced in; recording the
+  // path together with the backup keeps restore from crossing projects.
+  const recordBackup = (backup: ManagerBackup) => {
+    lastBackupPathRef.current = currentPath
+    setLastBackup(backup)
   }
 
   const executeCommand = async (commandLine: string) => {
     if (!currentPath || !commandLine.trim()) return
     setRunning(true)
-    setCommandOutput('Running...')
+    setCommandOutput(t('common.running'))
     try {
       const result = await managerCommands.runCustom(currentPath, activeManager, commandLine)
       if (result.backup) {
-        setLastBackup(result.backup)
+        recordBackup(result.backup)
       }
       const backupOutput = result.backup
         ? `\n\n[backup] ${result.backup.files.length} files saved to ${result.backup.path}`
         : ''
       setCommandOutput(`$ ${result.command}\n\n${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}${backupOutput}`)
-      addNotification({ type: 'success', message: '命令执行完成', description: result.command })
+      addNotification({ type: 'success', message: t('extended.commandSucceeded'), description: result.command })
       await loadDependencies(activeManager)
     } catch (error: any) {
       setCommandOutput(error.message || String(error))
-      addNotification({ type: 'error', message: '命令执行失败', description: error.message })
+      addNotification({ type: 'error', message: t('extended.commandFailed'), description: error.message })
     } finally {
       setRunning(false)
     }
@@ -187,7 +204,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
 
   const generateOperationPlan = async () => {
     if (!currentPath) {
-      addNotification({ type: 'warning', message: '请先选择项目目录' })
+      addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
       return
     }
 
@@ -204,14 +221,14 @@ const ExtendedEcosystemsPage: React.FC = () => {
       if (plan.requirements.length > 0) {
         addNotification({
           type: 'warning',
-          message: '操作计划需要补充信息',
-          description: plan.requirements.join('；')
+          message: t('extended.planNeedsInfo'),
+          description: plan.requirements.join(t('common.detailSeparator'))
         })
       }
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '生成操作计划失败',
+        message: t('extended.planFailed'),
         description: error.message
       })
     } finally {
@@ -224,8 +241,8 @@ const ExtendedEcosystemsPage: React.FC = () => {
     if (operationPlan.requirements.length > 0) {
       addNotification({
         type: 'warning',
-        message: '操作计划尚不可执行',
-        description: operationPlan.requirements.join('；')
+        message: t('extended.planNotRunnable'),
+        description: operationPlan.requirements.join(t('common.detailSeparator'))
       })
       return
     }
@@ -233,15 +250,15 @@ const ExtendedEcosystemsPage: React.FC = () => {
     if (dryRun && !operationPlan.dryRunSupported) {
       addNotification({
         type: 'warning',
-        message: '该操作没有可用 dry-run 命令',
-        description: '可以先查看备份文件列表，或手动运行只读命令。'
+        message: t('extended.dryRunUnsupported'),
+        description: t('extended.dryRunUnsupportedHint')
       })
       return
     }
 
     if (!currentPath) return
     setRunning(true)
-    setCommandOutput('Running...')
+    setCommandOutput(t('common.running'))
     try {
       const result = await managerCommands.execute(
         currentPath,
@@ -249,17 +266,17 @@ const ExtendedEcosystemsPage: React.FC = () => {
         operationPlan.request,
         { dryRun }
       )
-      if (result.backup) setLastBackup(result.backup)
+      if (result.backup) recordBackup(result.backup)
       const backupOutput = result.backup
         ? `\n\n[backup] ${result.backup.files.length} files saved to ${result.backup.path}`
         : ''
       const dryRunOutput = result.dryRun ? '\n\n[dry-run] no project changes were requested' : ''
       setCommandOutput(`$ ${result.command}\n\n${result.stdout}${result.stderr ? `\n${result.stderr}` : ''}${dryRunOutput}${backupOutput}`)
-      addNotification({ type: 'success', message: result.dryRun ? 'dry-run 完成' : '命令执行完成', description: result.command })
+      addNotification({ type: 'success', message: result.dryRun ? t('extended.dryRunComplete') : t('extended.commandSucceeded'), description: result.command })
       await loadDependencies(activeManager)
     } catch (error: any) {
       setCommandOutput(error.message || String(error))
-      addNotification({ type: 'error', message: '命令执行失败', description: error.message })
+      addNotification({ type: 'error', message: t('extended.commandFailed'), description: error.message })
     } finally {
       setRunning(false)
     }
@@ -267,20 +284,31 @@ const ExtendedEcosystemsPage: React.FC = () => {
 
   const restoreLastBackup = async () => {
     if (!currentPath || !lastBackup) return
+    if (lastBackupPathRef.current !== currentPath) {
+      addNotification({
+        type: 'error',
+        message: t('extended.restoreFailed'),
+        description: t('extended.backupPathMismatch')
+      })
+      return
+    }
     setRestoring(true)
     try {
       const result = await window.electronAPI.managers.restoreBackup(currentPath, lastBackup.path)
       addNotification({
         type: 'success',
-        message: '扩展生态备份已恢复',
-        description: `${result.restoredCount} 个文件: ${result.restoredFiles.join(', ')}`
+        message: t('extended.backupRestored'),
+        description: t('extended.backupRestoredDescription', {
+          count: result.restoredCount,
+          files: result.restoredFiles.join(t('common.enumerationSeparator'))
+        })
       })
       setCommandOutput((prev) => `${prev}\n\n[restore] ${result.restoredFiles.join(', ')}`)
       await loadDependencies(activeManager)
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '恢复扩展生态备份失败',
+        message: t('extended.restoreFailed'),
         description: error.message
       })
     } finally {
@@ -297,26 +325,23 @@ const ExtendedEcosystemsPage: React.FC = () => {
     <div className={styles.container}>
       <div className={styles.header}>
         <div>
-          <Title level={2} className={styles.title}>扩展生态管理</Title>
-          <Paragraph className={styles.subtitle}>
-            为尚未拆出专用页面的语言生态提供统一检测、依赖清单和命令执行入口。
-          </Paragraph>
+          <Title level={2} className={styles.title}>{t('extended.title')}</Title>
+          <Paragraph className={styles.subtitle}>{t('extended.subtitle')}</Paragraph>
         </div>
         <Space wrap>
           <ProjectPathBar compact />
-          <Button icon={<FolderOpenOutlined />} onClick={chooseDirectory}>选择目录</Button>
-          <Button icon={<ReloadOutlined />} onClick={loadDetections} loading={loading}>重新检测</Button>
+          <Button icon={<ReloadOutlined />} onClick={loadDetections} loading={loading}>{t('toolchain.redetect')}</Button>
         </Space>
       </div>
 
       <Alert
         type={detectedManagers.length > 0 ? 'success' : 'info'}
         showIcon
-        title={detectedManagers.length > 0 ? '已识别扩展生态' : '当前目录未识别到扩展生态'}
+        title={detectedManagers.length > 0 ? t('extended.detectedTitle') : t('extended.notDetectedTitle')}
         description={
           detectedManagers.length > 0
-            ? detectedManagers.map((item) => `${item.name}: ${item.files.join(', ')}`).join('；')
-            : '支持 pnpm/Yarn/Bun/Deno、uv/Poetry/Pipenv/Conda、NuGet、Composer、Bundler、SwiftPM、CocoaPods、Helm、Docker 的清单识别。'
+            ? detectedManagers.map((item) => `${item.name}: ${item.files.join(', ')}`).join(t('common.detailSeparator'))
+            : t('extended.supportedHint')
         }
       />
 
@@ -342,7 +367,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
                     <span>{manager.shortName}</span>
                     <small>{manager.language}</small>
                   </span>
-                  {detected && <Tag color="success">识别</Tag>}
+                  {detected && <Tag color="success">{t('extended.tagDetected')}</Tag>}
                 </button>
               )
             })}
@@ -355,7 +380,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
               <span className={styles.headerIcon}>{activeDefinition ? managerIcon(activeDefinition.id) : <CodeOutlined />}</span>
               <Title level={3} className={styles.managerTitle}>{activeDefinition?.name || activeManager}</Title>
               <Tag color={activeDefinition ? managerColor(activeDefinition.id) : 'default'}>
-                {activeDefinition ? implementationStatusText(activeDefinition.status) : '规划中'}
+                {activeDefinition ? implementationStatusText(activeDefinition.status, t) : t('status.planned')}
               </Tag>
               {activeDetection?.detected && <Tag color="success">{activeDetection.files.join(', ')}</Tag>}
             </Space>
@@ -368,38 +393,38 @@ const ExtendedEcosystemsPage: React.FC = () => {
             size="small"
             loading={loading}
             pagination={{ pageSize: 12 }}
-            locale={{ emptyText: <Empty description={currentPath ? '未读取到依赖，或该生态需要先生成清单/锁文件' : '请先选择项目目录'} /> }}
+            locale={{ emptyText: <Empty description={currentPath ? t('extended.emptyDependencies') : t('common.selectProjectFirst')} /> }}
             columns={[
               {
-                title: '依赖',
+                title: t('common.dependencies'),
                 dataIndex: 'name',
                 key: 'name',
                 width: 240,
                 render: (name: string) => <Text strong>{name}</Text>
               },
               {
-                title: '版本/约束',
+                title: t('extended.columnVersionConstraint'),
                 dataIndex: 'version',
                 key: 'version',
                 width: 180,
                 render: (version: string) => version ? <Tag>{version}</Tag> : '-'
               },
               {
-                title: '类型',
+                title: t('common.type'),
                 dataIndex: 'type',
                 key: 'type',
                 width: 190,
                 render: (type: string) => <Tag color="blue">{type}</Tag>
               },
               {
-                title: '来源',
+                title: t('common.source'),
                 dataIndex: 'source',
                 key: 'source',
                 ellipsis: true,
                 render: (source: string) => source || '-'
               },
               {
-                title: '文件',
+                title: t('common.file'),
                 dataIndex: 'file',
                 key: 'file',
                 width: 170,
@@ -410,13 +435,13 @@ const ExtendedEcosystemsPage: React.FC = () => {
 
           <div className={styles.commandPanel}>
             <div>
-              <Text strong>命令运行器</Text>
+              <Text strong>{t('extended.commandRunner')}</Text>
               <Paragraph className={styles.commandHint}>
-                输入参数即可，例如 Composer 使用 <code>install</code>，NuGet 使用 <code>list package</code>。也可以输入完整命令，系统会自动去掉重复的工具名前缀。
+                {t('extended.commandHint')}
               </Paragraph>
             </div>
             <div className={styles.planPanel}>
-              <Text strong>标准操作计划</Text>
+              <Text strong>{t('extended.planTitle')}</Text>
               <Form
                 form={operationForm}
                 layout="inline"
@@ -424,29 +449,29 @@ const ExtendedEcosystemsPage: React.FC = () => {
                 className={styles.planForm}
               >
                 <Form.Item name="operation" className={styles.operationSelect}>
-                  <Select options={OPERATION_OPTIONS} />
+                  <Select options={operationOptions} />
                 </Form.Item>
                 <Form.Item name="packageName" className={styles.packageInput}>
-                  <Input placeholder="依赖名，可选" />
+                  <Input placeholder={t('extended.packageNameOptional')} />
                 </Form.Item>
                 <Form.Item name="version" className={styles.versionInput}>
-                  <Input placeholder="版本，可选" />
+                  <Input placeholder={t('extended.versionOptional')} />
                 </Form.Item>
                 <Form.Item name="dev" valuePropName="checked" className={styles.devCheckbox}>
-                  <Checkbox>开发依赖</Checkbox>
+                  <Checkbox>{t('package.devDependency')}</Checkbox>
                 </Form.Item>
                 <Button onClick={generateOperationPlan} loading={planning} disabled={!currentPath}>
-                  生成计划
+                  {t('extended.generatePlan')}
                 </Button>
               </Form>
               {operationPlan && (
                 <div className={styles.planResult}>
                   <Space size={6} wrap>
                     <Tag color={operationPlan.mutating ? 'orange' : 'green'}>
-                      {operationPlan.mutating ? '会改动项目' : '只读操作'}
+                      {operationPlan.mutating ? t('extended.mutating') : t('extended.readOnly')}
                     </Tag>
                     <Tag color={operationPlan.dryRunSupported ? 'blue' : 'default'}>
-                      {operationPlan.dryRunSupported ? '支持 dry-run' : '无通用 dry-run'}
+                      {operationPlan.dryRunSupported ? t('extended.dryRunSupportedTag') : t('extended.noDryRunTag')}
                     </Tag>
                     <Tag>{operationPlan.tool}</Tag>
                   </Space>
@@ -456,15 +481,17 @@ const ExtendedEcosystemsPage: React.FC = () => {
                   )}
                   {operationPlan.backupFiles.length > 0 && (
                     <Text type="secondary">
-                      执行前将备份 {operationPlan.backupFiles.map((file) => file.file).join('、')}
+                      {t('extended.backupBeforeRun', {
+                        files: operationPlan.backupFiles.map((file) => file.file).join(t('common.enumerationSeparator'))
+                      })}
                     </Text>
                   )}
                   {(operationPlan.requirements.length > 0 || operationPlan.warnings.length > 0) && (
                     <Alert
                       type={operationPlan.requirements.length > 0 ? 'warning' : 'info'}
                       showIcon
-                      title={operationPlan.requirements.length > 0 ? '计划需要补充信息' : '计划提示'}
-                      description={[...operationPlan.requirements, ...operationPlan.warnings].join('；')}
+                      title={operationPlan.requirements.length > 0 ? t('extended.planNeedsInfo') : t('extended.planHint')}
+                      description={[...operationPlan.requirements, ...operationPlan.warnings].join(t('common.detailSeparator'))}
                     />
                   )}
                   <Space wrap>
@@ -482,7 +509,7 @@ const ExtendedEcosystemsPage: React.FC = () => {
                       disabled={operationPlan.requirements.length > 0}
                       loading={running}
                     >
-                      执行计划
+                      {t('extended.executePlan')}
                     </Button>
                   </Space>
                 </div>
@@ -492,16 +519,16 @@ const ExtendedEcosystemsPage: React.FC = () => {
               <Alert
                 type="warning"
                 showIcon
-                title="最近一次可变更命令已创建备份"
+                title={t('extended.backupCreated')}
                 description={
                   <Space direction="vertical" size={6}>
-                    <Text>{lastBackup.files.length} 个 manifest/lock/config 文件已保存到 {lastBackup.path}</Text>
+                    <Text>{t('extended.backupFilesSaved', { count: lastBackup.files.length, path: lastBackup.path })}</Text>
                     <Space wrap>
                       <Button size="small" onClick={() => window.electronAPI.system.openFile(lastBackup.path)}>
-                        打开备份
+                        {t('extended.openBackup')}
                       </Button>
                       <Button size="small" danger onClick={restoreLastBackup} loading={restoring}>
-                        恢复备份
+                        {t('extended.restoreBackup')}
                       </Button>
                     </Space>
                   </Space>
@@ -516,11 +543,11 @@ const ExtendedEcosystemsPage: React.FC = () => {
               ))}
             </Space>
             <Form form={commandForm} layout="inline" onFinish={runCommand} className={styles.commandForm}>
-              <Form.Item name="commandLine" rules={[{ required: true, message: '请输入命令参数' }]} className={styles.commandInput}>
-                <Input placeholder="例如: install / outdated / list package / dependency update" />
+              <Form.Item name="commandLine" rules={[{ required: true, message: t('extended.commandRequired') }]} className={styles.commandInput}>
+                <Input placeholder={t('extended.commandPlaceholder')} />
               </Form.Item>
               <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} loading={running} disabled={!currentPath}>
-                运行
+                {t('common.run')}
               </Button>
             </Form>
             {commandOutput && <pre className={styles.output}>{commandOutput}</pre>}

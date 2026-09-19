@@ -176,9 +176,13 @@ async function verifySearch(service, cwd) {
     assert(requestedUrl().includes('text=%40scope%2Fexample') && requestedUrl().includes('size=7'), 'Node registry search encodes query and limit')
   })
 
-  await service.search(cwd, 'pnpm', { text: 'test', registry: 'https://user:secret@example.test' })
-    .then(() => assert(false, 'registry credentials are rejected'))
-    .catch((error) => assert(error.message.includes('credentials'), 'registry URLs reject embedded credentials'))
+  let nodeCredentialsRejected = false
+  try {
+    await service.search(cwd, 'pnpm', { text: 'test', registry: 'https://user:secret@example.test' })
+  } catch (error) {
+    nodeCredentialsRejected = /embedded credentials/i.test(error?.message || '')
+  }
+  assert(nodeCredentialsRejected, 'Registry URLs reject embedded credentials before searching')
 }
 
 async function main() {

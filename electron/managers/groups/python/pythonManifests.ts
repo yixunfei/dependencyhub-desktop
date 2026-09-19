@@ -31,7 +31,16 @@ async function readPyprojects(
   const inventories = await Promise.all(files.map(async (file) => {
     const content = await readTextIfExists(join(cwd, ...file.split('/')))
     if (!content) return []
-    const document = parseTomlDocument(content, file)
+    let document: unknown
+    try {
+      document = parseTomlDocument(content, file)
+    } catch (error) {
+      // A single malformed manifest must not fail the whole workspace scan.
+      // Only the parse step is guarded: IO errors from readTextIfExists above
+      // and programming errors in the mappers must still propagate.
+      console.warn(`Skipping unparseable Python manifest ${file}:`, error instanceof Error ? error.message : error)
+      return []
+    }
     return managerId === 'uv'
       ? uvManifestDependencies(document, file)
       : poetryManifestDependencies(document, file)
@@ -118,7 +127,15 @@ async function readPipfiles(cwd: string): Promise<ManagerDependency[]> {
   const inventories = await Promise.all(files.map(async (file) => {
     const content = await readTextIfExists(join(cwd, ...file.split('/')))
     if (!content) return []
-    const document = parseTomlDocument(content, file)
+    let document: unknown
+    try {
+      document = parseTomlDocument(content, file)
+    } catch (error) {
+      // Same containment as readPyprojects: one bad Pipfile must not kill the
+      // pipenv inventory.
+      console.warn(`Skipping unparseable Pipfile ${file}:`, error instanceof Error ? error.message : error)
+      return []
+    }
     return [
       ...pipfileTable(getRecord(document, 'packages'), 'packages', 'runtime', file),
       ...pipfileTable(getRecord(document, 'dev-packages'), 'dev-packages', 'development', file)
@@ -153,9 +170,18 @@ async function readCondaEnvironments(cwd: string): Promise<ManagerDependency[]> 
   const inventories = await Promise.all(files.map(async (file) => {
     const content = await readTextIfExists(join(cwd, ...file.split('/')))
     if (!content) return []
-    const document = asRecord(parseYamlDocument(content, file))
-    const channels = stringArray(document?.channels)
-    return asArray(document?.dependencies).flatMap((value) => (
+    let document: unknown
+    try {
+      document = parseYamlDocument(content, file)
+    } catch (error) {
+      // Same containment as readPyprojects: one bad environment.yml must not
+      // kill the conda inventory.
+      console.warn(`Skipping unparseable conda environment file ${file}:`, error instanceof Error ? error.message : error)
+      return []
+    }
+    const record = asRecord(document)
+    const channels = stringArray(record?.channels)
+    return asArray(record?.dependencies).flatMap((value) => (
       condaEnvironmentEntry(value, file, channels)
     ))
   }))

@@ -2,6 +2,7 @@ import { recoverCommandFailure } from './commandRecovery'
 import { createHash } from 'crypto'
 import { access, mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
+import { writeFileAtomic } from './atomicWrite'
 import {
   MANAGER_DEFINITIONS,
   getManagerDefinition,
@@ -10,7 +11,9 @@ import {
   type DependencyManagerId
 } from '../../shared/managerRegistry'
 import { runLoggedCommand, type LoggedCommandOptions } from './commandRunner'
+import { commandMutatesProjectFiles } from './commandMutates'
 import { withProjectMutation } from './projectMutation'
+import { splitCommandLine } from './splitCommandLine'
 import { resolveToolBin, type ToolName } from './toolchain'
 import {
   createNodeOperationTemplate,
@@ -341,7 +344,11 @@ export class ExtendedManagerService {
 
     const tool = primaryRunTool(manager)
     const args = normalizeArgs(tool, splitCommandLine(commandLine))
-    return await this.runArgs(cwd, manager, tool, args, commandLine, false, context)
+    const invoke = () => this.runArgs(cwd, manager, tool, args, commandLine, false, context)
+    // Free-form commands (runCustom) mutate the project for install/uninstall-like
+    // input and must share the same mutation queue as planned operations.
+    if (!commandMutatesProjectFiles(args)) return await invoke()
+    return await withProjectMutation(cwd, invoke)
   }
 
   async executePlanned(
@@ -362,7 +369,9 @@ export class ExtendedManagerService {
       throw new Error(`No reliable dry-run command is available for ${managerId}`)
     }
     const commandLine = [tool, ...plannedArgs].join(' ')
-    return await this.runArgs(cwd, manager, tool as ToolName, plannedArgs, commandLine, dryRun, context)
+    const run = () => this.runArgs(cwd, manager, tool as ToolName, plannedArgs, commandLine, dryRun, context)
+    if (dryRun || !commandMutatesProjectFiles(plannedArgs)) return await run()
+    return await withProjectMutation(cwd, run)
   }
 
   async execute(
@@ -501,7 +510,8 @@ export class ExtendedManagerService {
 
       await mkdir(dirname(targetPath), { recursive: true })
       if (file.exists) {
-        await writeFile(targetPath, file.content, 'utf-8')
+        // Restoring user manifests must be as atomic as backing them up.
+        await writeFileAtomic(targetPath, file.content)
       } else {
         try { await unlink(targetPath) } catch { }
       }
@@ -1106,19 +1116,17 @@ async function createCommandBackup(
   ])]
 
   const backedUpFiles = await Promise.all(candidates.map(async (file) => {
+    const filePath = join(cwd, file)
     try {
-      await access(join(cwd, file))
-      const content = await readText(join(cwd, file))
-      return {
-        file,
-        hash: sha256(content),
-        size: Buffer.byteLength(content, 'utf-8'),
-        exists: true,
-        content
-      }
-    } catch {
-      return { file, hash: sha256(''), size: 0, exists: false, content: '' }
+      await access(filePath)
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') return { file, hash: sha256(''), size: 0, exists: false, content: '' }
+      throw error
     }
+    // Once access confirms existence, a read failure must abort the backup rather
+    // than silently turning a real manifest into an empty file on restore.
+    const content = await readText(filePath)
+    return { file, hash: sha256(content), size: Buffer.byteLength(content, 'utf-8'), exists: true, content }
   }))
 
   const id = `${manager.id}-${timestampId()}`
@@ -1141,22 +1149,6 @@ async function createCommandBackup(
     ...payload,
     files: backedUpFiles.map(({ content: _content, ...file }) => file)
   }
-}
-
-function commandMutatesProjectFiles(args: string[]): boolean {
-  if (args.includes('--dry-run') || args.includes('--simulate') || args.includes('--assumeno')) return false
-  const normalized = args
-    .filter((arg) => !arg.startsWith('-'))
-    .join(' ')
-    .toLowerCase()
-    .trim()
-
-  if (!normalized) return false
-  if (/\b(dry-run|check|validate|list|ls|show|info|tree|graph|outdated|audit|search|why)\b/.test(normalized) && !/\bfix\b/.test(normalized)) {
-    return false
-  }
-
-  return /\b(install|add|require|remove|rm|uninstall|update|autoupdate|upgrade|sync|restore|resolve|lock|freeze|snapshot|instantiate|init|tidy|get|deps|fetch|fix|edit|prune|clean|purge|dependency update|repo update|generate-lockfiles)\b/.test(normalized)
 }
 
 function resolveBackupPath(cwd: string, backupPath: string): string {
@@ -2604,7 +2596,7 @@ function splitSystemPackageSpec(value: string): [string, string | undefined] {
 }
 
 function parseNixPackageReferences(content: string): string[] {
-  const withoutComments = content.replace(/#.*/g, ' ')
+  const withoutComments = content.split(/\r?\n/).map(stripInlineComment).join('\n')
   const refs = new Set<string>()
 
   for (const match of matches(withoutComments, /(?:with\s+pkgs;\s*)?\[([\s\S]*?)\]/g)) {
@@ -2777,12 +2769,25 @@ function parseTomlArray(content: string, key: string): string[] {
 function parseTomlKeyValues(content: string): Array<[string, string]> {
   return content
     .split(/\r?\n/)
-    .map((line) => line.replace(/#.*/, '').trim())
+    .map((line) => stripInlineComment(line).trim())
     .filter((line) => line && line.includes('='))
     .map((line) => {
       const [rawName, ...rawValue] = line.split('=')
       return [stripQuotes(rawName.trim()), normalizeTomlValue(rawValue.join('=').trim())] as [string, string]
     })
+}
+
+function stripInlineComment(line: string): string {
+  let quote: string | null = null
+  let escaped = false
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    if (escaped) { escaped = false; continue }
+    if (char === '\\' && quote) { escaped = true; continue }
+    if (char === '"' || char === "'") { quote = quote === char ? null : quote || char; continue }
+    if (char === '#' && !quote) return line.slice(0, index)
+  }
+  return line
 }
 
 function sectionContent(content: string, section: string): string {
@@ -2876,10 +2881,47 @@ function stripQuotes(value: string): string {
   return value.replace(/^['"]|['"]$/g, '')
 }
 
+// Character-level scan so `//` inside string values (URLs, scopes) survives;
+// the previous regex truncated every `//` outside `://` and broke JSON parsing.
 function stripJsonComments(value: string): string {
-  return value
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1')
+  let result = ''
+  let index = 0
+  while (index < value.length) {
+    const char = value[index]
+    if (char === '"') {
+      const end = endOfJsonString(value, index)
+      result += value.slice(index, end)
+      index = end
+      continue
+    }
+    if (char === '/' && value[index + 1] === '/') {
+      // Line comment: strip to (not including) the newline so line structure stays.
+      index += 2
+      while (index < value.length && value[index] !== '\n') index += 1
+      continue
+    }
+    if (char === '/' && value[index + 1] === '*') {
+      const end = value.indexOf('*/', index + 2)
+      index = end < 0 ? value.length : end + 2
+      continue
+    }
+    result += char
+    index += 1
+  }
+  return result
+}
+
+function endOfJsonString(value: string, start: number): number {
+  let index = start + 1
+  while (index < value.length) {
+    if (value[index] === '\\') {
+      index += 2
+      continue
+    }
+    if (value[index] === '"') return index + 1
+    index += 1
+  }
+  return value.length
 }
 
 function normalizeArgs(tool: string, args: string[]): string[] {
@@ -2888,16 +2930,6 @@ function normalizeArgs(tool: string, args: string[]): string[] {
   if (tool === 'bundle' && args[0]?.toLowerCase() === 'bundler') return args.slice(1)
   if (tool === 'pod' && args[0]?.toLowerCase() === 'cocoapods') return args.slice(1)
   if (tool === 'buck2' && args[0]?.toLowerCase() === 'buck') return args.slice(1)
-  return args
-}
-
-function splitCommandLine(commandLine: string): string[] {
-  const args: string[] = []
-  const regex = /"([^"]*)"|'([^']*)'|[^\s]+/g
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(commandLine)) !== null) {
-    args.push(match[1] ?? match[2] ?? match[0])
-  }
   return args
 }
 
@@ -2921,8 +2953,9 @@ async function readJson(path: string): Promise<any> {
 async function readText(path: string): Promise<string> {
   try {
     return await readFile(path, 'utf-8')
-  } catch {
-    return ''
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return ''
+    throw error
   }
 }
 

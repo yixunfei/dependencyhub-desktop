@@ -10,7 +10,16 @@ const WorkflowSectionNav: React.FC = () => (
     <Text className={styles.sectionNavTitle}>Health Center workflows</Text>
     <div className={styles.sectionNavLinks}>
       {HEALTH_WORKFLOW_SECTIONS.map((section) => (
-        <a key={section.id} href={`#${section.id}`}>{section.label}</a>
+        // A plain anchor href="#id" would be interpreted as a route path by the
+        // HashRouter and blank the content area; scroll instead.
+        <button
+          key={section.id}
+          type="button"
+          className={styles.sectionNavLink}
+          onClick={() => document.getElementById(section.id)?.scrollIntoView({ behavior: 'smooth' })}
+        >
+          {section.label}
+        </button>
       ))}
     </div>
   </div>

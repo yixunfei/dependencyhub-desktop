@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, writeFile } from 'fs/promises'
+import { appendFile, mkdir, readFile, rename, stat, writeFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
 import {
   MANAGER_DEFINITIONS,
@@ -8,6 +8,7 @@ import {
 const HISTORY_FILE = '.npmDesktopManager/operations/command-history.jsonl'
 const REPORT_DIR = '.npmDesktopManager/reports'
 const MAX_STORED_TEXT_LENGTH = 4000
+const MAX_HISTORY_FILE_BYTES = 2 * 1024 * 1024
 
 export type OperationHistoryStatus = 'success' | 'error'
 export type OperationHistoryOperationKind =
@@ -114,9 +115,21 @@ export async function recordOperationHistory(record: OperationHistoryRecord): Pr
   try {
     const path = historyPath(record.cwd)
     await mkdir(dirname(path), { recursive: true })
+    await rotateHistoryFileIfNeeded(path)
     await appendFile(path, `${JSON.stringify(trimRecord(record))}\n`, 'utf-8')
   } catch {
   }
+}
+
+// The history is append-only, so without rotation it grows unbounded. Keeping
+// a single previous generation is enough to bound growth; listOperationHistory
+// reads only the main file, so no reader changes are needed.
+async function rotateHistoryFileIfNeeded(path: string): Promise<void> {
+  const stats = await stat(path).catch(() => undefined)
+  if (!stats || stats.size < MAX_HISTORY_FILE_BYTES) return
+  // fs.rename replaces the existing .1 on all platforms; if it fails we keep
+  // appending to the main file rather than losing the record.
+  await rename(path, `${path}.1`).catch(() => undefined)
 }
 
 export async function listOperationHistory(cwd: string, limitOrOptions: number | OperationHistoryListOptions = 100): Promise<OperationHistoryRecord[]> {

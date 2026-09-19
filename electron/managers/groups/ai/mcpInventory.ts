@@ -66,7 +66,7 @@ export async function readMcpInventory(cwd: string): Promise<ManagerDependency[]
   const lockedByName = new Map(locked.map((entry) => [entry.name, entry]))
   const names = new Set(servers.map((server) => server.name))
 
-  const direct = servers.map((server) => {
+  const direct = servers.filter((server, index) => servers.findIndex((candidate) => candidate.name === server.name) === index).map((server) => {
     const lock = lockedByName.get(server.name)
     return {
       managerId: 'mcp' as const,
@@ -139,13 +139,48 @@ export async function readMcpLock(cwd: string): Promise<McpLockEntry[]> {
   })
 }
 
-export function mcpServerMap(root: unknown): Record<string, unknown> {
+export interface McpServerBinding {
+  /** Path from the document root to the server map (e.g. ['servers'] or ['mcp', 'servers']). */
+  keyPath: string[]
+  servers: Record<string, unknown>
+}
+
+/**
+ * Locate the server map in any of the shapes the ecosystem uses. The key path
+ * is returned so writers can update the same location instead of always
+ * creating an `mcpServers` entry next to the real one.
+ */
+export function mcpServerBinding(root: unknown): McpServerBinding {
   const record = asRecord(root)
-  if (!record) return {}
-  const direct = asRecord(record.mcpServers) || asRecord(record.servers)
-  if (direct) return direct
+  if (!record) return { keyPath: ['mcpServers'], servers: {} }
+  const direct = asRecord(record.mcpServers)
+  if (direct) return { keyPath: ['mcpServers'], servers: direct }
+  const servers = asRecord(record.servers)
+  if (servers) return { keyPath: ['servers'], servers }
   const nested = asRecord(asRecord(record.mcp)?.servers)
-  return nested || {}
+  if (nested) return { keyPath: ['mcp', 'servers'], servers: nested }
+  return { keyPath: ['mcpServers'], servers: {} }
+}
+
+export function mcpServerMap(root: unknown): Record<string, unknown> {
+  return mcpServerBinding(root).servers
+}
+
+/** Replace the server map at the same key path it was read from. */
+export function withServerMap(
+  root: unknown,
+  keyPath: string[],
+  servers: Record<string, unknown>
+): Record<string, unknown> {
+  const next = { ...(asRecord(root) || {}) }
+  if (keyPath.length === 1) {
+    next[keyPath[0]] = servers
+    return next
+  }
+  const nested = { ...(asRecord(next[keyPath[0]]) || {}) }
+  nested[keyPath[1]] = servers
+  next[keyPath[0]] = nested
+  return next
 }
 
 function toServerRecord(name: string, value: unknown, file: string): McpServerRecord {

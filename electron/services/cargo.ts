@@ -1,7 +1,10 @@
 import { access, readFile } from 'fs/promises'
 import { join } from 'path'
+import { parse as parseTomlValue } from 'smol-toml'
 import { runLoggedCommand } from './commandRunner'
+import { registryHttpGet } from './registryHttp'
 import { resolveToolBin } from './toolchain'
+import { splitCommandLine } from './splitCommandLine'
 
 export interface CargoDependency {
   name: string
@@ -52,7 +55,9 @@ export class CargoService {
   }
 
   async list(cwd: string): Promise<CargoDependency[]> {
-    const content = await readFile(join(cwd, 'Cargo.toml'), 'utf-8')
+    // Strip the UTF-8 BOM Windows editors emit: smol-toml rejects it and the
+    // whole manifest would look unparseable.
+    const content = (await readFile(join(cwd, 'Cargo.toml'), 'utf-8')).replace(/^\uFEFF/, '')
     return parseCargoTomlDependencies(content)
   }
 
@@ -139,51 +144,88 @@ export class CargoService {
   }
 }
 
+type CargoDependencySection = CargoDependency['type']
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function asText(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+// Line-based comment stripping previously ate `#` inside strings (git URL
+// fragments), and a hardcoded section whitelist missed [target.*.dependencies]
+// and workspace inheritance. Parsing with smol-toml removes both hazards.
 function parseCargoTomlDependencies(content: string): CargoDependency[] {
+  const document = parseTomlValue(content) as Record<string, unknown>
+  const workspaceVersions = readWorkspaceDependencyVersions(document)
   const dependencies: CargoDependency[] = []
-  let section: CargoDependency['type'] | null = null
 
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*/, '').trim()
-    if (!line) continue
-
-    const sectionMatch = line.match(/^\[([^\]]+)]$/)
-    if (sectionMatch) {
-      const sectionName = sectionMatch[1].trim()
-      section = sectionName === 'dependencies' || sectionName === 'dev-dependencies' || sectionName === 'build-dependencies'
-        ? sectionName
-        : null
-      continue
+  for (const [sectionName, sectionValue] of Object.entries(document)) {
+    const section = cargoDependencySection(sectionName)
+    if (section && isRecord(sectionValue)) {
+      for (const [key, value] of Object.entries(sectionValue)) {
+        dependencies.push(readCargoDependency(key, value, section, workspaceVersions))
+      }
     }
+  }
 
-    if (!section) continue
-
-    const depMatch = line.match(/^"?([^"=\s]+)"?\s*=\s*(.+)$/)
-    if (!depMatch) continue
-
-    const keyName = depMatch[1].trim()
-    const value = depMatch[2].trim().replace(/,$/, '')
-    const packageName = readInlineValue(value, 'package') || keyName
-    const version = value.startsWith('"') ? value.replace(/^"|"$/g, '') : readInlineValue(value, 'version')
-    const pathSource = readInlineValue(value, 'path')
-    const gitSource = readInlineValue(value, 'git')
-    const optional = /\boptional\s*=\s*true\b/.test(value)
-
-    dependencies.push({
-      name: packageName,
-      version,
-      type: section,
-      source: pathSource ? `path:${pathSource}` : gitSource ? `git:${gitSource}` : undefined,
-      optional
-    })
+  // [target.'cfg(...)'.dependencies] entries only appear after the top-level
+  // dependency sections in normal manifests, so appending them keeps a stable
+  // order close to the file's.
+  const targets = isRecord(document['target']) ? document['target'] : undefined
+  for (const targetValue of Object.values(targets ?? {})) {
+    const targetDependencies = isRecord(targetValue) ? targetValue['dependencies'] : undefined
+    if (!isRecord(targetDependencies)) continue
+    for (const [key, value] of Object.entries(targetDependencies)) {
+      dependencies.push(readCargoDependency(key, value, 'dependencies', workspaceVersions))
+    }
   }
 
   return dependencies
 }
 
-function readInlineValue(value: string, key: string): string {
-  const match = value.match(new RegExp(`\\b${key}\\s*=\\s*"([^"]+)"`))
-  return match?.[1] || ''
+function cargoDependencySection(sectionName: string): CargoDependencySection | undefined {
+  if (sectionName === 'dependencies' || sectionName === 'dev-dependencies' || sectionName === 'build-dependencies') {
+    return sectionName
+  }
+  return undefined
+}
+
+function readWorkspaceDependencyVersions(document: Record<string, unknown>): Map<string, string> {
+  const workspaceDependencies = isRecord(document['workspace']) ? document['workspace'].dependencies : undefined
+  const versions = new Map<string, string>()
+  if (!isRecord(workspaceDependencies)) return versions
+  for (const [name, value] of Object.entries(workspaceDependencies)) {
+    const version = asText(isRecord(value) ? value.version : value)
+    if (version) versions.set(name, version)
+  }
+  return versions
+}
+
+function readCargoDependency(
+  key: string,
+  value: unknown,
+  section: CargoDependencySection,
+  workspaceVersions: Map<string, string>
+): CargoDependency {
+  const record = isRecord(value) ? value : undefined
+  const name = asText(record?.package) || key
+  const inherited = record?.workspace === true
+  const workspaceVersion = inherited
+    ? (workspaceVersions.get(name) ? `${workspaceVersions.get(name)} (workspace)` : '(workspace)')
+    : undefined
+  const pathSource = asText(record?.path)
+  const gitSource = asText(record?.git)
+
+  return {
+    name,
+    version: asText(record?.version) || workspaceVersion || (typeof value === 'string' ? value : ''),
+    type: section,
+    source: pathSource ? `path:${pathSource}` : gitSource ? `git:${gitSource}` : undefined,
+    optional: record?.optional === true
+  }
 }
 
 function parseCargoSearch(output: string): CargoSearchResult[] {
@@ -203,20 +245,6 @@ function parseCargoSearch(output: string): CargoSearchResult[] {
     .filter(Boolean) as CargoSearchResult[]
 }
 
-async function httpsGet(url: string): Promise<string> {
-  const https = await import('https')
-  return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'DependencyHub Desktop' } }, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => resolve(data))
-    }).on('error', reject)
-  })
-}
-
-function splitCommandLine(commandLine: string): string[] {
-  return commandLine
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
+function httpsGet(url: string): Promise<string> {
+  return registryHttpGet(url, { headers: { 'User-Agent': 'DependencyHub Desktop' } })
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Descriptions, Empty, Form, Input, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Tooltip } from 'antd'
 import {
   BranchesOutlined,
@@ -61,6 +61,12 @@ const CargoPage: React.FC = () => {
   const [versionOptions, setVersionOptions] = useState<Array<{ value: string; label: string }>>([])
   const [installForm] = Form.useForm()
   const [commandForm] = Form.useForm()
+  // Monotonic epoch so a stale list() reply from a previous currentPath cannot
+  // overwrite the freshly loaded project data.
+  const loadEpochRef = useRef(0)
+  // Same guard for the crate version dialog: opening A then B must not let
+  // A's slower reply fill B's version list (installing would use it).
+  const versionRequestRef = useRef(0)
 
   const dependencyStats = useMemo(() => {
     const byType = dependencies.reduce<Record<CargoDependencyType, number>>((acc, item) => {
@@ -151,6 +157,7 @@ const CargoPage: React.FC = () => {
   }
 
   const loadCargoProject = async () => {
+    const epoch = ++loadEpochRef.current
     if (!currentPath) {
       setManifestInfo(null)
       setDependencies([])
@@ -160,17 +167,21 @@ const CargoPage: React.FC = () => {
     setLoading(true)
     try {
       const detected = await window.electronAPI.cargo.detect(currentPath)
+      if (epoch !== loadEpochRef.current) return
       setManifestInfo(detected)
       if (!detected.hasCargoToml) {
         setDependencies([])
         return
       }
-      setDependencies(await window.electronAPI.cargo.list(currentPath))
+      const deps = await window.electronAPI.cargo.list(currentPath)
+      if (epoch !== loadEpochRef.current) return
+      setDependencies(deps)
     } catch (error: any) {
+      if (epoch !== loadEpochRef.current) return
       setDependencies([])
       addNotification({ type: 'error', message: '加载 Cargo 项目失败', description: error.message })
     } finally {
-      setLoading(false)
+      if (epoch === loadEpochRef.current) setLoading(false)
     }
   }
 
@@ -313,17 +324,20 @@ const CargoPage: React.FC = () => {
   }
 
   const showDependencyVersions = async (record: CargoDependencyInfo) => {
+    const requestId = ++versionRequestRef.current
     setSelectedDependency(record)
     setVersionOptions([])
     setVersionVisible(true)
     setLoading(true)
     try {
       const versions = await window.electronAPI.cargo.versions(record.name)
+      if (requestId !== versionRequestRef.current) return
       setVersionOptions(versions.map((version) => ({ value: version, label: version })))
     } catch (error: any) {
+      if (requestId !== versionRequestRef.current) return
       addNotification({ type: 'error', message: '加载 crate 版本失败', description: error.message })
     } finally {
-      setLoading(false)
+      if (requestId === versionRequestRef.current) setLoading(false)
     }
   }
 

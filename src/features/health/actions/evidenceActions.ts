@@ -5,7 +5,7 @@ export async function exportOperationHistoryAction(context: Pick<HealthData,
 >, format: OperationHistoryExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setOperationHistory } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -35,7 +35,7 @@ export async function importCiEvidenceAction(context: Pick<HealthData,
 >) {
   const { t, currentPath, addNotification, setReporting, setCiEvidence, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -74,7 +74,7 @@ export async function recordManualCiEvidenceAction(context: Pick<HealthData,
 >, status: CiEvidenceStatus) {
   const { t, currentPath, addNotification, setReporting, setCiEvidence, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -113,7 +113,7 @@ export async function exportCiEvidenceAction(context: Pick<HealthData,
 >, format: CiEvidenceExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setCiEvidence } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -145,7 +145,7 @@ export async function recordReleaseApprovalAction(context: Pick<HealthData,
 >, decision: ReleaseApprovalDecision) {
   const { t, currentPath, addNotification, setReporting, setReleaseApprovals, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -183,7 +183,7 @@ export async function exportReleaseApprovalsAction(context: Pick<HealthData,
 >, format: ReleaseApprovalExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setReleaseApprovals } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -216,7 +216,7 @@ export async function recordReleaseExceptionAction(context: Pick<HealthData,
 >) {
   const { t, currentPath, addNotification, readinessRows, setReporting, setReleaseExceptions, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -266,7 +266,7 @@ export async function exportReleaseExceptionsAction(context: Pick<HealthData,
 >, format: ReleaseExceptionExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setReleaseExceptions } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -298,7 +298,7 @@ export async function importAuditEvidenceAction(context: Pick<HealthData,
 >) {
   const { t, currentPath, addNotification, setReporting, setAuditEvidence, setVulnerabilityRemediationPlan } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -341,7 +341,7 @@ export async function exportAuditEvidenceAction(context: Pick<HealthData,
 >, format: AuditEvidenceExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setAuditEvidence, setVulnerabilityRemediationPlan } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -381,7 +381,7 @@ export async function exportVulnerabilityRemediationPlanAction(context: Pick<Hea
 >, format: VulnerabilityRemediationPlanExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setVulnerabilityRemediationPlan, setReportArtifactIndex } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 

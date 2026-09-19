@@ -1,8 +1,8 @@
 import { spawn } from 'child_process'
-import https from 'https'
-import { readFile } from 'fs/promises'
+import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { BrowserWindow } from 'electron'
+import { registryHttpGet } from './registryHttp'
 import { resolveShellFreeCommand, runLoggedCommand } from './commandRunner'
 import { setCommandLogWindow } from './commandLogger'
 import { resolveToolBin } from './toolchain'
@@ -48,14 +48,8 @@ function registryPackageUrl(packageName: string, version = 'latest'): string {
   return `https://registry.npmjs.org/${encodeURIComponent(packageName)}/${encodeURIComponent(version)}`
 }
 
-async function httpsGet(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => { resolve(data) })
-    }).on('error', reject)
-  })
+function httpsGet(url: string): Promise<string> {
+  return registryHttpGet(url)
 }
 
 export interface NpmDependencyStatus {
@@ -85,7 +79,12 @@ export function classifyNpmDependencies(
   for (const type of typeOrder) {
     for (const [name] of Object.entries(manifest[type] || {})) {
       const node = installed[name]
-      const matchingProblems = problems.filter((problem) => problem.toLowerCase().includes(name.toLowerCase()))
+      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const matchingProblems = problems.filter((problem) => {
+        const text = problem.toLowerCase()
+        const packagePattern = new RegExp(`(?:^|[^a-z0-9._-])${escapedName.toLowerCase()}(?:$|[^a-z0-9._-])`)
+        return packagePattern.test(text)
+      })
       const peerConflict = matchingProblems.some((problem) => /peer|eresolve/i.test(problem))
       const status = !node ? 'missing' : peerConflict ? 'peer-conflict' : node.invalid || matchingProblems.some((problem) => /invalid|missing/i.test(problem)) ? 'invalid' : 'installed'
       if (!result[name] || type === 'optionalDependencies' || type === 'peerDependencies') {
@@ -118,7 +117,10 @@ function collectNpmTree(tree: any): { installed: Record<string, any>; problems: 
 
 async function readNpmManifest(cwd: string): Promise<Record<string, Record<string, string>>> {
   try {
-    const value = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'))
+    // Windows editors may emit a UTF-8 BOM; without stripping it JSON.parse
+    // fails and every declared dependency would silently look "missing".
+    const raw = (await readFile(join(cwd, 'package.json'), 'utf8')).replace(/^\uFEFF/, '')
+    const value = JSON.parse(raw)
     return {
       dependencies: value.dependencies || {},
       devDependencies: value.devDependencies || {},
@@ -257,12 +259,25 @@ export class NpmService {
       
       const command = resolveShellFreeCommand(npmBin, args)
       const child = spawn(command.bin, command.args, {
+        // stdio stays inherited so the interactive login prompt works; known
+        // limitation: prompts are invisible in the packaged GUI without a TTY.
         stdio: 'inherit',
         shell: false,
-        windowsHide: true
+        windowsHide: true,
+        windowsVerbatimArguments: command.windowsVerbatimArguments === true
       })
-      
+      const timeout = setTimeout(() => {
+        child.kill()
+        reject(new Error('Login timed out after 10 minutes'))
+      }, 10 * 60 * 1000)
+
+      child.on('error', (error) => {
+        clearTimeout(timeout)
+        reject(new Error(`Login failed to start: ${error.message}`))
+      })
+
       child.on('close', (code) => {
+        clearTimeout(timeout)
         if (code === 0) resolve()
         else reject(new Error('Login failed'))
       })
@@ -309,15 +324,39 @@ export class NpmService {
 
   async moveDependency(args: any): Promise<string> {
     const { packageName, cwd, from, to } = args
-    
-    await this.uninstall({ packageName, cwd, global: false })
-    
-    return await this.install({
-      packageName,
-      cwd,
-      global: false,
-      dev: to === 'devDependencies'
-    })
+
+    // The move runs as two separate commands. If the second leg fails after
+    // uninstall already rewrote package.json, the dependency would be silently
+    // dropped from the manifest — restore the pre-move manifest instead.
+    const manifestPath = cwd ? join(cwd, 'package.json') : null
+    let manifestSnapshot: string | null = null
+    if (manifestPath) {
+      try {
+        manifestSnapshot = (await readFile(manifestPath, 'utf8'))
+      } catch {
+        manifestSnapshot = null
+      }
+    }
+
+    try {
+      await this.uninstall({ packageName, cwd, global: false })
+
+      return await this.install({
+        packageName,
+        cwd,
+        global: false,
+        dev: to === 'devDependencies'
+      })
+    } catch (error) {
+      if (manifestPath && manifestSnapshot !== null) {
+        try {
+          await writeFile(manifestPath, manifestSnapshot, 'utf8')
+        } catch (restoreError) {
+          console.warn('Failed to restore package.json after failed dependency move:', restoreError)
+        }
+      }
+      throw error
+    }
   }
 
   async getPublishedPackages(username: string): Promise<any[]> {
@@ -432,10 +471,23 @@ export class NpmService {
       const child = spawn(command.bin, command.args, {
           stdio: 'inherit',
           shell: false,
-          windowsHide: true
+          windowsHide: true,
+          windowsVerbatimArguments: command.windowsVerbatimArguments === true
+      })
+      const timeout = setTimeout(() => {
+        child.kill()
+        reject(new Error('Add user timed out after 10 minutes'))
+      }, 10 * 60 * 1000)
+
+      // A missing npm binary makes spawn fail asynchronously; without this
+      // listener the 'error' event would crash the main process.
+      child.on('error', (error) => {
+        clearTimeout(timeout)
+        reject(new Error(`Add user failed to start: ${error.message}`))
       })
       
       child.on('close', (code) => {
+        clearTimeout(timeout)
         if (code === 0) resolve()
         else reject(new Error('Add user failed'))
       })

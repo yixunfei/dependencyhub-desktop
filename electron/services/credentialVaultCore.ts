@@ -73,6 +73,19 @@ interface VaultFile {
 }
 
 export class CredentialVaultStore {
+  /**
+   * All read-modify-write cycles must run inside this queue: concurrent
+   * save/delete/resolve would otherwise read the same snapshot and the last
+   * writer wins, silently dropping the other operation's credential.
+   */
+  private vaultQueue: Promise<unknown> = Promise.resolve()
+
+  private enqueueVaultOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.vaultQueue.then(operation, operation)
+    this.vaultQueue = next.catch(() => undefined)
+    return next
+  }
+
   constructor(
     private readonly baseDir: string,
     private readonly cipher: CredentialCipher
@@ -91,51 +104,55 @@ export class CredentialVaultStore {
   }
 
   async save(input: CredentialInput): Promise<CredentialMetadata> {
-    const normalized = normalizeCredentialInput(input)
-    const vault = await this.readVault()
-    const now = new Date().toISOString()
-    const existingIndex = normalized.id
-      ? vault.credentials.findIndex((credential) => credential.id === normalized.id)
-      : -1
-    const existing = existingIndex >= 0 ? vault.credentials[existingIndex] : undefined
-    const encryptedSecret = this.cipher.encrypt(normalized.secret)
-    const storage = this.cipher.storage
-    const encrypted = this.cipher.encrypted
-    const credential: StoredCredential = {
-      id: existing?.id || normalized.id || randomUUID(),
-      managerId: normalized.managerId,
-      service: normalized.service,
-      account: normalized.account,
-      label: normalized.label || buildCredentialLabel(normalized),
-      kind: normalized.kind || 'token',
-      url: normalized.url,
-      notes: normalized.notes,
-      secretPreview: previewSecret(normalized.secret),
-      storage,
-      encrypted,
-      createdAt: existing?.createdAt || now,
-      updatedAt: now,
-      lastUsedAt: existing?.lastUsedAt,
-      encryptedSecret
-    }
+    return await this.enqueueVaultOperation(async () => {
+      const normalized = normalizeCredentialInput(input)
+      const vault = await this.readVault()
+      const now = new Date().toISOString()
+      const existingIndex = normalized.id
+        ? vault.credentials.findIndex((credential) => credential.id === normalized.id)
+        : -1
+      const existing = existingIndex >= 0 ? vault.credentials[existingIndex] : undefined
+      const encryptedSecret = this.cipher.encrypt(normalized.secret)
+      const storage = this.cipher.storage
+      const encrypted = this.cipher.encrypted
+      const credential: StoredCredential = {
+        id: existing?.id || normalized.id || randomUUID(),
+        managerId: normalized.managerId,
+        service: normalized.service,
+        account: normalized.account,
+        label: normalized.label || buildCredentialLabel(normalized),
+        kind: normalized.kind || 'token',
+        url: normalized.url,
+        notes: normalized.notes,
+        secretPreview: previewSecret(normalized.secret),
+        storage,
+        encrypted,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        lastUsedAt: existing?.lastUsedAt,
+        encryptedSecret
+      }
 
-    if (existingIndex >= 0) {
-      vault.credentials[existingIndex] = credential
-    } else {
-      vault.credentials.push(credential)
-    }
+      if (existingIndex >= 0) {
+        vault.credentials[existingIndex] = credential
+      } else {
+        vault.credentials.push(credential)
+      }
 
-    await this.writeVault(vault)
-    return toMetadata(credential)
+      await this.writeVault(vault)
+      return toMetadata(credential)
+    })
   }
 
   async delete(id: string): Promise<boolean> {
     if (!id.trim()) return false
-    const vault = await this.readVault()
-    const nextCredentials = vault.credentials.filter((credential) => credential.id !== id)
-    if (nextCredentials.length === vault.credentials.length) return false
-    await this.writeVault({ ...vault, credentials: nextCredentials })
-    return true
+    return await this.enqueueVaultOperation(async () => {
+      const vault = await this.readVault()
+      const nextCredentials = vault.credentials.filter((credential) => credential.id !== id)
+      if (nextCredentials.length === vault.credentials.length) return false
+      await this.writeVault({ ...vault, credentials: nextCredentials })
+      return true
+    })
   }
 
   async resolve(id: string): Promise<CredentialResolution> {
@@ -161,40 +178,73 @@ export class CredentialVaultStore {
   }
 
   private async touch(id: string): Promise<void> {
-    const vault = await this.readVault()
-    const credential = vault.credentials.find((item) => item.id === id)
-    if (!credential) return
-    credential.lastUsedAt = new Date().toISOString()
-    await this.writeVault(vault)
+    await this.enqueueVaultOperation(async () => {
+      const vault = await this.readVault()
+      const credential = vault.credentials.find((item) => item.id === id)
+      if (!credential) return
+      credential.lastUsedAt = new Date().toISOString()
+      await this.writeVault(vault)
+    })
   }
 
   private async readVault(): Promise<VaultFile> {
+    const path = this.vaultPath()
+    let content: string
     try {
-      const content = await readFile(this.vaultPath(), 'utf-8')
-      const parsed = JSON.parse(content) as VaultFile
-      if (!Array.isArray(parsed.credentials)) return emptyVault()
-      return {
-        version: parsed.version || VAULT_VERSION,
-        credentials: parsed.credentials.filter(isStoredCredential)
-      }
-    } catch {
-      return emptyVault()
+      content = await readFile(path, 'utf-8')
+    } catch (error) {
+      // Only a genuinely missing vault means "empty". A transient read failure
+      // (EACCES/EBUSY/EPERM) must never be treated as an empty vault: save()
+      // would then rewrite the file with just the new credential and silently
+      // destroy every stored secret.
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return emptyVault()
+      throw new Error(`Unable to read the credential vault at ${path}: ${(error as Error).message}`)
+    }
+
+    let parsed: VaultFile
+    try {
+      // Strip a possible UTF-8 BOM before parsing so an externally edited file
+      // is not misreported as corrupt.
+      parsed = JSON.parse(content.replace(/^\uFEFF/, '')) as VaultFile
+    } catch (cause) {
+      throw new Error(`The credential vault at ${path} is corrupted and cannot be parsed: ${(cause as Error).message}`)
+    }
+
+    if (!Array.isArray(parsed?.credentials)) {
+      throw new Error(`The credential vault at ${path} has an unexpected structure; refusing to overwrite it.`)
+    }
+
+    const credentials: StoredCredential[] = []
+    for (const entry of parsed.credentials) {
+      const repaired = repairStoredCredential(entry)
+      if (repaired) credentials.push(repaired)
+    }
+
+    return {
+      version: parsed.version || VAULT_VERSION,
+      credentials
     }
   }
 
   private async writeVault(vault: VaultFile): Promise<void> {
     const path = this.vaultPath()
-    const tmpPath = `${path}.tmp`
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(tmpPath, JSON.stringify({
-      version: VAULT_VERSION,
-      credentials: vault.credentials
-    }, null, 2), 'utf-8')
+    // A unique staging file per write keeps concurrent or crashed writers from
+    // corrupting each other's snapshot; a fixed `${path}.tmp` does not.
+    const tmpPath = `${path}.${randomUUID()}.tmp`
     try {
+      await writeFile(tmpPath, JSON.stringify({
+        version: VAULT_VERSION,
+        credentials: vault.credentials
+      }, null, 2), 'utf-8')
       await rename(tmpPath, path)
     } catch (error) {
-      await unlink(path).catch(() => undefined)
-      await rename(tmpPath, path)
+      // The staging file must not survive a failed write, whether the writeFile
+      // or the rename failed — leaked `<uuid>.tmp` files accumulate forever.
+      // Never unlink the live vault to "make room" for the rename: if the
+      // retry also fails, the previous vault contents must stay intact.
+      await unlink(tmpPath).catch(() => undefined)
+      throw error
     }
   }
 
@@ -273,16 +323,36 @@ function toMetadata(credential: StoredCredential): CredentialMetadata {
   return metadata
 }
 
-function isStoredCredential(value: StoredCredential): value is StoredCredential {
-  return Boolean(
-    value &&
-    value.id &&
-    value.managerId &&
-    value.service &&
-    value.label &&
-    value.kind &&
-    value.encryptedSecret &&
-    value.createdAt &&
-    value.updatedAt
-  )
+const VALID_CREDENTIAL_KINDS: ReadonlySet<string> = new Set(['token', 'password', 'username-password', 'api-key', 'other'])
+const VALID_CREDENTIAL_STORAGE: ReadonlySet<string> = new Set(['electron-safe-storage', 'base64-fallback', 'test-adapter'])
+
+/**
+ * Entries missing cosmetic metadata used to be silently dropped on read, and
+ * the next save/delete/touch then wrote the filtered list back — permanently
+ * deleting a recoverable credential. Any entry that still carries its id and
+ * encrypted secret is repaired with defaults instead; only entries without
+ * the encrypted payload (they could never be resolved) are dropped.
+ */
+function repairStoredCredential(value: unknown): StoredCredential | null {
+  if (!value || typeof value !== 'object') return null
+  const entry = value as Partial<StoredCredential>
+  if (!entry.id || !entry.encryptedSecret) return null
+  const now = new Date().toISOString()
+  return {
+    id: entry.id,
+    managerId: (entry.managerId || 'npm') as StoredCredential['managerId'],
+    service: entry.service || 'unknown',
+    account: entry.account,
+    label: entry.label || entry.service || entry.id,
+    kind: (VALID_CREDENTIAL_KINDS.has(entry.kind || '') ? entry.kind : 'other') as StoredCredential['kind'],
+    url: entry.url,
+    notes: entry.notes,
+    secretPreview: entry.secretPreview || '****',
+    storage: (VALID_CREDENTIAL_STORAGE.has(entry.storage || '') ? entry.storage : 'base64-fallback') as StoredCredential['storage'],
+    encrypted: Boolean(entry.encrypted),
+    createdAt: entry.createdAt || now,
+    updatedAt: entry.updatedAt || entry.createdAt || now,
+    lastUsedAt: entry.lastUsedAt,
+    encryptedSecret: entry.encryptedSecret
+  }
 }

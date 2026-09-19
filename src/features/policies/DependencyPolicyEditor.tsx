@@ -55,6 +55,10 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
   const [policyPath, setPolicyPath] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  // A failed load leaves the form on defaults; saving would then overwrite the
+  // real policy file, so save stays blocked until the policy can be read.
+  const [loadError, setLoadError] = useState('')
+  const [saveError, setSaveError] = useState('')
 
   const managerOptions = useMemo(() => {
     return MANAGER_DEFINITIONS.map((manager) => ({
@@ -70,6 +74,8 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
 
   const loadPolicy = async (path: string) => {
     setLoading(true)
+    setLoadError('')
+    setSaveError('')
     try {
       const result = await window.electronAPI.supplyChain.getPolicy(path)
       setPolicyPath(result.path)
@@ -78,6 +84,8 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
         ...result.policy,
         maxComponents: result.policy.maxComponents ?? null
       })
+    } catch (cause) {
+      setLoadError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setLoading(false)
     }
@@ -100,11 +108,14 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
     }
 
     setSaving(true)
+    setSaveError('')
     try {
       const result = await window.electronAPI.supplyChain.savePolicy(projectPath, policy)
       setPolicyPath(result.path)
       onSaved?.(result)
       onClose()
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setSaving(false)
     }
@@ -121,6 +132,7 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
       onCancel={onClose}
       onOk={savePolicy}
       confirmLoading={saving}
+      okButtonProps={{ disabled: Boolean(loadError) }}
       okText={t('policy.save')}
       cancelText={t('common.cancel')}
       width={920}
@@ -131,7 +143,7 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
           type="info"
           showIcon
           title={t('policy.writesToProject')}
-          description={policyPath || (projectPath ? `${projectPath}\\.npmDesktopManager\\dependency-policy.json` : t('health.selectProjectFirst'))}
+          description={policyPath || (projectPath ? `${projectPath}\\.npmDesktopManager\\dependency-policy.json` : t('common.selectProjectFirst'))}
         />
         {managerOverlap.length > 0 && (
           <Alert
@@ -139,6 +151,14 @@ const DependencyPolicyEditor: React.FC<DependencyPolicyEditorProps> = ({
             showIcon
             title={t('policy.managerOverlap')}
             description={managerOverlap.map((manager) => getManagerDefinition(manager)?.shortName || manager).join(t('common.enumerationSeparator'))}
+          />
+        )}
+        {(loadError || saveError) && (
+          <Alert
+            type="error"
+            showIcon
+            title={loadError ? t('policy.loadFailed') : t('policy.saveFailed')}
+            description={loadError || saveError}
           />
         )}
         <Form

@@ -4,9 +4,7 @@
   "generatedAt": "2026-09-17",
   "files": {
     "src/components/CommandLog/CommandLogWindow.tsx": 324,
-    "src/domain/managers/presentation.tsx": 7,
     "src/features/managers/cargo/Cargo.tsx": 327,
-    "src/features/managers/extended/ExtendedEcosystems.tsx": 461,
     "src/features/managers/go/Go.tsx": 370,
     "src/features/managers/gradle/Gradle.tsx": 371,
     "src/features/managers/maven/MavenManagerPage.tsx": 694,

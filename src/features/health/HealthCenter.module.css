@@ -120,20 +120,22 @@
   gap: 8px;
 }
 
-.sectionNavLinks a {
+.sectionNavLink {
   display: inline-flex;
   align-items: center;
   min-height: 28px;
   padding: 3px 8px;
   color: var(--text-color, #cccccc);
+  font: inherit;
   line-height: 20px;
   text-decoration: none;
   background: var(--bg-primary, #1f1f1f);
   border: 1px solid var(--border-color, #3c3c3c);
   border-radius: 6px;
+  cursor: pointer;
 }
 
-.sectionNavLinks a:hover {
+.sectionNavLink:hover {
   color: var(--primary-color, #1890ff);
   border-color: var(--primary-color, #1890ff);
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { AutoComplete, Button, Checkbox, Descriptions, Dropdown, Empty, Input, Modal, Select, Space, Spin, Table, Tag, Tooltip } from 'antd'
 import { CloudDownloadOutlined, DownloadOutlined, GlobalOutlined, HistoryOutlined, InfoCircleOutlined, SearchOutlined, SwapOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../stores/appStore'
@@ -128,11 +128,21 @@ const SearchPage: React.FC = () => {
   const [npmDetailPackageName, setNpmDetailPackageName] = useState('')
   const [pipDetailVisible, setPipDetailVisible] = useState(false)
   const [pipDetail, setPipDetail] = useState<PipPackageDetail | null>(null)
+  const [pipDetailItem, setPipDetailItem] = useState<SearchItem | null>(null)
   const [mavenDetailVisible, setMavenDetailVisible] = useState(false)
   const [mavenDetail, setMavenDetail] = useState<SearchItem | null>(null)
   const [packageSizes, setPackageSizes] = useState<Record<string, any>>({})
   const [packageDownloads, setPackageDownloads] = useState<Record<string, number>>({})
   const [coordinateSearch, setCoordinateSearch] = useState<CoordinateSearchSettings>(DEFAULT_COORDINATE_SEARCH)
+  // Monotonic id for runSearch: a reply that lands after a newer search or a
+  // searchType switch must not write into the new result set.
+  const runSearchIdRef = useRef(0)
+  // Monotonic id for pip detail opens: consecutive opens must not let a slower
+  // earlier reply overwrite the newer one.
+  const pipDetailIdRef = useRef(0)
+  // Same guard for version lists: opening A then B must not show A's versions
+  // under B's title (installing would then use the wrong version list).
+  const versionRequestIdRef = useRef(0)
 
   const currentPath = useAppStore((state) => state.currentPath)
   const addNotification = useAppStore((state) => state.addNotification)
@@ -140,6 +150,12 @@ const SearchPage: React.FC = () => {
   const fetchProjectPackages = usePackageStore((state) => state.fetchProjectPackages)
 
   useEffect(() => {
+    runSearchIdRef.current += 1
+    // Invalidate in-flight version/pip-detail loads too: otherwise a reply
+    // from the previous search type can reopen the version dialog (or fill
+    // the pip detail) with data for a package the current type cannot resolve.
+    versionRequestIdRef.current += 1
+    pipDetailIdRef.current += 1
     setResults([])
     setPackageSizes({})
     setPackageDownloads({})
@@ -150,8 +166,12 @@ const SearchPage: React.FC = () => {
     setVersionVisible(false)
     setSelectedItem(null)
     setPipDetail(null)
+    setPipDetailItem(null)
     setMavenDetail(null)
     setSuggestOptions([])
+    // The in-flight search (if any) is now stale and will skip its own
+    // setLoading(false); clear the flag here so the spinner cannot stick.
+    setLoading(false)
   }, [searchType])
 
   useEffect(() => {
@@ -182,46 +202,47 @@ const SearchPage: React.FC = () => {
   }, [coordinateSearch, currentPath, searchQuery, searchType])
 
   useEffect(() => {
-    if (searchType === 'npm' && results.length > 0) {
-      void loadPackageSizes()
-      void loadPackageDownloads()
+    if (searchType !== 'npm' || results.length === 0) {
+      setPackageSizes({})
+      setPackageDownloads({})
       return
     }
-    setPackageSizes({})
-    setPackageDownloads({})
+    // Size/download lookups race with new searches: a slow reply for the
+    // previous result set must not label the current rows.
+    let cancelled = false
+    void (async () => {
+      const sizeEntries = await Promise.all(
+        results.slice(0, 20).map(async (pkg) => {
+          try {
+            const size = await window.electronAPI.npm.getPackageSize(pkg.name, pkg.version)
+            return [pkg.name, size] as const
+          } catch {
+            return null
+          }
+        })
+      )
+      if (cancelled) return
+      setPackageSizes(Object.fromEntries(sizeEntries.filter(Boolean) as Array<readonly [string, any]>))
+
+      const downloadEntries = await Promise.all(
+        results.slice(0, 20).map(async (pkg) => {
+          if (pkg.downloads) {
+            return [pkg.name, pkg.downloads] as const
+          }
+
+          try {
+            const stats = await window.electronAPI.npm.downloadStats(pkg.name)
+            return [pkg.name, stats.downloads || 0] as const
+          } catch {
+            return null
+          }
+        })
+      )
+      if (cancelled) return
+      setPackageDownloads(Object.fromEntries(downloadEntries.filter(Boolean) as Array<readonly [string, number]>))
+    })()
+    return () => { cancelled = true }
   }, [results, searchType])
-
-  const loadPackageSizes = async () => {
-    const entries = await Promise.all(
-      results.slice(0, 20).map(async (pkg) => {
-        try {
-          const size = await window.electronAPI.npm.getPackageSize(pkg.name, pkg.version)
-          return [pkg.name, size] as const
-        } catch {
-          return null
-        }
-      })
-    )
-    setPackageSizes(Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, any]>))
-  }
-
-  const loadPackageDownloads = async () => {
-    const entries = await Promise.all(
-      results.slice(0, 20).map(async (pkg) => {
-        if (pkg.downloads) {
-          return [pkg.name, pkg.downloads] as const
-        }
-
-        try {
-          const stats = await window.electronAPI.npm.downloadStats(pkg.name)
-          return [pkg.name, stats.downloads || 0] as const
-        } catch {
-          return null
-        }
-      })
-    )
-    setPackageDownloads(Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, number]>))
-  }
 
   const runSearch = async (nextQuery = searchQuery) => {
     const query = nextQuery.trim()
@@ -230,13 +251,18 @@ const SearchPage: React.FC = () => {
       return
     }
 
+    const requestId = ++runSearchIdRef.current
     setSearchQuery(query)
     setLoading(true)
     try {
       const items = await searchPackages(searchType, query, currentPath, coordinateSearch)
+      // A slower earlier reply (or one from a previous searchType) must not
+      // overwrite the newer result set.
+      if (requestId !== runSearchIdRef.current) return
       setResults(items)
       setSuggestOptions(toSuggestionOptions(items, searchType))
     } catch (error: any) {
+      if (requestId !== runSearchIdRef.current) return
       addNotification({
         type: 'error',
         message: '搜索失败',
@@ -244,7 +270,7 @@ const SearchPage: React.FC = () => {
       })
       setResults([])
     } finally {
-      setLoading(false)
+      if (requestId === runSearchIdRef.current) setLoading(false)
     }
   }
 
@@ -339,6 +365,7 @@ const SearchPage: React.FC = () => {
   }
 
   const handleShowVersions = async (item: SearchItem) => {
+    const requestId = ++versionRequestIdRef.current
     setSelectedItem(item)
     setVersions([])
     setNpmVersionMetadata(null)
@@ -348,21 +375,25 @@ const SearchPage: React.FC = () => {
     try {
       if (item.type === 'npm') {
         const metadata = await window.electronAPI.npm.getVersionMetadata(item.name)
+        if (requestId !== versionRequestIdRef.current) return
         setNpmVersionMetadata(metadata)
         setVersions(metadata.versions.map((version) => version.version))
       } else {
         const versionList = await fetchVersions(item)
+        if (requestId !== versionRequestIdRef.current) return
         setVersions(versionList)
       }
+      if (requestId !== versionRequestIdRef.current) return
       setVersionVisible(true)
     } catch (error: any) {
+      if (requestId !== versionRequestIdRef.current) return
       addNotification({
         type: 'error',
         message: '获取版本列表失败',
         description: error.message
       })
     } finally {
-      setVersionLoading(false)
+      if (requestId === versionRequestIdRef.current) setVersionLoading(false)
     }
   }
 
@@ -416,11 +447,16 @@ const SearchPage: React.FC = () => {
     }
 
     if (item.type === 'pip') {
+      const detailId = ++pipDetailIdRef.current
+      setPipDetailItem(item)
+      setPipDetail(null)
       setPipDetailVisible(true)
       try {
         const detail = await window.electronAPI.pip.show(item.name, currentPath)
+        if (detailId !== pipDetailIdRef.current) return
         setPipDetail(detail)
       } catch {
+        if (detailId !== pipDetailIdRef.current) return
         setPipDetail(null)
       }
       return
@@ -759,7 +795,7 @@ const SearchPage: React.FC = () => {
     ]
   }, [packageDownloads, packageSizes, searchType, actionColumn])
 
-  const pipFallback = selectedPipFallback(results)
+  const pipFallback = selectedPipFallback(results, pipDetailItem)
 
   return (
     <div className={styles.container}>
@@ -821,7 +857,7 @@ const SearchPage: React.FC = () => {
       />
 
       <Modal
-        title={`pip 包详情 - ${selectedPipName(pipDetail, results)}`}
+        title={`pip 包详情 - ${selectedPipName(pipDetail, results, pipDetailItem)}`}
         open={pipDetailVisible}
         onCancel={() => setPipDetailVisible(false)}
         footer={null}
@@ -1210,12 +1246,12 @@ function resolvePackageUrl(item: SearchItem): string {
   return `https://search.maven.org/artifact/${encodeURIComponent(item.groupId)}/${encodeURIComponent(item.artifactId)}`
 }
 
-function selectedPipFallback(results: SearchItem[]): SearchItem | null {
-  return results.find((item) => item.type === 'pip') || null
+function selectedPipFallback(results: SearchItem[], selected: SearchItem | null = null): SearchItem | null {
+  return selected?.type === 'pip' ? selected : results.find((item) => item.type === 'pip') || null
 }
 
-function selectedPipName(detail: PipPackageDetail | null, results: SearchItem[]): string {
-  return detail?.name || selectedPipFallback(results)?.name || ''
+function selectedPipName(detail: PipPackageDetail | null, results: SearchItem[], selected: SearchItem | null = null): string {
+  return detail?.name || selectedPipFallback(results, selected)?.name || ''
 }
 
 function detailTitle(item: SearchItem | null): string {

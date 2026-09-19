@@ -6,7 +6,7 @@ export async function scanManagerAction(context: Pick<HealthData,
 >, managerId: ImplementedPackageManagerId) {
   const { t, currentPath, addNotification, setScanning, setScans } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -39,7 +39,7 @@ export async function scanDetectedManagersAction(context: Pick<HealthData,
 export async function exportInventoryAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification'>) {
   const { t, currentPath, addNotification } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -65,7 +65,7 @@ export async function exportSupplyChainAction(context: Pick<HealthData,
 >, format: SupplyChainExportResult['format']) {
   const { t, currentPath, addNotification, setReporting, setSupplyChainReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -99,7 +99,7 @@ export async function exportLicenseComplianceAction(context: Pick<HealthData,
 >, format: LicenseComplianceExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setLicenseReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -131,7 +131,7 @@ export async function exportThirdPartyNoticesAction(context: Pick<HealthData,
 >, format: ThirdPartyNoticeFormat = 'text') {
   const { t, currentPath, addNotification, setReporting, setThirdPartyNotices, setReportArtifactIndex } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -171,7 +171,7 @@ export async function checkRegistriesAction(context: Pick<HealthData,
 >) {
   const { t, currentPath, addNotification, setReporting, setRegistryReport, setRegistryEndpoints, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -202,7 +202,7 @@ export async function exportRegistryReachabilityAction(context: Pick<HealthData,
 >, format: RegistryReachabilityExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setRegistryReport, setRegistryEndpoints } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -236,7 +236,7 @@ export async function exportCredentialUsageAction(context: Pick<HealthData,
 >, format: CredentialUsageExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -267,7 +267,7 @@ export async function exportLockfileDriftAction(context: Pick<HealthData,
 >, format: LockfileDriftExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -298,7 +298,7 @@ export async function exportRuntimePinningAction(context: Pick<HealthData,
 >, format: RuntimePinningExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -329,7 +329,7 @@ export async function exportOfflineCacheReadinessAction(context: Pick<HealthData
 >, format: OfflineCacheReadinessExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setOfflineCacheReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -359,7 +359,7 @@ export async function exportOfflineCacheReadinessAction(context: Pick<HealthData
 export async function diffDependencyComponentsAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setDependencyDiff'>) {
   const { t, currentPath, addNotification, setReporting, setDependencyDiff } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -391,7 +391,7 @@ export async function diffDependencyComponentsAction(context: Pick<HealthData, '
 export async function exportDependencyDiffAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setDependencyDiff'>) {
   const { t, currentPath, addNotification, setReporting, setDependencyDiff } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 

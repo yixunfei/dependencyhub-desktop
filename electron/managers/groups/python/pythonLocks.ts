@@ -32,7 +32,15 @@ async function readTomlLocks(
   const files = await findWorkspaceFiles(cwd, (name) => name === lockName, { maxDepth: 6 })
   const inventories = await Promise.all(files.map(async (file) => {
     const content = await readTextIfExists(join(cwd, ...file.split('/')))
-    return content ? parser(parseTomlDocument(content, file), file) : []
+    if (!content) return []
+    try {
+      return parser(parseTomlDocument(content, file), file)
+    } catch (error) {
+      // One unparseable lock file in a monorepo must not fail the whole
+      // inventory; mirror the per-file containment used for manifests.
+      console.warn(`Skipping unparseable Python lock ${file}:`, error instanceof Error ? error.message : String(error))
+      return []
+    }
   }))
   return inventories.flat()
 }
@@ -89,11 +97,16 @@ async function readPipenvLocks(cwd: string): Promise<LockedDependency[]> {
   const inventories = await Promise.all(files.map(async (file) => {
     const content = await readTextIfExists(join(cwd, ...file.split('/')))
     if (!content) return []
-    const document = asRecord(parseJsonDocument(content, file))
-    return [
-      ...pipenvLockSection(document?.default, 'runtime', file),
-      ...pipenvLockSection(document?.develop, 'development', file)
-    ]
+    try {
+      const document = asRecord(parseJsonDocument(content, file))
+      return [
+        ...pipenvLockSection(document?.default, 'runtime', file),
+        ...pipenvLockSection(document?.develop, 'development', file)
+      ]
+    } catch (error) {
+      console.warn(`Skipping unparseable Python lock ${file}:`, error instanceof Error ? error.message : String(error))
+      return []
+    }
   }))
   return inventories.flat()
 }
@@ -126,8 +139,13 @@ async function readCondaLocks(cwd: string): Promise<LockedDependency[]> {
   const inventories = await Promise.all(files.map(async (file) => {
     const content = await readTextIfExists(join(cwd, ...file.split('/')))
     if (!content) return []
-    const document = asRecord(parseYamlDocument(content, file))
-    return asArray(document?.package).flatMap((value) => condaLockPackage(value, file))
+    try {
+      const document = asRecord(parseYamlDocument(content, file))
+      return asArray(document?.package).flatMap((value) => condaLockPackage(value, file))
+    } catch (error) {
+      console.warn(`Skipping unparseable Python lock ${file}:`, error instanceof Error ? error.message : String(error))
+      return []
+    }
   }))
   return inventories.flat()
 }

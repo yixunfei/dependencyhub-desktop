@@ -33,7 +33,8 @@ async function readInfraManifest(cwd: string, managerId: DependencyManagerId): P
       }
       for (const [name, value] of Object.entries(asRecord(root?.module) || {})) { const record = asRecord(value); result.push({ name, source: asString(record?.source) || name, version: asString(record?.version), type: 'module', file, direct: true }) }
     } else {
-      for (const match of content.matchAll(/([A-Za-z0-9_-]+)\s*=\s*\{([\s\S]*?)\}/g)) {
+      const dependencyContent = stripVariableAndLocalBlocks(content)
+      for (const match of dependencyContent.matchAll(/([A-Za-z0-9_-]+)\s*=\s*\{([\s\S]*?)\}/g)) {
         const block = match[2]; const source = block.match(/\bsource\s*=\s*"([^"]+)"/)?.[1]
         if (source) result.push({ name: match[1], source, version: block.match(/\bversion\s*=\s*"([^"]+)"/)?.[1], type: 'provider', file, direct: true })
       }
@@ -41,6 +42,27 @@ async function readInfraManifest(cwd: string, managerId: DependencyManagerId): P
     }
   }
   return result.filter((item) => item.source)
+}
+
+function stripVariableAndLocalBlocks(content: string): string {
+  const lines = content.split(/\r?\n/)
+  const output: string[] = []
+  let depth = 0
+  let skipping = false
+  for (const line of lines) {
+    if (!skipping && /^\s*(variable\s+"[^"]+"|locals)\s*\{/.test(line)) {
+      skipping = true
+      depth = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length
+      continue
+    }
+    if (skipping) {
+      depth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length
+      if (depth <= 0) skipping = false
+      continue
+    }
+    output.push(line)
+  }
+  return output.join('\n')
 }
 
 async function readInfraLock(cwd: string, managerId: DependencyManagerId): Promise<ManagerDependency[]> {

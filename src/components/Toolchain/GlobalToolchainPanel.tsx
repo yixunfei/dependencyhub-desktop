@@ -3,6 +3,7 @@ import { Alert, Button, Input, Space, Table, Tag, Tooltip, Typography } from 'an
 import { DeleteOutlined, DownloadOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { TOOL_LABELS, TOOL_ORDER, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
 import { useT } from '../../i18n'
+import { useAppStore } from '../../stores/appStore'
 
 const { Text } = Typography
 
@@ -17,6 +18,7 @@ function pathsFromStatuses(statuses: ToolStatus[]): Record<ToolName, string> {
 
 const GlobalToolchainPanel: React.FC = () => {
   const t = useT()
+  const addNotification = useAppStore((state) => state.addNotification)
   const [statuses, setStatuses] = useState<ToolStatus[]>([])
   const [paths, setPaths] = useState<Record<ToolName, string>>(emptyPaths)
   const [loading, setLoading] = useState(false)
@@ -35,6 +37,12 @@ const GlobalToolchainPanel: React.FC = () => {
       const result = await window.electronAPI.system.checkTools()
       setStatuses(result)
       setPaths(pathsFromStatuses(result))
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        message: t('toolchain.loadFailed'),
+        description: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setLoading(false)
     }
@@ -46,6 +54,12 @@ const GlobalToolchainPanel: React.FC = () => {
       const result = await window.electronAPI.system.setToolPath(tool, explicitPath ?? paths[tool] ?? '')
       setStatuses(result)
       setPaths(pathsFromStatuses(result))
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        message: t('toolchain.saveFailed'),
+        description: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setLoading(false)
     }

@@ -108,7 +108,9 @@ function convertTree(
   canNodeAction?: (node: TreeLikeNode) => boolean
 ): any[] {
   return nodes.map((node, index) => {
-    const key = `${parentKey}/${node.name || index}`
+    // Sibling dependencies can repeat the same name, so the key must include
+    // the full parent-chain path plus the sibling index to stay unique.
+    const key = `${parentKey}/${index}/${node.name || index}`
     return {
       key,
       name: node.name,

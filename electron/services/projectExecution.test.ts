@@ -53,6 +53,26 @@ describe('project operation boundary', () => {
     expect(projectMutationQueueSize()).toBe(0)
   }, 2000)
 
+  it('serializes operations without a project path through an explicit queue key', async () => {
+    // Global npm mutations have no cwd; without serializeKey they would skip
+    // the queue entirely and could clobber the shared global prefix.
+    const events: string[] = []
+    await Promise.all([
+      runProjectOperation(dependencies, undefined, 'global-a', async () => {
+        events.push('a-start')
+        await wait(25)
+        events.push('a-end')
+      }, { serializeKey: '__global__' }),
+      runProjectOperation(dependencies, undefined, 'global-b', async () => {
+        events.push('b-start')
+        await wait(5)
+        events.push('b-end')
+      }, { serializeKey: '__global__' })
+    ])
+    expect(events).toEqual(['a-start', 'a-end', 'b-start', 'b-end'])
+    expect(projectMutationQueueSize()).toBe(0)
+  }, 2000)
+
   it('never snapshots or writes a cancelled queued operation', async () => {
     const cwd = await fixture()
     const gate = deferred()
@@ -149,8 +169,11 @@ describe('process lifetime', () => {
   })
 
   it('waits for timed-out process exit and preserves classification through the guard', async () => {
-    await expect(runProjectOperation(dependencies, undefined, 'timeout', () =>
-      runLoggedCommand(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { log: false }),
+    // Mutations require a real project path now (a missing cwd is rejected
+    // instead of silently running against the app directory).
+    const cwd = await fixture()
+    await expect(runProjectOperation(dependencies, cwd, 'timeout', () =>
+      runLoggedCommand(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { log: false, cwd }),
     { operationId: 'timeout', timeoutMs: 100 })).rejects.toMatchObject({
       failure: { category: 'timeout', operationId: 'timeout' }
     })

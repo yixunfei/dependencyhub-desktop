@@ -28,6 +28,10 @@ const { Text } = Typography
 const lineBreak = '\r\n'
 type LogFilter = 'all' | 'error' | 'running' | 'success'
 
+// Ring-buffer cap for terminal output: a long-lived session would otherwise
+// accumulate chunks without bound (memory + rendering cost).
+const TERMINAL_BUFFER_MAX_CHARS = 512 * 1024
+
 const CommandLogWindow: React.FC = () => {
   const currentPath = useAppStore((state) => state.currentPath)
   const { logs, visible, toggleVisible, clearLogs, clearStatus, clearResolved, setVisible, updateLog, removeLog } = useCommandLogStore()
@@ -36,8 +40,13 @@ const CommandLogWindow: React.FC = () => {
   const terminalEndRef = useRef<HTMLDivElement>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const terminalIdRef = useRef<string>('')
+  // Guards concurrent startTerminal calls: a double click would create two
+  // sessions and the first one would leak (its id gets overwritten, so the
+  // unmount cleanup can never kill it).
+  const startingTerminalRef = useRef(false)
   const [session, setSession] = useState<TerminalSessionInfo | null>(null)
   const [terminalBuffer, setTerminalBuffer] = useState('')
+  const terminalChunksRef = useRef<string[]>([])
   const [command, setCommand] = useState('')
   const [history, setHistory] = useState<string[]>([])
   const [, setHistoryIndex] = useState(-1)
@@ -67,7 +76,7 @@ const CommandLogWindow: React.FC = () => {
 
     const handleTerminalData = (data: TerminalData) => {
       if (!isMounted || data.id !== terminalIdRef.current) return
-      setTerminalBuffer((prev) => `${prev}${data.data}`)
+      appendTerminalChunk(data.data)
     }
 
     const handleTerminalExit = (data: TerminalExitData) => {
@@ -75,7 +84,7 @@ const CommandLogWindow: React.FC = () => {
       const currentLanguage = useSettingsStore.getState().language
       const exitCode = data.code ?? translateText(currentLanguage, '未知')
       const exitMessage = translateText(currentLanguage, `[进程已退出，退出码 ${exitCode}]`)
-      setTerminalBuffer((prev) => `${prev}${lineBreak}${exitMessage}${lineBreak}`)
+      appendTerminalChunk(`${lineBreak}${exitMessage}${lineBreak}`)
       terminalIdRef.current = ''
       setSession(null)
     }
@@ -125,16 +134,21 @@ const CommandLogWindow: React.FC = () => {
   }, [])
 
   const startTerminal = async () => {
+    if (startingTerminalRef.current) return
+    startingTerminalRef.current = true
     try {
       if (terminalIdRef.current) {
         await window.electronAPI.terminal.kill(terminalIdRef.current)
+        terminalIdRef.current = ''
       }
       const nextSession = await window.electronAPI.terminal.create(currentPath)
       terminalIdRef.current = nextSession.id
       setSession(nextSession)
-      setTerminalBuffer('')
+      clearTerminalBuffer()
     } catch (error: any) {
-      setTerminalBuffer((prev) => `${prev}${lineBreak}${error.message}${lineBreak}`)
+      appendTerminalChunk(`${lineBreak}${error.message}${lineBreak}`)
+    } finally {
+      startingTerminalRef.current = false
     }
   }
 
@@ -142,7 +156,7 @@ const CommandLogWindow: React.FC = () => {
     const value = command.trim()
     if (!value || !terminalIdRef.current) return
 
-    setTerminalBuffer((prev) => `${prev}${lineBreak}> ${value}${lineBreak}`)
+    appendTerminalChunk(`${lineBreak}> ${value}${lineBreak}`)
     setHistory((prev) => [...prev.filter((item) => item !== value), value].slice(-50))
     setHistoryIndex(-1)
     setCommand('')
@@ -150,7 +164,7 @@ const CommandLogWindow: React.FC = () => {
     try {
       await window.electronAPI.terminal.write(terminalIdRef.current, `${value}\n`)
     } catch (error: any) {
-      setTerminalBuffer((prev) => `${prev}${error.message}${lineBreak}`)
+      appendTerminalChunk(`${error.message}${lineBreak}`)
     }
   }
 
@@ -226,6 +240,25 @@ const CommandLogWindow: React.FC = () => {
   }
 
   const hasOutput = (log: CommandLogEntry) => !!(log.output || log.error)
+
+  // Append one chunk to the ring buffer, dropping the oldest chunks once the
+  // total exceeds the cap. Chunks are never split mid-way, only evicted.
+  const appendTerminalChunk = (chunk: string) => {
+    const chunks = [...terminalChunksRef.current, chunk]
+    let total = 0
+    for (const item of chunks) total += item.length
+    while (total > TERMINAL_BUFFER_MAX_CHARS && chunks.length > 1) {
+      total -= chunks[0].length
+      chunks.shift()
+    }
+    terminalChunksRef.current = chunks
+    setTerminalBuffer(chunks.join(''))
+  }
+
+  const clearTerminalBuffer = () => {
+    terminalChunksRef.current = []
+    setTerminalBuffer('')
+  }
   const promptText = `${session?.shell === 'PowerShell' ? 'PS ' : ''}${session?.cwd || currentPath || '~'}>`
   const sendTerminalCommand = async (value: string) => {
     if (!value.trim()) return
@@ -236,7 +269,7 @@ const CommandLogWindow: React.FC = () => {
     const sessionId = terminalIdRef.current
     if (!sessionId) return
 
-    setTerminalBuffer((prev) => `${prev}${lineBreak}> ${value}${lineBreak}`)
+    appendTerminalChunk(`${lineBreak}> ${value}${lineBreak}`)
     await window.electronAPI.terminal.write(sessionId, `${value}\n`)
   }
 
@@ -317,7 +350,7 @@ const CommandLogWindow: React.FC = () => {
                   />
                 </Tooltip>
                 <Tooltip title={text('清空终端输出')}>
-                  <Button type="text" size="small" icon={<ClearOutlined />} onClick={() => setTerminalBuffer('')} />
+                  <Button type="text" size="small" icon={<ClearOutlined />} onClick={clearTerminalBuffer} />
                 </Tooltip>
                 <Tooltip title={text('清空命令日志')}>
                   <Button size="small" icon={<ClearOutlined />} onClick={clearLogs}>

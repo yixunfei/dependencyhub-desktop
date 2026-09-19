@@ -10,9 +10,12 @@ test('current platform resolves native installer and portable formats', () => {
   assert.deepEqual(builderArguments('current', 'installer', 'win32'), ['--win', 'nsis', '--publish', 'never']);
 });
 
-test('all platforms really includes every requested platform', () => {
-  const args = builderArguments('all');
-  for (const platform of ['--win', '--mac', '--linux']) assert.ok(args.includes(platform));
+test('all platforms excludes mac targets on non-mac hosts and includes them on macOS', () => {
+  const winArgs = builderArguments('all', 'all', 'win32');
+  assert.ok(winArgs.includes('--win'));
+  assert.ok(!winArgs.includes('--mac'));
+  const macArgs = builderArguments('all', 'all', 'darwin');
+  for (const platform of ['--win', '--mac', '--linux']) assert.ok(macArgs.includes(platform));
 });
 
 test('compile failure prevents packaging and release notes', () => {

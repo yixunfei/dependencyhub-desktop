@@ -32,7 +32,13 @@ const NpmManagerPage: React.FC<NpmManagerPageProps> = ({ initialScope = 'project
   }, [initialScope])
 
   useEffect(() => {
-    void loadProjectInfo()
+    // Guard against a stale detect() reply overwriting the info of a project
+    // the user already switched away from (same pattern as MultiManager).
+    let active = true
+    void loadProjectInfo(() => active)
+    return () => {
+      active = false
+    }
   }, [currentPath])
 
   const detected = useMemo(() => {
@@ -45,15 +51,18 @@ const NpmManagerPage: React.FC<NpmManagerPageProps> = ({ initialScope = 'project
     return <ProjectPage hideToolchainPanel hideProjectSelector />
   }, [scope])
 
-  const loadProjectInfo = async () => {
+  const loadProjectInfo = async (isActive: () => boolean) => {
     if (!currentPath) {
       setProjectInfo(null)
       return
     }
 
     try {
-      setProjectInfo(await window.electronAPI.project.detect(currentPath))
+      const info = await window.electronAPI.project.detect(currentPath)
+      if (!isActive()) return
+      setProjectInfo(info)
     } catch {
+      if (!isActive()) return
       setProjectInfo(null)
     }
   }

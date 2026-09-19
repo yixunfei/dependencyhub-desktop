@@ -1,7 +1,11 @@
-import { access, readFile, writeFile } from 'fs/promises'
+import { access, readFile } from 'fs/promises'
 import { join } from 'path'
+import { writeFileAtomic } from './atomicWrite'
 import { runLoggedCommand } from './commandRunner'
 import { resolveToolBin } from './toolchain'
+import { splitCommandLine } from './splitCommandLine'
+import { applyLineEnding, detectLineEnding } from './textLineEndings'
+import { registryHttpGet, registryHttpPostJson } from './registryHttp'
 
 export type FlutterDependencyType = 'dependencies' | 'dev_dependencies' | 'dependency_overrides'
 export type FlutterDependencySource = 'hosted' | 'sdk' | 'path' | 'git'
@@ -198,7 +202,7 @@ export class FlutterService {
       type,
       source: args.source || inferDependencySource(args)
     })
-    await writeFile(pubspecPath, nextContent, 'utf-8')
+    await writeFileAtomic(pubspecPath, nextContent)
     const { stdout, stderr } = await this.executePub(['get'], args.cwd)
     return stdout || stderr
   }
@@ -212,7 +216,10 @@ export class FlutterService {
     const pubspec = await this.read(args.cwd)
     const current = pubspec.dependencies.find((item) => item.name === args.packageName && (!args.type || item.type === args.type))
     const versions = await this.versions(args.packageName)
-    const targetVersion = versions[0] || current?.version || 'any'
+    const latest = versions[0] || ''
+    const currentConstraint = current?.version || ''
+    const constraintPrefix = currentConstraint.match(/^(\^|~|>=|>|<=|<)\s*/)?.[1] || ''
+    const targetVersion = latest ? `${constraintPrefix}${latest}` : currentConstraint || 'any'
     return await this.addDependency({
       cwd: args.cwd,
       packageName: args.packageName,
@@ -229,7 +236,7 @@ export class FlutterService {
     const pubspecPath = join(args.cwd, PUBSPEC_FILE)
     const content = await readFile(pubspecPath, 'utf-8')
     const nextContent = removeDependency(content, args.packageName, args.type)
-    await writeFile(pubspecPath, nextContent, 'utf-8')
+    await writeFileAtomic(pubspecPath, nextContent)
     const { stdout, stderr } = await this.executePub(['get'], args.cwd)
     return stdout || stderr
   }
@@ -283,7 +290,7 @@ export class FlutterService {
     if (!normalized) throw new Error('Asset path is required')
     const pubspecPath = join(args.cwd, PUBSPEC_FILE)
     const content = await readFile(pubspecPath, 'utf-8')
-    await writeFile(pubspecPath, upsertAsset(content, normalized), 'utf-8')
+    await writeFileAtomic(pubspecPath, upsertAsset(content, normalized))
   }
 
   async removeAsset(args: { cwd: string; path: string }): Promise<void> {
@@ -291,7 +298,7 @@ export class FlutterService {
     if (!normalized) throw new Error('Asset path is required')
     const pubspecPath = join(args.cwd, PUBSPEC_FILE)
     const content = await readFile(pubspecPath, 'utf-8')
-    await writeFile(pubspecPath, removeAsset(content, normalized), 'utf-8')
+    await writeFileAtomic(pubspecPath, removeAsset(content, normalized))
   }
 
   async checkPublish(cwd: string): Promise<FlutterPublishCheckResult> {
@@ -592,6 +599,7 @@ function buildDependencyTreeFromPubDeps(data: any): FlutterDependencyTreeNode | 
 }
 
 function upsertDependency(content: string, dependency: FlutterDependencyArgs & { type: FlutterDependencyType; version: string }): string {
+  const eol = detectLineEnding(content)
   let nextContent = content
   for (const section of DEPENDENCY_SECTIONS) {
     nextContent = removeDependency(nextContent, dependency.packageName, section)
@@ -599,15 +607,16 @@ function upsertDependency(content: string, dependency: FlutterDependencyArgs & {
 
   const lines = ensureSection(nextContent.split(/\r?\n/), dependency.type)
   const range = sectionRange(lines.join('\n'), dependency.type)
-  if (!range) return ensureTrailingNewline(lines.join('\n'))
+  if (!range) return applyLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
 
   const insertAt = range.end
   const dependencyLines = formatDependencyLines(dependency)
   lines.splice(insertAt, 0, ...dependencyLines)
-  return ensureTrailingNewline(lines.join('\n'))
+  return applyLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
 }
 
 function removeDependency(content: string, packageName: string, section?: FlutterDependencyType): string {
+  const eol = detectLineEnding(content)
   const sections = section ? [section] : DEPENDENCY_SECTIONS
   let lines = content.split(/\r?\n/)
 
@@ -628,7 +637,7 @@ function removeDependency(content: string, packageName: string, section?: Flutte
     }
   }
 
-  return ensureTrailingNewline(lines.join('\n'))
+  return applyLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
 }
 
 function formatDependencyLines(dependency: FlutterDependencyArgs & { type: FlutterDependencyType; version: string }): string[] {
@@ -647,13 +656,14 @@ function formatDependencyLines(dependency: FlutterDependencyArgs & { type: Flutt
 }
 
 function upsertAsset(content: string, assetPath: string): string {
+  const eol = detectLineEnding(content)
   const assets = parseAssets(content)
   if (assets.some((asset) => asset.path === assetPath)) return ensureTrailingNewline(content)
 
   let lines = content.split(/\r?\n/)
   lines = ensureSection(lines, 'flutter')
   const flutterRange = sectionRange(lines.join('\n'), 'flutter')
-  if (!flutterRange) return ensureTrailingNewline(lines.join('\n'))
+  if (!flutterRange) return applyLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
 
   let assetsHeader = -1
   for (let index = flutterRange.start + 1; index < flutterRange.end; index += 1) {
@@ -665,7 +675,7 @@ function upsertAsset(content: string, assetPath: string): string {
 
   if (assetsHeader < 0) {
     lines.splice(flutterRange.start + 1, 0, '  assets:', `    - ${assetPath}`)
-    return ensureTrailingNewline(lines.join('\n'))
+    return applyLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
   }
 
   let insertAt = assetsHeader + 1
@@ -673,10 +683,11 @@ function upsertAsset(content: string, assetPath: string): string {
     insertAt += 1
   }
   lines.splice(insertAt, 0, `    - ${assetPath}`)
-  return ensureTrailingNewline(lines.join('\n'))
+  return applyLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
 }
 
 function removeAsset(content: string, assetPath: string): string {
+  const eol = detectLineEnding(content)
   const lines = content.split(/\r?\n/)
   const range = sectionRange(content, 'flutter')
   if (!range) return ensureTrailingNewline(content)
@@ -689,7 +700,7 @@ function removeAsset(content: string, assetPath: string): string {
     }
   }
 
-  return ensureTrailingNewline(lines.join('\n'))
+  return applyLineEnding(ensureTrailingNewline(lines.join('\n')), eol)
 }
 
 function ensureSection(lines: string[], section: string): string[] {
@@ -946,51 +957,12 @@ function parseJson<T>(value: string, fallback: T): T {
   }
 }
 
-async function httpsGet(url: string): Promise<string> {
-  const https = await import('https')
-  return new Promise((resolve, reject) => {
-    https.get(url, { headers: { Accept: 'application/json', 'User-Agent': 'DependencyHubDesktop/1.0' } }, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => resolve(data))
-    }).on('error', reject)
-  })
+function httpsGet(url: string): Promise<string> {
+  return registryHttpGet(url, { headers: { Accept: 'application/json', 'User-Agent': 'DependencyHubDesktop/1.0' } })
 }
 
-async function httpsPostJson(url: string, payload: unknown): Promise<string> {
-  const https = await import('https')
-  const body = JSON.stringify(payload)
-  return new Promise((resolve, reject) => {
-    const request = https.request(url, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'User-Agent': 'DependencyHubDesktop/1.0'
-      }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => {
-        if ((res.statusCode || 0) >= 400) {
-          reject(new Error(data || `HTTP ${res.statusCode}`))
-          return
-        }
-        resolve(data)
-      })
-    })
-    request.on('error', reject)
-    request.write(body)
-    request.end()
-  })
-}
-
-function splitCommandLine(commandLine: string): string[] {
-  return commandLine
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
+function httpsPostJson(url: string, payload: unknown): Promise<string> {
+  return registryHttpPostJson(url, payload, { headers: { 'User-Agent': 'DependencyHubDesktop/1.0' } })
 }
 
 function lineIndent(line: string): number {
@@ -1001,6 +973,8 @@ function ensureTrailingNewline(value: string): string {
   return value.endsWith('\n') ? value : `${value}\n`
 }
 
+// Editing a single dependency must not rewrite the whole file's line endings,
+// otherwise every CRLF project gets a full-file diff in version control.
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

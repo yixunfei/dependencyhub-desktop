@@ -1,5 +1,5 @@
 import { access, readFile } from 'fs/promises'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { runLoggedCommand } from './commandRunner'
 import { PipService } from './pip'
 import { NativeService, type NativeDependencyInfo } from './native'
@@ -96,6 +96,61 @@ type IssueFactory = (issue: Omit<DependencyHealthIssue, 'id' | 'manager'>) => De
 export class DependencyHealthService {
   private pipService = new PipService()
   private nativeService = new NativeService()
+  /**
+   * Command/API actions produced by the latest scan per project. `applyFix`
+   * executes only actions from this catalog, so the IPC channel cannot be used
+   * as arbitrary command execution if the renderer is ever compromised.
+   */
+  private scannedActions = new Map<string, Map<string, DependencyHealthAction>>()
+
+  /**
+   * Resolve the renderer-supplied action to the exact command the scanner
+   * produced. Unknown ids (or a fix attempted before any scan) are rejected.
+   */
+  resolveFixAction(cwd: string | undefined, action: DependencyHealthAction | undefined): DependencyHealthAction {
+    if (!cwd?.trim()) throw new Error('Project path is required')
+    const id = action?.id?.trim()
+    if (!id) throw new Error('A diagnostic action id is required')
+    const cached = this.scannedActions.get(resolve(cwd))?.get(id)
+    if (!cached) {
+      throw new Error('This fix is not part of the latest dependency health scan; run the scan again.')
+    }
+    return cached
+  }
+
+  private catalogActions(cwd: string, issues: DependencyHealthIssue[]): void {
+    const key = resolve(cwd)
+    // Rebuilt on every scan: this catalog holds only the actions of the latest
+    // scan, and reusing the previous map would accumulate suffixed duplicates.
+    const catalog = new Map<string, DependencyHealthAction>()
+    this.scannedActions.set(key, catalog)
+    for (const issue of issues) {
+      for (const action of issue.actions) {
+        if (!action.command && action.kind !== 'api') continue
+        // Per-dependency actions repeat the same id (cargo update -p <name>,
+        // flutter pub upgrade <name>, npm explain <name>, ...). Keyed by id
+        // alone, later issues overwrote earlier ones, so approving the fix
+        // for package A executed package B's command. Disambiguate duplicates
+        // with an occurrence suffix; the same action object (carrying the
+        // unique id) is what the renderer receives back.
+        let uniqueId = action.id
+        let occurrence = 2
+        while (catalog.has(uniqueId)) {
+          uniqueId = `${action.id}:${occurrence}`
+          occurrence += 1
+        }
+        action.id = uniqueId
+        catalog.set(uniqueId, action)
+      }
+    }
+    // Long-lived windows scan a handful of projects; drop the oldest entries so
+    // the catalog cannot grow without bound.
+    while (this.scannedActions.size > 20) {
+      const oldest = this.scannedActions.keys().next().value
+      if (oldest === undefined) break
+      this.scannedActions.delete(oldest)
+    }
+  }
 
   async scan(manager: DependencyHealthManager, cwd: string): Promise<DependencyHealthScanResult> {
     if (!cwd?.trim()) {
@@ -158,6 +213,8 @@ export class DependencyHealthService {
       raw = error.stdout || error.stderr || error.message || ''
     }
 
+    this.catalogActions(cwd, issues)
+
     return {
       manager,
       cwd,
@@ -169,18 +226,18 @@ export class DependencyHealthService {
   }
 
   async applyFix(cwd: string, action: DependencyHealthAction): Promise<string> {
-    if (!cwd?.trim()) throw new Error('Project path is required')
+    const canonical = this.resolveFixAction(cwd, action)
 
-    if (action.kind === 'api' && action.id === 'pip-repair-check') {
+    if (canonical.kind === 'api' && canonical.id.split(':', 1)[0] === 'pip-repair-check') {
       const result = await this.pipService.repairCheck(cwd)
       return result.output || `pip repair completed: ${result.success} success, ${result.failed} failed`
     }
 
-    if (action.kind !== 'command' || !action.command) {
+    if (canonical.kind !== 'command' || !canonical.command) {
       throw new Error('This diagnostic action is not executable as a command')
     }
 
-    const command = action.command
+    const command = canonical.command
     const bin = command.tool === 'gradle'
       ? await resolveGradleBin(cwd)
       : await resolveToolBin(command.tool, cwd)
@@ -864,7 +921,10 @@ function detectMavenCycles(
 
 function parsePomDependencies(content: string): Array<{ groupId: string; artifactId: string; version: string }> {
   const dependencies: Array<{ groupId: string; artifactId: string; version: string }> = []
-  for (const block of content.match(/<dependency>[\s\S]*?<\/dependency>/g) || []) {
+  const directContent = content
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<dependencyManagement\b[\s\S]*?<\/dependencyManagement>/gi, '')
+  for (const block of directContent.match(/<dependency>[\s\S]*?<\/dependency>/g) || []) {
     const groupId = readXmlTag(block, 'groupId')
     const artifactId = readXmlTag(block, 'artifactId')
     if (!groupId || !artifactId) continue

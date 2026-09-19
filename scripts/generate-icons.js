@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -18,16 +18,19 @@ function createIconDirectories() {
 
 function generatePngIcons(sourceIcon) {
   console.log('Generating PNG icons...');
+  let failed = false;
   
   sizes.forEach(size => {
     const outputPath = path.join(iconDir, 'png', `${size}x${size}.png`);
     try {
-      execSync(`magick "${sourceIcon}" -resize ${size}x${size} "${outputPath}"`, { stdio: 'inherit' });
+      runMagick([sourceIcon, '-resize', `${size}x${size}`, outputPath]);
       console.log(`✓ Generated ${size}x${size}.png`);
     } catch (error) {
+      failed = true;
       console.error(`✗ Failed to generate ${size}x${size}.png:`, error.message);
     }
   });
+  if (failed) throw new Error('One or more PNG icons failed to generate');
 }
 
 function generateIco(sourceIcon) {
@@ -41,10 +44,10 @@ function generateIco(sourceIcon) {
     .join(' ');
   
   try {
-    execSync(`magick ${pngFiles} "${outputPath}"`, { stdio: 'inherit' });
+    runMagick([...pngFiles, outputPath]);
     console.log('✓ Generated icon.ico');
   } catch (error) {
-    console.error('✗ Failed to generate ICO:', error.message);
+    throw new Error(`Failed to generate ICO: ${error.message}`);
   }
 }
 
@@ -53,11 +56,17 @@ function generateIcns(sourceIcon) {
   
   const outputPath = path.join(iconDir, 'icon.icns');
   try {
-    execSync(`magick "${sourceIcon}" "${outputPath}"`, { stdio: 'inherit' });
+    runMagick([sourceIcon, outputPath]);
     console.log('✓ Generated icon.icns');
   } catch (error) {
-    console.error('✗ Failed to generate ICNS:', error.message);
+    throw new Error(`Failed to generate ICNS: ${error.message}`);
   }
+}
+
+function runMagick(args) {
+  const result = spawnSync('magick', args, { stdio: 'inherit', windowsHide: true });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`magick exited with status ${result.status}`);
 }
 
 function main() {

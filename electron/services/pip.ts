@@ -1,7 +1,9 @@
 import { access, copyFile, mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { basename, dirname, join } from 'path'
+import { writeFileAtomic } from './atomicWrite'
 import { homedir } from 'os'
 import { runLoggedCommand } from './commandRunner'
+import { registryHttpGet } from './registryHttp'
 import { getToolchainConfig } from './toolchain'
 
 export interface PipPackage {
@@ -239,7 +241,7 @@ export class PipService {
 
   async exportRequirements(cwd: string): Promise<void> {
     const content = await this.freeze(cwd)
-    await writeFile(join(cwd, 'requirements.txt'), content, 'utf-8')
+    await writeFileAtomic(join(cwd, 'requirements.txt'), content)
   }
 
   async readRequirements(cwd: string): Promise<string[]> {
@@ -356,15 +358,12 @@ export class PipService {
   }
 
   async audit(cwd?: string): Promise<{ issues: PipAuditIssue[]; raw: string; error?: string }> {
-    const repairResult = await this.repairCheck(cwd)
-    const repairOutput = repairResult.actions.length > 0 ? repairResult.output : ''
-
     try {
       const { stdout } = await this.executePipAudit(['-f', 'json'], cwd)
       const parsed = parseJson<any>(stdout, { dependencies: [], vulnerabilities: [] })
       return {
         issues: parsePipAuditIssues(parsed),
-        raw: [repairOutput, stdout].filter(Boolean).join('\n')
+        raw: stdout
       }
     } catch (error: any) {
       if (isMissingToolError(error, 'pip_audit')) {
@@ -374,12 +373,12 @@ export class PipService {
           const parsed = parseJson<any>(stdout, { dependencies: [], vulnerabilities: [] })
           return {
             issues: parsePipAuditIssues(parsed),
-            raw: [repairOutput, installOutput, stdout].filter(Boolean).join('\n')
+            raw: [installOutput, stdout].filter(Boolean).join('\n')
           }
         } catch (retryError: any) {
           return {
             issues: [],
-            raw: [repairOutput, retryError.stdout || retryError.stderr || ''].filter(Boolean).join('\n'),
+            raw: retryError.stdout || retryError.stderr || '',
             error: retryError.stderr || retryError.message || 'pip-audit is not available'
           }
         }
@@ -390,13 +389,13 @@ export class PipService {
         if (issues.length > 0) {
           return {
             issues,
-            raw: [repairOutput, error.stdout].filter(Boolean).join('\n')
+            raw: error.stdout
           }
         }
       }
       return {
         issues: [],
-        raw: [repairOutput, error.stdout || error.stderr || ''].filter(Boolean).join('\n'),
+        raw: error.stdout || error.stderr || '',
         error: error.stderr || error.message || 'pip-audit is not available'
       }
     }
@@ -499,10 +498,17 @@ export class PipService {
     const command = ['upload']
     if (args.repositoryUrl) command.push('--repository-url', args.repositoryUrl)
     if (args.username) command.push('-u', args.username)
-    if (args.password) command.push('-p', args.password)
+    if (args.password) { /* supplied via TWINE_PASSWORD below */ }
     command.push(...files)
 
-    const { stdout, stderr } = await this.executePythonModule('twine', 'twine', command, args.cwd)
+    const previousTwinePassword = process.env.TWINE_PASSWORD
+    if (args.password) process.env.TWINE_PASSWORD = args.password
+    let result: { stdout: string; stderr: string }
+    try { result = await this.executePythonModule('twine', 'twine', command, args.cwd) } finally {
+      if (previousTwinePassword === undefined) delete process.env.TWINE_PASSWORD
+      else process.env.TWINE_PASSWORD = previousTwinePassword
+    }
+    const { stdout, stderr } = result
     output.push(stdout || stderr)
     return output.filter(Boolean).join('\n')
   }
@@ -690,15 +696,8 @@ export class PipService {
   }
 }
 
-async function httpsGet(url: string): Promise<string> {
-  const https = await import('https')
-  return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => resolve(data))
-    }).on('error', reject)
-  })
+function httpsGet(url: string): Promise<string> {
+  return registryHttpGet(url)
 }
 
 function parsePipShow(stdout: string): PipPackageDetail | null {
@@ -837,7 +836,41 @@ function uniquePipResults(items: PipSearchResult[]): PipSearchResult[] {
 }
 
 function compareLooseVersions(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+  const left = parsePep440(a)
+  const right = parsePep440(b)
+  if (left.epoch !== right.epoch) return left.epoch - right.epoch
+  const releaseA = left.release
+  const releaseB = right.release
+  for (let i = 0; i < Math.max(releaseA.length, releaseB.length); i += 1) {
+    const diff = (releaseA[i] ?? 0) - (releaseB[i] ?? 0)
+    if (diff !== 0) return diff
+  }
+  // A pre-release marker sorts its version before the final release.
+  if (left.pre !== right.pre) return left.pre ? -1 : 1
+  if (left.pre && right.pre && left.pre !== right.pre) return left.pre.localeCompare(right.pre, undefined, { numeric: true })
+  return left.post - right.post
+}
+
+function parsePep440(version: string): { epoch: number; release: number[]; pre: string | null; post: number } {
+  const normalized = version.trim().replace(/^v/i, '').toLowerCase()
+  const epochMatch = normalized.match(/^(\d+)!/)
+  const epoch = epochMatch ? Number(epochMatch[1]) : 0
+  const value = normalized.replace(/^\d+!/, '')
+  const releaseMatch = value.match(/^(\d+(?:\.\d+)*)(.*)$/)
+  const release = (releaseMatch?.[1] || '0').split('.').map((part) => Number(part) || 0)
+  const suffix = releaseMatch?.[2] || ''
+  const preMatch = suffix.match(/(?:^|[-_.])(a|alpha|b|beta|rc|c)(\d*)/)
+  const pre = preMatch ? `${preMatch[1]}${preMatch[2] || '0'}` : null
+  const postMatch = suffix.match(/(?:^|[-_.])post(?:[-_.]?(\d+))?/) || suffix.match(/(?:^|[-_.])r(\d+)/)
+  return { epoch, release, pre, post: postMatch ? Number(postMatch[1] || 0) + 1 : 0 }
+}
+
+function splitReleaseAndPre(version: string): [number[], string | null] {
+  const normalized = version.trim().replace(/^v/i, '').toLowerCase()
+  const match = normalized.match(/^([\d.]+)(.*)$/)
+  const release = (match?.[1] ?? normalized).split('.').map((part) => Number.parseInt(part, 10) || 0)
+  const pre = match?.[2]?.replace(/^[-_.]/, '').trim() || null
+  return [release, pre]
 }
 
 function pipConfigPath(scope: PipConfigScope): string {

@@ -19,7 +19,28 @@ const MultiManagerPage: React.FC<MultiManagerPageProps> = ({ initialManager = 'n
   const managers = getImplementedManagerDefinitions()
 
   useEffect(() => {
+    let active = true
+
+    const loadProjectInfo = async () => {
+      if (!currentPath) {
+        setProjectInfo(null)
+        return
+      }
+
+      try {
+        const info = await window.electronAPI.project.detect(currentPath)
+        // Fast project switches: a stale detect result must not clobber the
+        // info of the now-current path.
+        if (active) setProjectInfo(info)
+      } catch {
+        if (active) setProjectInfo(null)
+      }
+    }
+
     void loadProjectInfo()
+    return () => {
+      active = false
+    }
   }, [currentPath])
 
   const detectedManagers = useMemo(() => {
@@ -31,19 +52,6 @@ const MultiManagerPage: React.FC<MultiManagerPageProps> = ({ initialManager = 'n
   const activeManager = detectedManagers.includes(initialManager)
     ? initialManager
     : detectedManagers[0] || initialManager
-
-  const loadProjectInfo = async () => {
-    if (!currentPath) {
-      setProjectInfo(null)
-      return
-    }
-
-    try {
-      setProjectInfo(await window.electronAPI.project.detect(currentPath))
-    } catch {
-      setProjectInfo(null)
-    }
-  }
 
   const openManager = (managerId: PackageManagerId) => {
     navigate(implementedManagerRoutes[managerId])

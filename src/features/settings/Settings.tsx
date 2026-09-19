@@ -95,6 +95,11 @@ const SettingsPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to load config:', error)
+      addNotification({
+        type: 'error',
+        message: '配置加载失败',
+        description: error instanceof Error ? error.message : String(error)
+      })
     }
   }
   
@@ -118,23 +123,23 @@ const SettingsPage: React.FC = () => {
   
   const handleSetRegistry = async () => {
     if (!registry.trim()) {
-      message.warning('请输入 registry 地址')
+      message.warning(t('settings.enterRegistryUrl'))
       return
     }
-    
+
     setLoading(true)
     try {
       await window.electronAPI.npm.configSet('registry', registry)
       addNotification({
         type: 'success',
-        message: '设置成功',
-        description: `Registry 已设置为 ${registry}`
+        message: t('settings.settingsSaved'),
+        description: t('settings.registrySetTo', { registry })
       })
       await loadConfig()
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '设置失败',
+        message: t('settings.settingsFailed'),
         description: error.message
       })
     } finally {
@@ -186,7 +191,12 @@ const SettingsPage: React.FC = () => {
 
   const getRegistryAuthTokenKey = (registryUrl: string) => {
     try {
-      const url = new URL(registryUrl)
+      // Users often omit the scheme (registry.npmmirror.com); without it the
+      // token would silently land on the npmjs fallback key and never apply.
+      const normalized = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(registryUrl)
+        ? registryUrl
+        : `https://${registryUrl}`
+      const url = new URL(normalized)
       const path = url.pathname.replace(/\/$/, '')
       return `//${url.host}${path ? `${path}` : ''}/:_authToken`
     } catch {
@@ -266,7 +276,7 @@ const SettingsPage: React.FC = () => {
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '获取帮助失败',
+        message: t('settings.helpLoadFailed'),
         description: error.message
       })
     } finally {
@@ -332,13 +342,13 @@ const SettingsPage: React.FC = () => {
       await window.electronAPI.npm.configDelete(key)
       addNotification({
         type: 'success',
-        message: '配置已删除'
+        message: t('settings.configDeleted')
       })
       await loadConfig()
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '删除配置失败',
+        message: t('settings.configDeleteFailed'),
         description: error.message
       })
     } finally {
@@ -352,13 +362,13 @@ const SettingsPage: React.FC = () => {
       await window.electronAPI.credentials.delete(id)
       addNotification({
         type: 'success',
-        message: '凭据已删除'
+        message: t('settings.credentialDeleted')
       })
       await loadCredentials()
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '删除凭据失败',
+        message: t('settings.credentialDeleteFailed'),
         description: error.message
       })
     } finally {
@@ -380,38 +390,38 @@ const SettingsPage: React.FC = () => {
   
   const publishedColumns = [
     {
-      title: '包名',
+      title: t('package.columnName'),
       dataIndex: 'name',
       key: 'name',
       render: (text: string) => <Tag color="blue">{text}</Tag>
     },
     {
-      title: '版本',
+      title: t('common.version'),
       dataIndex: 'version',
       key: 'version'
     },
     {
-      title: '描述',
+      title: t('common.description'),
       dataIndex: 'description',
       key: 'description',
       ellipsis: true
     },
     {
-      title: '更新时间',
+      title: t('settings.columnUpdatedAt'),
       dataIndex: 'date',
       key: 'date',
       render: (text: string) => text ? new Date(text).toLocaleDateString() : '-'
     }
   ]
-  
+
   const configItems = [
     { key: 'registry', label: 'Registry' },
-    { key: 'cache', label: '缓存目录' },
-    { key: 'prefix', label: '全局前缀' },
-    { key: 'userconfig', label: '用户配置文件' },
-    { key: 'init-version', label: 'init版本' },
-    { key: 'author', label: '作者' },
-    { key: 'email', label: '邮箱' }
+    { key: 'cache', label: t('settings.configItemCache') },
+    { key: 'prefix', label: t('settings.configItemPrefix') },
+    { key: 'userconfig', label: t('settings.configItemUserconfig') },
+    { key: 'init-version', label: t('settings.configItemInitVersion') },
+    { key: 'author', label: t('package.authorLabel') },
+    { key: 'email', label: t('settings.configItemEmail') }
   ]
   
   const TabItems = [
@@ -448,44 +458,44 @@ const SettingsPage: React.FC = () => {
     },
     {
       key: 'update',
-      label: '更新策略',
+      label: t('settings.updateStrategy'),
       icon: <ThunderboltOutlined />,
       children: (
         <div className={styles.tabContent}>
           <div style={{ marginBottom: 24 }}>
-            <h4 style={{ marginBottom: 16 }}>更新策略</h4>
+            <h4 style={{ marginBottom: 16 }}>{t('settings.updateStrategy')}</h4>
             <Radio.Group value={updateStrategy} onChange={(e) => setUpdateStrategy(e.target.value)}>
               <Space orientation="vertical" style={{ width: '100%' }}>
                 <Radio value="recommended">
                   <div>
-                    <strong>推荐更新</strong>
-                    <div style={{ color: '#888', fontSize: 12 }}>使用 wanted 版本（符合 package.json 范围，兼容性优先）</div>
+                    <strong>{t('settings.strategyRecommended')}</strong>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.strategyRecommendedDesc')}</div>
                   </div>
                 </Radio>
                 <Radio value="smart">
                   <div>
-                    <strong>智能更新</strong>
+                    <strong>{t('settings.strategySmart')}</strong>
                     <Space>
-                      <Tag color="green">兼容性优先</Tag>
-                      <Tag color="orange">其次安全</Tag>
+                      <Tag color="green">{t('package.preferCompatibility')}</Tag>
+                      <Tag color="orange">{t('settings.tagSecurityNext')}</Tag>
                     </Space>
-                    <div style={{ color: '#888', fontSize: 12 }}>自动分析选择最佳版本，冲突时提示</div>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.strategySmartDesc')}</div>
                   </div>
                 </Radio>
                 <Radio value="security">
                   <div>
-                    <strong>安全优先更新</strong>
+                    <strong>{t('settings.strategySecurity')}</strong>
                     <Space>
-                      <Tag color="red">安全优先</Tag>
-                      <Tag color="orange">可能存在兼容问题</Tag>
+                      <Tag color="red">{t('package.preferSecurity')}</Tag>
+                      <Tag color="orange">{t('settings.tagCompatibilityRisk')}</Tag>
                     </Space>
-                    <div style={{ color: '#888', fontSize: 12 }}>优先升级到可用的安全/最新版本，适合处理漏洞修复</div>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.strategySecurityDesc')}</div>
                   </div>
                 </Radio>
                 <Radio value="latest">
                   <div>
-                    <strong>最新更新</strong>
-                    <div style={{ color: '#888', fontSize: 12 }}>使用 latest 版本（可能包含预发布版）</div>
+                    <strong>{t('settings.strategyLatest')}</strong>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.strategyLatestDesc')}</div>
                   </div>
                 </Radio>
               </Space>
@@ -495,25 +505,25 @@ const SettingsPage: React.FC = () => {
           <Divider />
 
           <div style={{ marginBottom: 24 }}>
-            <h4 style={{ marginBottom: 16 }}>冲突处理策略</h4>
+            <h4 style={{ marginBottom: 16 }}>{t('settings.conflictStrategy')}</h4>
             <Radio.Group value={conflictStrategy} onChange={(e) => setConflictStrategy(e.target.value)}>
               <Space orientation="vertical" style={{ width: '100%' }}>
                 <Radio value="prompt">
                   <div>
-                    <strong>总是提示</strong>
-                    <div style={{ color: '#888', fontSize: 12 }}>发现冲突时逐个提示用户选择</div>
+                    <strong>{t('settings.conflictPrompt')}</strong>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.conflictPromptDesc')}</div>
                   </div>
                 </Radio>
                 <Radio value="auto-recommended">
                   <div>
-                    <strong>自动选择推荐版本</strong>
-                    <div style={{ color: '#888', fontSize: 12 }}>发现冲突时自动选择推荐版本（兼容性优先）</div>
+                    <strong>{t('settings.conflictAutoRecommended')}</strong>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.conflictAutoRecommendedDesc')}</div>
                   </div>
                 </Radio>
                 <Radio value="auto-security">
                   <div>
-                    <strong>自动选择安全版本</strong>
-                    <div style={{ color: '#888', fontSize: 12 }}>发现安全更新冲突时优先选择安全版本</div>
+                    <strong>{t('settings.conflictAutoSecurity')}</strong>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.conflictAutoSecurityDesc')}</div>
                   </div>
                 </Radio>
               </Space>
@@ -523,25 +533,25 @@ const SettingsPage: React.FC = () => {
           <Divider />
 
           <div style={{ marginBottom: 24 }}>
-            <h4 style={{ marginBottom: 16 }}>安全更新敏感度</h4>
+            <h4 style={{ marginBottom: 16 }}>{t('settings.sensitivity')}</h4>
             <Radio.Group value={securitySensitivity} onChange={(e) => setSecuritySensitivity(e.target.value)}>
               <Space orientation="vertical" style={{ width: '100%' }}>
                 <Radio value="high">
                   <div>
-                    <strong>高</strong>
-                    <div style={{ color: '#888', fontSize: 12 }}>只要有安全更新就提示</div>
+                    <strong>{t('settings.sensitivityHigh')}</strong>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.sensitivityHighDesc')}</div>
                   </div>
                 </Radio>
                 <Radio value="medium">
                   <div>
-                    <strong>中</strong>
-                    <div style={{ color: '#888', fontSize: 12 }}>中等及以上风险提示</div>
+                    <strong>{t('settings.sensitivityMedium')}</strong>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.sensitivityMediumDesc')}</div>
                   </div>
                 </Radio>
                 <Radio value="low">
                   <div>
-                    <strong>低</strong>
-                    <div style={{ color: '#888', fontSize: 12 }}>仅严重风险提示</div>
+                    <strong>{t('settings.sensitivityLow')}</strong>
+                    <div style={{ color: '#888', fontSize: 12 }}>{t('settings.sensitivityLowDesc')}</div>
                   </div>
                 </Radio>
               </Space>
@@ -549,8 +559,8 @@ const SettingsPage: React.FC = () => {
           </div>
 
           <Alert
-            title="提示"
-            description="设置已自动保存，并将在下次更新预览与执行时生效"
+            title={t('settings.tipTitle')}
+            description={t('settings.autoSaveNotice')}
             type="info"
             showIcon
           />
@@ -559,7 +569,7 @@ const SettingsPage: React.FC = () => {
     },
     {
       key: 'toolchain',
-      label: '全局工具版本',
+      label: t('toolchain.globalTitle'),
       icon: <SettingOutlined />,
       children: (
         <div className={styles.tabContent}>
@@ -569,27 +579,27 @@ const SettingsPage: React.FC = () => {
     },
     {
       key: 'user',
-      label: '用户信息',
+      label: t('settings.tabUserInfo'),
       icon: <UserOutlined />,
       children: (
         <div className={styles.tabContent}>
           {currentUser ? (
             <div className={styles.userInfo}>
               <Alert
-                title={`已登录: ${currentUser}`}
+                title={t('settings.loggedInAs', { user: currentUser })}
                 type="success"
                 showIcon
                 style={{ marginBottom: 16 }}
               />
               <Button danger onClick={handleLogout} loading={loading}>
-                登出
+                {t('settings.logout')}
               </Button>
-              
+
               <Divider />
-              
-              <h4 style={{ marginBottom: 12 }}>已发布的包</h4>
-              <Table 
-                dataSource={publishedPackages} 
+
+              <h4 style={{ marginBottom: 12 }}>{t('settings.publishedPackages')}</h4>
+              <Table
+                dataSource={publishedPackages}
                 columns={publishedColumns}
                 rowKey="name"
                 size="small"
@@ -599,14 +609,14 @@ const SettingsPage: React.FC = () => {
           ) : (
             <div className={styles.loginPrompt}>
               <Alert
-                title="未登录"
-                description="登录以发布包到 npm registry"
+                title={t('settings.notLoggedIn')}
+                description={t('settings.loginHint')}
                 type="info"
                 showIcon
                 style={{ marginBottom: 16 }}
               />
               <Button type="primary" icon={<LoginOutlined />} onClick={handleLogin}>
-                登录 npm
+                {t('settings.loginNpm')}
               </Button>
             </div>
           )}
@@ -615,7 +625,7 @@ const SettingsPage: React.FC = () => {
     },
     {
       key: 'credentials',
-      label: '凭据保险箱',
+      label: t('settings.tabCredentialVault'),
       icon: <SafetyCertificateOutlined />,
       children: (
         <div className={styles.tabContent}>
@@ -623,11 +633,11 @@ const SettingsPage: React.FC = () => {
             type={credentialStatus?.encrypted ? 'success' : 'warning'}
             showIcon
             style={{ marginBottom: 16 }}
-            title={credentialStatus?.encrypted ? '系统安全存储已启用' : '安全存储不可用'}
-            description={credentialStatus?.warning || '保存的 token 和密码只在主进程中解密，页面仅显示元数据。'}
+            title={credentialStatus?.encrypted ? t('settings.secureStorageEnabled') : t('settings.secureStorageUnavailable')}
+            description={credentialStatus?.warning || t('settings.credentialVaultHint')}
           />
           <Space style={{ marginBottom: 16 }}>
-            <Button icon={<SyncOutlined />} onClick={loadCredentials} loading={loading}>刷新凭据</Button>
+            <Button icon={<SyncOutlined />} onClick={loadCredentials} loading={loading}>{t('settings.refreshCredentials')}</Button>
           </Space>
           <Table
             dataSource={credentials}
@@ -636,33 +646,33 @@ const SettingsPage: React.FC = () => {
             pagination={{ pageSize: 8 }}
             columns={[
               {
-                title: '生态',
+                title: t('settings.columnEcosystem'),
                 dataIndex: 'managerId',
                 key: 'managerId',
                 width: 100,
                 render: (value: string) => <Tag>{value}</Tag>
               },
               {
-                title: '服务',
+                title: t('settings.columnService'),
                 dataIndex: 'service',
                 key: 'service',
                 ellipsis: true
               },
               {
-                title: '账户',
+                title: t('settings.columnAccount'),
                 dataIndex: 'account',
                 key: 'account',
                 width: 180,
                 render: (value: string | undefined) => value || '-'
               },
               {
-                title: '预览',
+                title: t('settings.columnPreview'),
                 dataIndex: 'secretPreview',
                 key: 'secretPreview',
                 width: 120
               },
               {
-                title: '存储',
+                title: t('settings.columnStorage'),
                 key: 'storage',
                 width: 150,
                 render: (_: unknown, record: CredentialMetadata) => (
@@ -670,14 +680,14 @@ const SettingsPage: React.FC = () => {
                 )
               },
               {
-                title: '更新时间',
+                title: t('settings.columnUpdatedAt'),
                 dataIndex: 'updatedAt',
                 key: 'updatedAt',
                 width: 190,
                 render: (value: string) => new Date(value).toLocaleString()
               },
               {
-                title: '操作',
+                title: t('common.actions'),
                 key: 'action',
                 width: 90,
                 render: (_: unknown, record: CredentialMetadata) => (
@@ -691,12 +701,12 @@ const SettingsPage: React.FC = () => {
     },
     {
       key: 'registry',
-      label: 'Registry设置',
+      label: t('settings.tabRegistry'),
       icon: <CloudServerOutlined />,
       children: (
         <div className={styles.tabContent}>
           <div className={styles.registrySection}>
-            <label className={styles.label}>当前 Registry:</label>
+            <label className={styles.label}>{t('settings.currentRegistry')}</label>
             <Input
               value={registry}
               onChange={(e) => setRegistry(e.target.value)}
@@ -704,20 +714,20 @@ const SettingsPage: React.FC = () => {
               className={styles.registryInput}
             />
             <Button type="primary" onClick={handleSetRegistry} loading={loading}>
-              设置
+              {t('settings.setRegistry')}
             </Button>
           </div>
-          
+
           <Divider />
-          
+
           <div className={styles.presets}>
-            <h4>常用 Registry:</h4>
+            <h4>{t('settings.commonRegistries')}</h4>
             <div className={styles.presetButtons}>
               <Button size="small" onClick={() => setRegistry('https://registry.npmjs.org/')}>
-                npm 官方
+                {t('settings.npmOfficial')}
               </Button>
               <Button size="small" onClick={() => setRegistry('https://registry.npmmirror.com')}>
-                淘宝镜像
+                {t('settings.taobaoMirror')}
               </Button>
               <Button size="small" onClick={() => setRegistry('https://registry.yarnpkg.com')}>
                 Yarn
@@ -732,41 +742,41 @@ const SettingsPage: React.FC = () => {
     },
     {
       key: 'config',
-      label: '配置管理',
+      label: t('settings.tabConfig'),
       icon: <SettingOutlined />,
       children: (
         <div className={styles.tabContent}>
           <Space style={{ marginBottom: 16 }}>
             <Button icon={<EditOutlined />} onClick={handleConfigEdit}>
-              添加配置
+              {t('settings.addConfig')}
             </Button>
             <Button icon={<FolderOpenOutlined />} onClick={handleOpenNpmrc}>
-              打开配置文件
+              {t('settings.openConfigFile')}
             </Button>
           </Space>
-          
-          <Table 
+
+          <Table
             dataSource={configItems.filter(item => npmConfig[item.key])}
             columns={[
               {
-                title: '配置项',
+                title: t('settings.columnConfigKey'),
                 dataIndex: 'label',
                 key: 'label'
               },
               {
-                title: '值',
+                title: t('settings.columnValue'),
                 dataIndex: 'key',
                 key: 'value',
                 render: (key: string) => npmConfig[key] || '-'
               },
               {
-                title: '操作',
+                title: t('common.actions'),
                 key: 'action',
                 render: (_, record: any) => (
                   <Space>
-                    <Tooltip title="编辑">
-                      <Button 
-                        size="small" 
+                    <Tooltip title={t('settings.edit')}>
+                      <Button
+                        size="small"
                         icon={<EditOutlined />}
                         onClick={() => {
                           configForm.setFieldsValue({ key: record.key, value: npmConfig[record.key] })
@@ -774,9 +784,9 @@ const SettingsPage: React.FC = () => {
                         }}
                       />
                     </Tooltip>
-                    <Tooltip title="删除">
-                      <Button 
-                        size="small" 
+                    <Tooltip title={t('settings.delete')}>
+                      <Button
+                        size="small"
                         danger
                         icon={<DeleteOutlined />}
                         onClick={() => handleDeleteConfig(record.key)}
@@ -795,13 +805,13 @@ const SettingsPage: React.FC = () => {
     },
     {
       key: 'system',
-      label: '系统信息',
+      label: t('settings.tabSystemInfo'),
       icon: <InfoCircleOutlined />,
       children: (
         <div className={styles.tabContent}>
           {npmInfo.npmError && (
             <Alert
-              title="npm 信息读取失败"
+              title={t('settings.npmInfoLoadFailed')}
               description={npmInfo.npmError}
               type="warning"
               showIcon
@@ -809,29 +819,29 @@ const SettingsPage: React.FC = () => {
             />
           )}
           <Descriptions bordered column={1}>
-            <Descriptions.Item label="npm 版本">{npmInfo.npmVersion || 'N/A'}</Descriptions.Item>
-            <Descriptions.Item label="Node 版本">{npmInfo.nodeVersion || 'N/A'}</Descriptions.Item>
-            <Descriptions.Item label="Electron 版本">{npmInfo.electronVersion || 'N/A'}</Descriptions.Item>
-            <Descriptions.Item label="平台">{npmInfo.platform || 'N/A'}</Descriptions.Item>
-            <Descriptions.Item label="架构">{npmInfo.arch || 'N/A'}</Descriptions.Item>
-            <Descriptions.Item label="缓存目录">
+            <Descriptions.Item label={t('settings.npmVersion')}>{npmInfo.npmVersion || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label={t('settings.nodeVersion')}>{npmInfo.nodeVersion || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label={t('settings.electronVersion')}>{npmInfo.electronVersion || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label={t('settings.platform')}>{npmInfo.platform || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label={t('settings.arch')}>{npmInfo.arch || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label={t('settings.configItemCache')}>
               <Space>
                 {cachePath}
                 <Button size="small" icon={<FolderOpenOutlined />} onClick={handleSetCachePath}>
-                  更改
+                  {t('settings.change')}
                 </Button>
               </Space>
             </Descriptions.Item>
           </Descriptions>
-          
+
           <Divider />
-          
+
           <Space>
             <Button icon={<DeleteOutlined />} onClick={handleClearCache} loading={loading}>
-              清理缓存
+              {t('settings.clearCache')}
             </Button>
             <Button icon={<SyncOutlined />} onClick={handleUpdateNpm} loading={loading}>
-              更新 npm
+              {t('settings.updateNpm')}
             </Button>
           </Space>
         </div>
@@ -839,17 +849,17 @@ const SettingsPage: React.FC = () => {
     },
     {
       key: 'help',
-      label: '帮助',
+      label: t('settings.tabHelp'),
       icon: <QuestionCircleOutlined />,
       children: (
         <div className={styles.tabContent}>
           <Space orientation="vertical" style={{ width: '100%' }}>
-            <Button onClick={() => handleShowHelp()}>查看 npm 帮助</Button>
-            <Button onClick={() => handleShowHelp('install')}>npm install 帮助</Button>
-            <Button onClick={() => handleShowHelp('publish')}>npm publish 帮助</Button>
-            <Button onClick={() => handleShowHelp('config')}>npm config 帮助</Button>
-            <Button onClick={() => handleShowHelp('run-script')}>npm run-script 帮助</Button>
-            <Button onClick={() => handleShowHelp('update')}>npm update 帮助</Button>
+            <Button onClick={() => handleShowHelp()}>{t('settings.npmHelp')}</Button>
+            <Button onClick={() => handleShowHelp('install')}>{t('settings.npmHelpInstall')}</Button>
+            <Button onClick={() => handleShowHelp('publish')}>{t('settings.npmHelpPublish')}</Button>
+            <Button onClick={() => handleShowHelp('config')}>{t('settings.npmHelpConfig')}</Button>
+            <Button onClick={() => handleShowHelp('run-script')}>{t('settings.npmHelpRunScript')}</Button>
+            <Button onClick={() => handleShowHelp('update')}>{t('settings.npmHelpUpdate')}</Button>
           </Space>
         </div>
       )
@@ -868,56 +878,56 @@ const SettingsPage: React.FC = () => {
         </div>
         
         <Modal
-          title="添加/编辑配置"
+          title={t('settings.addOrEditConfig')}
           open={configEditVisible}
           onCancel={() => setConfigEditVisible(false)}
           onOk={() => configForm.submit()}
         forceRender
         >
           <Form form={configForm} onFinish={handleSaveConfig} layout="vertical">
-            <Form.Item name="key" label="配置项" rules={[{ required: true }]}>
-              <AutoComplete options={configKeyOptions} placeholder="选择常用配置项或输入自定义 key" />
+            <Form.Item name="key" label={t('settings.columnConfigKey')} rules={[{ required: true }]}>
+              <AutoComplete options={configKeyOptions} placeholder={t('settings.configKeyPlaceholder')} />
             </Form.Item>
-            <Form.Item name="value" label="值" rules={[{ required: true }]}>
-              <AutoComplete options={configValueOptions} placeholder="选择默认值或输入自定义值" />
+            <Form.Item name="value" label={t('settings.columnValue')} rules={[{ required: true }]}>
+              <AutoComplete options={configValueOptions} placeholder={t('settings.configValuePlaceholder')} />
             </Form.Item>
           </Form>
         </Modal>
-        
+
         <Modal
-          title="npm 登录"
+          title={t('settings.npmLoginTitle')}
           open={loginVisible}
           onCancel={() => setLoginVisible(false)}
           onOk={() => loginForm.submit()}
         forceRender
         >
           <Form form={loginForm} onFinish={handleLoginSubmit} layout="vertical" initialValues={{ authType: 'interactive' }}>
-            <Form.Item name="authType" label="认证方式" rules={[{ required: true }]}>
+            <Form.Item name="authType" label={t('settings.authMethod')} rules={[{ required: true }]}>
               <Select>
                 <Select.Option value="interactive">
-                  <Space><SafetyCertificateOutlined /> 交互式登录（推荐）</Space>
+                  <Space><SafetyCertificateOutlined /> {t('settings.authInteractive')}</Space>
                 </Select.Option>
                 <Select.Option value="token">
-                  <Space><LoginOutlined /> Token 认证</Space>
+                  <Space><LoginOutlined /> {t('settings.authToken')}</Space>
                 </Select.Option>
                 <Select.Option value="legacy">
-                  <Space><UserOutlined /> 传统用户名密码</Space>
+                  <Space><UserOutlined /> {t('settings.authLegacy')}</Space>
                 </Select.Option>
               </Select>
             </Form.Item>
-            <Form.Item name="registry" label="Registry（可选）">
-              <Input placeholder="自定义 registry 地址" />
+            <Form.Item name="registry" label={t('settings.registryOptional')}>
+              <Input placeholder={t('settings.customRegistryPlaceholder')} />
             </Form.Item>
-            <Form.Item 
-              noStyle 
+            <Form.Item
+              noStyle
               shouldUpdate={(prev, cur) => prev.authType !== cur.authType}
             >
               {({ getFieldValue }) => {
                 const authType = getFieldValue('authType')
                 if (authType === 'token') {
                   return (
-                    <Form.Item name="token" label="Access Token" rules={[{ required: true }]}>
-                      <Input.Password placeholder="输入 npm access token" />
+                    <Form.Item name="token" label={t('settings.accessToken')} rules={[{ required: true }]}>
+                      <Input.Password placeholder={t('settings.tokenPlaceholder')} />
                     </Form.Item>
                   )
                 }
@@ -926,9 +936,9 @@ const SettingsPage: React.FC = () => {
             </Form.Item>
           </Form>
         </Modal>
-        
+
         <Modal
-          title="npm 帮助"
+          title={t('settings.npmHelp')}
           open={helpVisible}
           onCancel={() => setHelpVisible(false)}
           footer={null}

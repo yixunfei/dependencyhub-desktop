@@ -32,40 +32,43 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
   const [currentPage, setCurrentPage] = useState(1)
   
   useEffect(() => {
-    if (visible) {
-      loadDependencyTree()
-    } else {
+    if (!visible) {
       // Reset state
       setSearchText('')
       setExpandedKeys([])
       setCurrentPage(1)
+      return
     }
-  }, [visible, type, projectPath, packageName])
-  
-  const loadDependencyTree = async () => {
+    // Switching the project (or reopening for another package) while a tree
+    // request is in flight must not let the stale reply overwrite the new one.
+    let active = true
     setLoading(true)
-    try {
-      let result: any = null
-      
-      if (type === 'project' && projectPath) {
-        result = await window.electronAPI.npm.getProjectDependencyTree(projectPath, 3)
-      } else if (type === 'global') {
-        result = await window.electronAPI.npm.getGlobalDependencyTree(2)
-      } else if (type === 'package' && packageName) {
-        result = await window.electronAPI.npm.getDependencyTree(packageName, undefined, 3)
+    void (async () => {
+      try {
+        let result: any = null
+
+        if (type === 'project' && projectPath) {
+          result = await window.electronAPI.npm.getProjectDependencyTree(projectPath, 3)
+        } else if (type === 'global') {
+          result = await window.electronAPI.npm.getGlobalDependencyTree(2)
+        } else if (type === 'package' && packageName) {
+          result = await window.electronAPI.npm.getDependencyTree(packageName, undefined, 3)
+        }
+
+        if (!active) return
+        setTreeData(result)
+
+        // Collect every key so the tree can expand fully
+        const keys = collectAllKeys(result)
+        setAllKeys(keys)
+      } catch (error) {
+        console.error('Failed to load dependency tree:', error)
+      } finally {
+        if (active) setLoading(false)
       }
-      
-      setTreeData(result)
-      
-      // Collect every key so the tree can expand fully
-      const keys = collectAllKeys(result)
-      setAllKeys(keys)
-    } catch (error) {
-      console.error('Failed to load dependency tree:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+    })()
+    return () => { active = false }
+  }, [visible, type, projectPath, packageName])
   
   const collectAllKeys = (node: any, parentKey = ''): string[] => {
     if (!node) return []

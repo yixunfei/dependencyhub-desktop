@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { spawn, execFileSync } from 'child_process'
 import { readFile } from 'fs/promises'
 import { resolve } from 'path'
 
@@ -127,7 +127,7 @@ function parseArgs(args) {
       result.list = true
       continue
     }
-    if (argument in GROUPS || argument === 'full') {
+    if (Object.prototype.hasOwnProperty.call(GROUPS, argument) || argument === 'full') {
       result.groups.push(argument)
       continue
     }
@@ -198,7 +198,12 @@ async function assertCiCoverage(selectedGroups) {
   }
   const invocation = workflow.split('\n').find((line) => line.includes('verify-framework-runner.mjs')) || ''
   const tokens = invocation.trim().split(/\s+/)
-  const declared = new Set(tokens.slice(tokens.indexOf('verify-framework-runner.mjs') + 1))
+  // quality.yml invokes it as `node scripts/verify-framework-runner.mjs <groups...>`.
+  // Match the script token by suffix instead of exact equality: the exact-match
+  // lookup always failed (token is `scripts/verify-framework-runner.mjs`), so
+  // every token on the line — including `node` — counted as a declared group.
+  const scriptTokenIndex = tokens.findIndex((token) => token === 'verify-framework-runner.mjs' || token.endsWith('/verify-framework-runner.mjs'))
+  const declared = new Set(scriptTokenIndex >= 0 ? tokens.slice(scriptTokenIndex + 1) : tokens)
   const missing = Object.keys(GROUPS).filter((name) => !excluded.has(name) && !declared.has(name))
   if (missing.length > 0) {
     throw new Error(`verification groups missing from .github/workflows/quality.yml: ${missing.join(', ')}`)
@@ -227,7 +232,11 @@ async function runGroup(name, group, args, timeoutOverride) {
       if (settled) return
       settled = true
       clearInterval(heartbeat)
-      child.kill('SIGTERM')
+      if (process.platform === 'win32') {
+        try { execFileSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' }) } catch { child.kill('SIGTERM') }
+      } else {
+        child.kill('SIGTERM')
+      }
       rejectPromise(new Error(`${name} verification timed out after ${timeoutMs}ms`))
     }, timeoutMs)
 

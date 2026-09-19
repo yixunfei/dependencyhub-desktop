@@ -133,8 +133,12 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
     : []
   
   const metadata = auditResult?.metadata
-  const totalVulnerabilities = metadata?.vulnerabilities 
-    ? Object.values(metadata.vulnerabilities).reduce((a: number, b: any) => a + b, 0) as number
+  // npm audit's `vulnerabilities` object also carries `total`, which already
+  // equals the severity sum; summing every value double-counts the findings.
+  const totalVulnerabilities = metadata?.vulnerabilities
+    ? Number(metadata.vulnerabilities.total)
+      || (['info', 'low', 'moderate', 'high', 'critical'] as const)
+        .reduce((sum, severity) => sum + (Number(metadata.vulnerabilities[severity]) || 0), 0)
     : vulnerabilities.length
   
   const columns = [

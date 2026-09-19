@@ -17,7 +17,10 @@ const xmlParser = new XMLParser({
 
 export async function readTextIfExists(path: string): Promise<string | undefined> {
   try {
-    return await readFile(path, 'utf-8')
+    const content = await readFile(path, 'utf-8')
+    // Editors on Windows (Notepad/PowerShell redirection) emit a UTF-8 BOM that
+    // breaks JSON.parse and smol-toml on the first character.
+    return content.replace(/^\uFEFF/, '')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw error

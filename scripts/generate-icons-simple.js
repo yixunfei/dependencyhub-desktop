@@ -25,33 +25,37 @@ function checkImageMagick() {
 
 function generatePngIcons(sourceIcon) {
   console.log('Generating PNG icons...');
-  
+
+  let failures = 0;
   sizes.forEach(size => {
     const outputPath = path.join(pngDir, `${size}x${size}.png`);
     try {
       execSync(`magick "${sourceIcon}" -resize ${size}x${size} "${outputPath}"`, { stdio: 'inherit' });
       console.log(`✓ Generated ${size}x${size}.png`);
     } catch (error) {
+      failures += 1;
       console.error(`✗ Failed to generate ${size}x${size}.png`);
     }
   });
+  return failures;
 }
 
 function generateIco() {
   console.log('\nGenerating ICO file...');
-  
+
   const outputPath = path.join(iconDir, 'icon.ico');
   const pngFiles = sizes
     .filter(size => size <= 256)
     .map(size => path.join(pngDir, `${size}x${size}.png`))
     .filter(file => fs.existsSync(file))
+    .map(file => `"${file}"`)
     .join(' ');
-  
+
   if (!pngFiles) {
     console.error('✗ No PNG files found for ICO generation');
     return false;
   }
-  
+
   try {
     execSync(`magick ${pngFiles} "${outputPath}"`, { stdio: 'inherit' });
     console.log('✓ Generated icon.ico');
@@ -106,10 +110,17 @@ function main() {
   console.log('✓ ImageMagick found\n');
   
   createDirectories();
-  generatePngIcons(sourceIcon);
-  generateIco();
-  generateIcns(sourceIcon);
-  
+  const pngFailures = generatePngIcons(sourceIcon);
+  const icoOk = generateIco();
+  const icnsOk = generateIcns(sourceIcon);
+
+  // A partial failure must not exit 0: a truncated icon set would otherwise
+  // silently flow into the packaged installers.
+  if (pngFailures > 0 || !icoOk || !icnsOk) {
+    console.error(`\n✗ Icon generation finished with errors (${pngFailures} PNG size(s) failed)`);
+    process.exit(1);
+  }
+
   console.log('\n' + '='.repeat(50));
   console.log('✓ Icon generation complete!');
   console.log(`Icons saved to: ${iconDir}`);

@@ -1,23 +1,24 @@
-import { execFile, spawn } from 'child_process'
-import { promisify } from 'util'
+import { spawn } from 'child_process'
 import { app } from 'electron'
 import { resolveToolBin } from './toolchain'
-import { resolveShellFreeCommand } from './commandRunner'
-import { commandEnv, decodeCommandChunk } from './encoding'
+import { runLoggedCommand } from './commandRunner'
 
-const execFileAsync = promisify(execFile)
-function run(bin: string, args: string[] = [], cwd?: string): Promise<{ stdout: string; stderr: string }> {
-  const command = resolveShellFreeCommand(bin, args)
-  return execFileAsync(command.bin, command.args, {
+function run(
+  bin: string,
+  args: string[] = [],
+  cwd?: string,
+  timeoutMs = 120_000
+): Promise<{ stdout: string; stderr: string }> {
+  // log:false keeps system diagnostics (version checks, cache config) out of
+  // the workbench command log; runLoggedCommand supplies timeout/signal/operationId.
+  // On timeout the process tree is killed and runLoggedCommand throws
+  // OperationTimeoutError, so callers never hang on a stuck child.
+  return runLoggedCommand(bin, args, {
     cwd,
-    env: commandEnv(),
+    log: false,
     maxBuffer: 1024 * 1024 * 10,
-    windowsHide: true,
-    encoding: 'buffer'
-  }).then((result) => ({
-    stdout: decodeBuffer(result.stdout),
-    stderr: decodeBuffer(result.stderr)
-  }))
+    timeoutMs
+  })
 }
 
 export class SystemService {
@@ -67,7 +68,7 @@ export class SystemService {
 
   async updateNpm(): Promise<string> {
     try {
-      const { stdout, stderr } = await run(await resolveToolBin('npm'), ['install', '-g', 'npm@latest'])
+      const { stdout, stderr } = await run(await resolveToolBin('npm'), ['install', '-g', 'npm@latest'], undefined, 300_000)
       return stdout || stderr
     } catch (error: any) {
       throw new Error(error.message)
@@ -86,24 +87,41 @@ export class SystemService {
 
   async openTerminal(cwd: string): Promise<void> {
     const platform = process.platform
-    
+
     if (platform === 'win32') {
-      spawn('cmd.exe', ['/K', 'cd', '/d', cwd], { cwd, detached: true, stdio: 'ignore', windowsHide: false }).unref()
+      launchDetached('cmd.exe', ['/K', 'cd', '/d', cwd], { cwd, windowsHide: false })
     } else if (platform === 'darwin') {
-      spawn('open', ['-a', 'Terminal.app', cwd], { cwd, detached: true, stdio: 'ignore' }).unref()
+      launchDetached('open', ['-a', 'Terminal.app', cwd], { cwd })
     } else if (platform === 'linux') {
-      spawn('gnome-terminal', [`--working-directory=${cwd}`], { cwd, detached: true, stdio: 'ignore' }).unref()
+      launchDetached('gnome-terminal', [`--working-directory=${cwd}`], { cwd })
     }
   }
 }
 
-function decodeBuffer(value: Buffer | string): string {
-  if (typeof value === 'string') return value
-  return decodeCommandChunk(value)
+/**
+ * Fire-and-forget process launch. The asynchronous 'error' event (ENOENT /
+ * EACCES when the terminal binary is missing) must be consumed or it becomes
+ * an uncaughtException that takes the whole main process down.
+ */
+function launchDetached(bin: string, args: string[], options: { cwd: string; windowsHide?: boolean }): void {
+  try {
+    const child = spawn(bin, args, {
+      cwd: options.cwd,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: options.windowsHide ?? true
+    })
+    child.on('error', (error) => {
+      console.warn(`Failed to launch ${bin}:`, error.message)
+    })
+    child.unref()
+  } catch (error) {
+    console.warn(`Failed to launch ${bin}:`, error)
+  }
 }
 
 function readableError(error: any): string {
-  const stdout = error?.stdout ? decodeBuffer(error.stdout) : ''
-  const stderr = error?.stderr ? decodeBuffer(error.stderr) : ''
+  const stdout = typeof error?.stdout === 'string' ? error.stdout : ''
+  const stderr = typeof error?.stderr === 'string' ? error.stderr : ''
   return (stderr || stdout || error?.message || String(error)).trim()
 }

@@ -69,6 +69,8 @@ import {
   type OperationContext
 } from './services/operationContext'
 import { isAllowedExternalUrl, isAllowedAppNavigation } from './services/externalUrl'
+import { assertSafeShellTarget } from './services/shellGuard'
+import { commandMutatesProjectFiles } from './services/commandMutates'
 import { runProjectOperation } from './services/projectGuard'
 import type { DependencyManagerId } from '../shared/managerRegistry'
 import type {
@@ -138,6 +140,7 @@ const menuLabels: Record<AppLanguage, Record<string, string>> = {
 }
 
 let mainWindow: BrowserWindow | null = null
+let cleanupDone = false
 const npmService = new NpmService()
 const projectService = new ProjectService()
 const publishService = new PublishService()
@@ -402,9 +405,33 @@ async function withProjectSnapshot<T>(
   cwd: string | undefined,
   label: string,
   operation: (context: OperationContext) => Promise<T>,
-  options: { timeoutMs?: number | null; operationId?: string; kind?: 'mutation' | 'read' } = {}
+  options: { timeoutMs?: number | null; operationId?: string; kind?: 'mutation' | 'read'; serializeKey?: string } = {}
 ): Promise<T> {
   return await runProjectOperation(projectGuardDependencies(), cwd, label, operation, options)
+}
+
+/**
+ * Global npm mutations have no project path, but they still share mutable state
+ * (the global prefix). A constant queue key keeps them serialized instead of
+ * skipping the guard entirely.
+ */
+const GLOBAL_NPM_OPERATION_KEY = '__global_npm__'
+
+/** Manager operations that only read installed state and must not snapshot. */
+const READ_ONLY_MANAGER_OPERATIONS = new Set(['list', 'tree', 'audit', 'outdated', 'validate'])
+
+async function withNpmMutation<T>(
+  args: { global?: boolean } | undefined,
+  label: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const global = Boolean(args?.global)
+  return await withProjectSnapshot(
+    global ? undefined : cwdFromArgs(args),
+    global ? `${label} (global)` : label,
+    () => operation(),
+    global ? { serializeKey: GLOBAL_NPM_OPERATION_KEY } : {}
+  )
 }
 
 function projectGuardDependencies() {
@@ -431,6 +458,9 @@ async function enforcePublishReadinessGate(
 }
 
 function createWindow() {
+  // A window can be recreated after a macOS close (app stays alive); reset the
+  // cleanup latch or the next close/quit would skip terminal and watcher teardown.
+  cleanupDone = false
   let iconPath: string;
   
   if (process.env.NODE_ENV === 'development') {
@@ -483,16 +513,44 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
-    setNpmServiceWindow(null as any)
-    setTerminalWindow(null)
-    terminalService.killAll()
+    runExitCleanup()
   })
 }
 
-app.whenReady().then(() => {
-  setupApplicationMenu(getStartupLanguageInfo().language)
-  createWindow()
-  setupIpcHandlers()
+/** Idempotent teardown shared by window close and app quit. */
+function runExitCleanup(): void {
+  if (cleanupDone) return
+  cleanupDone = true
+  setNpmServiceWindow(null as any)
+  setTerminalWindow(null)
+  terminalService.killAll()
+  // Drop manifest watchers so exiting cannot leak FSWatchers.
+  fileWatcher.unwatchAll()
+}
+
+// A second app instance would duplicate IPC handlers, watchers and services;
+// forward its launch to the existing window instead of starting a second copy.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
+    setupApplicationMenu(getStartupLanguageInfo().language)
+    createWindow()
+    setupIpcHandlers()
+  })
+}
+
+app.on('will-quit', () => {
+  // Quitting without closing the window first (e.g. Cmd+Q on macOS) would
+  // otherwise leak terminal children and manifest watchers.
+  runExitCleanup()
 })
 
 app.on('window-all-closed', () => {
@@ -562,15 +620,15 @@ function setupIpcHandlers() {
   })
 
   handleIpc('npm:install', async (_, args) => {
-    return await withProjectSnapshot(args?.global ? undefined : cwdFromArgs(args), 'npm install', () => npmService.install(args))
+    return await withNpmMutation(args, 'npm install', () => npmService.install(args))
   })
 
   handleIpc('npm:uninstall', async (_, args) => {
-    return await withProjectSnapshot(args?.global ? undefined : cwdFromArgs(args), 'npm uninstall', () => npmService.uninstall(args))
+    return await withNpmMutation(args, 'npm uninstall', () => npmService.uninstall(args))
   })
 
   handleIpc('npm:update', async (_, args) => {
-    return await withProjectSnapshot(args?.global ? undefined : cwdFromArgs(args), 'npm update', () => npmService.update(args))
+    return await withNpmMutation(args, 'npm update', () => npmService.update(args))
   })
 
   handleIpc('npm:outdated', async (_, cwd: string) => {
@@ -680,11 +738,13 @@ function setupIpcHandlers() {
   })
 
   handleIpc('system:open-path', async (_, path: string) => {
+    await assertSafeShellTarget(path)
     await shell.openPath(path)
   })
 
   handleIpc('system:open-file', async (_, filePath: string) => {
-    shell.openPath(filePath)
+    await assertSafeShellTarget(filePath)
+    await shell.openPath(filePath)
   })
 
   handleIpc('system:get-npm-info', async () => {
@@ -785,7 +845,7 @@ function setupIpcHandlers() {
   })
 
   handleIpc('npm:install-version', async (_, args) => {
-    return await withProjectSnapshot(args?.global ? undefined : cwdFromArgs(args), 'npm install version', () => npmService.installVersion(args))
+    return await withNpmMutation(args, 'npm install version', () => npmService.installVersion(args))
   })
 
   handleIpc('npm:global-outdated', async () => {
@@ -1342,8 +1402,16 @@ function setupIpcHandlers() {
     request: ManagerOperationRequest,
     options?: ManagerExecuteOptions
   ) => {
-    const execute = () => managerWorkspaceService.execute(cwd, managerId, request, options)
-    return await withProjectSnapshot(cwd, `${managerId} ${request.operation}`, () => execute(), { operationId: options?.operationId, kind: options?.dryRun ? 'read' : 'mutation' })
+    // `dryRun` alone is not enough: list/tree/audit/outdated are read-only even
+    // though the UI runs them with dryRun=false, and snapshotting each click
+    // would fill the project with meaningless snapshot files.
+    const kind = options?.dryRun || READ_ONLY_MANAGER_OPERATIONS.has(request.operation) ? 'read' : 'mutation'
+    return await withProjectSnapshot(
+      cwd,
+      `${managerId} ${request.operation}`,
+      () => managerWorkspaceService.execute(cwd, managerId, request, options),
+      { operationId: options?.operationId, kind }
+    )
   })
 
   handleIpc('manager:run-custom', async (
@@ -1423,7 +1491,7 @@ function setupIpcHandlers() {
   })
 
   handleIpc('supply-chain:create-snapshot', async (_, cwd: string) => {
-    return await supplyChainService.createSnapshot(cwd)
+    return await withProjectMutation(cwd, () => supplyChainService.createSnapshot(cwd))
   })
 
   handleIpc('supply-chain:list-snapshots', async (_, cwd: string) => {
@@ -2007,7 +2075,13 @@ function setupIpcHandlers() {
   })
 
   handleIpc('dependency-health:fix', async (_, cwd: string, action) => {
-    return await dependencyHealthService.applyFix(cwd, action)
+    // Only execute commands the scanner itself produced for this project: the
+    // renderer-supplied object must never become a free-form command channel.
+    const resolved = dependencyHealthService.resolveFixAction(cwd, action)
+    const mutating = resolved.kind === 'api' || commandMutatesProjectFiles(resolved.command?.args || [])
+    return await withProjectSnapshot(cwd, `dependency health fix: ${resolved.id}`, () => (
+      dependencyHealthService.applyFix(cwd, resolved)
+    ), { kind: mutating ? 'mutation' : 'read' })
   })
 
   handleIpc('terminal:create', async (_, cwd?: string) => {

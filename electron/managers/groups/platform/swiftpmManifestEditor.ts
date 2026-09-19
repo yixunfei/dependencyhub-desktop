@@ -23,7 +23,10 @@ export async function planSwiftPMManifestMutation(cwd: string, request: ManagerO
     const entry = `.package(url: "${escapeSwift(source)}", ${requirement})`
     const range = dependencyArrayRange(before)
     if (!range) throw new Error('Package.swift dependencies must contain a static array for safe editing.')
-    const insertion = `${before.slice(0, range.end)}${range.end > range.start && !/\n\s*$/.test(before.slice(range.start, range.end)) ? ',' : ''}\n    ${entry}${before.slice(range.end)}`
+    const body = before.slice(range.start, range.end)
+    const hasElements = body.trim().length > 0
+    const needsComma = hasElements && !/,\s*$/.test(body)
+    const insertion = `${before.slice(0, range.end)}${needsComma ? ',' : ''}\n    ${entry}${before.slice(range.end)}`
     return { before, after: insertion, changed: true }
   }
   const matches = [...before.matchAll(/\.package\s*\(([^)]*)\)/gms)].filter((match) => {

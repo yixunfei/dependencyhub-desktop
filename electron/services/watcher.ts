@@ -1,4 +1,5 @@
 import { watch, access, constants, type FSWatcher } from 'fs'
+import { projectIdentity } from './projectIdentity'
 
 export interface FileChangeEvent {
   type: string
@@ -68,11 +69,16 @@ export class FileWatcher {
   private watchers = new Map<string, FSWatcher>()
   private requests = new Map<string, object>()
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map()
+  // Identity keys may be lowercased/realpath'd, so remember the caller-visible path.
+  private projectPaths = new Map<string, string>()
 
   async watchProject(projectPath: string, callback: FileChangeCallback): Promise<void> {
     this.unwatchProject(projectPath)
+    // Windows exposes the same directory under case/alias variants; identity keys
+    // keep one FSWatcher per real directory instead of duplicating listeners.
+    const key = projectIdentity(projectPath)
     const request = {}
-    this.requests.set(projectPath, request)
+    this.requests.set(key, request)
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -86,21 +92,22 @@ export class FileWatcher {
       return
     }
 
-    if (this.requests.get(projectPath) !== request) return
+    if (this.requests.get(key) !== request) return
     try {
       // Directory-level watch also catches atomic-replace editors (write a temp file
       // then rename), which a single-file `change` watcher never sees.
       const watcher = watch(projectPath, { recursive: false }, (eventType, filename) => {
         const file = String(filename || '')
         if (!this.isRelevantFile(file)) return
-        this.scheduleEmit(projectPath, callback, { type: eventType || 'change', path: projectPath, file })
+        this.scheduleEmit(key, callback, { type: eventType || 'change', path: projectPath, file })
       })
 
       watcher.on('error', (error: unknown) => {
         console.error('Watcher error:', error)
       })
 
-      this.watchers.set(projectPath, watcher)
+      this.watchers.set(key, watcher)
+      this.projectPaths.set(key, projectPath)
     } catch (error) {
       console.error('Failed to watch project directory:', error)
     }
@@ -111,26 +118,28 @@ export class FileWatcher {
     return !base || MANIFEST_FILES.includes(base) || /\.(csproj|fsproj|vbproj)$/.test(base)
   }
 
-  private scheduleEmit(projectPath: string, callback: FileChangeCallback, change: FileChangeEvent): void {
-    const existing = this.debounceTimers.get(projectPath)
+  private scheduleEmit(key: string, callback: FileChangeCallback, change: FileChangeEvent): void {
+    const existing = this.debounceTimers.get(key)
     if (existing) clearTimeout(existing)
-    this.debounceTimers.set(projectPath, setTimeout(() => {
-      this.debounceTimers.delete(projectPath)
+    this.debounceTimers.set(key, setTimeout(() => {
+      this.debounceTimers.delete(key)
       callback(change)
     }, DEBOUNCE_MS))
   }
 
   unwatchProject(projectPath: string): void {
-    this.requests.delete(projectPath)
-    const watcher = this.watchers.get(projectPath)
+    const key = projectIdentity(projectPath)
+    this.requests.delete(key)
+    const watcher = this.watchers.get(key)
     if (watcher) {
       watcher.close()
-      this.watchers.delete(projectPath)
+      this.watchers.delete(key)
     }
-    const timer = this.debounceTimers.get(projectPath)
+    this.projectPaths.delete(key)
+    const timer = this.debounceTimers.get(key)
     if (timer) {
       clearTimeout(timer)
-      this.debounceTimers.delete(projectPath)
+      this.debounceTimers.delete(key)
     }
   }
 
@@ -138,12 +147,15 @@ export class FileWatcher {
     this.requests.clear()
     for (const watcher of this.watchers.values()) watcher.close()
     this.watchers.clear()
+    this.projectPaths.clear()
     for (const timer of this.debounceTimers.values()) clearTimeout(timer)
     this.debounceTimers.clear()
   }
 
   watchedProjects(): string[] {
-    return [...this.watchers.keys()]
+    // Report the caller-visible paths, not the lowercased/realpath identity
+    // keys, so consumers can compare them with the paths they registered.
+    return [...this.projectPaths.values()]
   }
 }
 

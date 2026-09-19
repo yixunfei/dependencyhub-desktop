@@ -9,7 +9,7 @@ const outputFile = join(workDir, 'hardening-verifier.mjs')
 const roots = []
 
 const runner = String.raw`
-import { mkdtemp, readFile, rename, rm, writeFile } from 'fs/promises'
+import { mkdtemp, readdir, readFile, rename, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { withProjectMutation, projectMutationQueueSize } from './electron/services/projectMutation'
@@ -23,7 +23,8 @@ import {
   requestOperationCancel,
   runWithOperationContext
 } from './electron/services/operationContext'
-import { runLoggedCommand } from './electron/services/commandRunner'
+import { resolveShellFreeCommand, runLoggedCommand } from './electron/services/commandRunner'
+import { createBase64CredentialCipher, CredentialVaultStore } from './electron/services/credentialVaultCore'
 import { isAllowedExternalUrl } from './electron/services/externalUrl'
 import { fileWatcher } from './electron/services/watcher'
 
@@ -186,36 +187,40 @@ async function testWatcherCoversManifestAndLockfiles() {
   await fileWatcher.watchProject(cwd, (change) => events.push(change.file))
   await wait(120)
 
-  await writeFile(join(cwd, 'package.json'), '{"dependencies":{"a":"1.0.0"}}')
-  await waitForEvent(events, 'package.json')
-  assert(events.includes('package.json'), 'S3 an external editor write to package.json triggers a refresh')
+  // A failed assertion must not leak the fs.watch handle: an open watcher
+  // keeps the event loop alive and turns the failure into a runner timeout.
+  try {
+    await writeFile(join(cwd, 'package.json'), '{"dependencies":{"a":"1.0.0"}}')
+    await waitForEvent(events, 'package.json')
+    assert(events.includes('package.json'), 'S3 an external editor write to package.json triggers a refresh')
 
-  events.length = 0
-  await writeFile(join(cwd, 'package.json.tmp'), '{"dependencies":{"b":"2.0.0"}}')
-  await rename(join(cwd, 'package.json.tmp'), join(cwd, 'package.json'))
-  await waitForEvent(events, 'package.json')
-  assert(events.includes('package.json'), 'S3 an atomic replace of package.json triggers a refresh')
+    events.length = 0
+    await writeFile(join(cwd, 'package.json.tmp'), '{"dependencies":{"b":"2.0.0"}}')
+    await rename(join(cwd, 'package.json.tmp'), join(cwd, 'package.json'))
+    await waitForEvent(events, 'package.json')
+    assert(events.includes('package.json'), 'S3 an atomic replace of package.json triggers a refresh')
 
-  events.length = 0
-  await writeFile(join(cwd, 'package-lock.json'), '{"lockfileVersion":3,"packages":{}}')
-  await waitForEvent(events, 'package-lock.json')
-  assert(events.includes('package-lock.json'), 'S3 a package-lock.json change alone triggers a refresh')
+    events.length = 0
+    await writeFile(join(cwd, 'package-lock.json'), '{"lockfileVersion":3,"packages":{}}')
+    await waitForEvent(events, 'package-lock.json')
+    assert(events.includes('package-lock.json'), 'S3 a package-lock.json change alone triggers a refresh')
 
-  events.length = 0
-  await writeFile(join(cwd, 'README.md'), 'not a manifest')
-  await wait(700)
-  assert(events.length === 0, 'S3 unrelated files do not trigger a refresh')
+    events.length = 0
+    await writeFile(join(cwd, 'README.md'), 'not a manifest')
+    await wait(700)
+    assert(events.length === 0, 'S3 unrelated files do not trigger a refresh')
 
-  events.length = 0
-  await writeFile(join(cwd, 'package.json'), '{"dependencies":{"c":"3.0.0"}}')
-  await rename(join(cwd, 'package-lock.json'), join(cwd, 'package-lock.json.bak'))
-  await writeFile(join(cwd, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"c":{}}}')
-  await waitForEvent(events, 'package.json')
-  await wait(400)
-  const distinct = new Set(events)
-  assert(distinct.size <= 2 && events.length <= 4, 'S3 rapid multi-file edits are debounced into few notifications')
-
-  fileWatcher.unwatchAll()
+    events.length = 0
+    await writeFile(join(cwd, 'package.json'), '{"dependencies":{"c":"3.0.0"}}')
+    await rename(join(cwd, 'package-lock.json'), join(cwd, 'package-lock.json.bak'))
+    await writeFile(join(cwd, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"c":{}}}')
+    await waitForEvent(events, 'package.json')
+    await wait(400)
+    const distinct = new Set(events)
+    assert(events.length > 0 && distinct.size <= 2 && events.length <= 4, 'S3 rapid multi-file edits are debounced into few notifications')
+  } finally {
+    fileWatcher.unwatchAll()
+  }
   assert(fileWatcher.watchedProjects().length === 0, 'S3 watchers are released when the project changes')
 }
 
@@ -225,7 +230,6 @@ async function testReportFailureVisibility() {
   let status = createReportStatus({}, ['supplyChain', 'license', 'audit'], 'loading')
   assert(status.supplyChain.status === 'loading', 'S2 every report block starts in an explicit loading state')
 
-  let applied = []
   const mark = (key, state, error) => {
     status = state === 'ready' ? recordReportSuccess(status, key) : recordReportFailure(status, key, error)
   }
@@ -241,8 +245,68 @@ async function testReportFailureVisibility() {
   const failures = collectReportFailures(status, { supplyChain: 'Supply chain', license: 'License', audit: 'Audit' })
   assert(failures.length === 1 && failures[0].label === 'License', 'S2 only the failing block is reported as failed')
   assert(!failures.some((item) => item.key === 'supplyChain'), 'S2 a healthy block is not listed as failed')
-  applied = []
-  assert(applied.length === 0 && failed.ok === false, 'S2 the caller can skip applying a failed report instead of showing empty data')
+  assert(!('value' in failed) || failed.value === undefined, 'S2 a failed report carries no value payload the caller could render as empty data')
+}
+
+// B2 — cmd.exe quoting keeps metacharacters literal and % expansion impossible.
+function testCmdArgumentQuoting() {
+  const wrapped = resolveShellFreeCommand('npm.cmd', ['run', 't', '--', '--grep', 'a&b'])
+  const command = wrapped.args[3]
+  assert(wrapped.bin === 'cmd.exe', 'B2 .cmd entrypoints are wrapped through cmd.exe')
+  assert(wrapped.windowsVerbatimArguments === true, 'B2 the cmd.exe wrapper declares verbatim argv passing')
+  assert(command.startsWith('"') && command.endsWith('"'), 'B2 the payload carries the outer quotes cmd /S strips (got ' + command + ')')
+  assert(command.includes('"a&b"'), 'B2 an argument with & stays quoted and literal (got ' + command + ')')
+  assert(!command.includes('^&'), 'B2 no ^ is injected inside quoted arguments (cmd does not parse ^ there)')
+  const percent = resolveShellFreeCommand('npm.cmd', ['view', 'pkg@1%2B0']).args[3]
+  assert(percent.includes('"pkg@1"^%"2B0"'), 'B2 % is emitted as ^% between quoted segments so cmd cannot expand it (got ' + percent + ')')
+}
+
+// B2 at the spawn layer: without windowsVerbatimArguments libuv re-quotes the
+// /c payload per MSVCRT rules (inner " becomes \"), and cmd.exe — which does
+// not treat backslash as an escape — executes the mangled line, so nothing
+// formatCmdArg quoted would survive. Spawns cmd.exe for real on Windows.
+async function testCmdSpawnPassesArgumentsIntact() {
+  if (process.platform !== 'win32') return
+  const { spawn } = await import('node:child_process')
+  const dir = await fixture('cmdspawn')
+  const shim = join(dir, 'tool.cmd')
+  await writeFile(shim, '@echo off\r\nnode -e "process.stdout.write(JSON.stringify(process.argv.slice(1)))" %*\r\n')
+  const { bin, args, windowsVerbatimArguments } = resolveShellFreeCommand(shim, ['a&b c', '100%done'])
+  assert(windowsVerbatimArguments === true, 'B2 a .cmd shim uses verbatim argv passing')
+  let out = ''
+  // Mirrors CommandProcess.start(): the wrapper must be spawned verbatim or
+  // libuv re-quotes the payload and cmd.exe executes a mangled line (the
+  // failure mode below proves the guard is load-bearing).
+  const child = spawn(bin, args, { cwd: dir, windowsHide: true, shell: false, windowsVerbatimArguments: true })
+  child.stdout.on('data', (chunk) => { out += String(chunk) })
+  const code = await new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', (exitCode) => resolve(exitCode))
+  })
+  const rendered = out.trim().split(/\r?\n/).join(' | ')
+  assert(code === 0, 'B2 the cmd.exe wrapped shim exits cleanly (got ' + code + ')')
+  assert(out.includes('"a&b c"'), 'B2 a quoted argument containing & and spaces reaches the child intact (got ' + rendered + ')')
+  assert(out.includes('"100%done"'), 'B2 % travels as a literal character without cmd expansion (got ' + rendered + ')')
+}
+
+// B3 — concurrent vault operations serialize and never lose credentials or leak staging files.
+async function testVaultConcurrencyAndStagingFiles() {
+  const cwd = await fixture('vault')
+  const store = new CredentialVaultStore(cwd, createBase64CredentialCipher())
+  const saved = await Promise.all(Array.from({ length: 24 }, (_, index) =>
+    store.save({ managerId: 'npm', service: 'registry-' + index, secret: 'secret-' + index })))
+  const ids = saved.map((credential) => credential.id)
+  assert(new Set(ids).size === 24, 'B3 concurrent saves produce distinct credentials')
+  const listed = await store.list()
+  assert(listed.length === 24, 'B3 concurrent read-modify-write does not lose a credential')
+  await Promise.all([...ids.map((id) => store.resolve(id)),
+    store.save({ managerId: 'npm', service: 'registry-late', secret: 'late' })])
+  await Promise.all([store.delete(ids[0]), store.save({ managerId: 'npm', service: 'registry-extra', secret: 'extra' })])
+  const after = await store.list()
+  assert(after.length === 25 && !after.some((credential) => credential.id === ids[0]),
+    'B3 interleaved resolve/save/delete keep the vault consistent')
+  const files = await readdir(cwd)
+  assert(!files.some((file) => file.endsWith('.tmp')), 'B3 staging files are unique per write and never left behind')
 }
 
 async function waitForEvent(events, file) {
@@ -265,6 +329,9 @@ try {
   testExternalUrlGuard()
   await testWatcherCoversManifestAndLockfiles()
   await testReportFailureVisibility()
+  testCmdArgumentQuoting()
+  await testCmdSpawnPassesArgumentsIntact()
+  await testVaultConcurrencyAndStagingFiles()
   console.log('Hardening behavior verification passed (' + checks.length + ' checks)')
 } finally {
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })))

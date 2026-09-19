@@ -513,7 +513,7 @@ declare global {
         start: (projectPath: string) => Promise<void>
         stop: (projectPath?: string) => Promise<void>
         onChange: (callback: (data: FileChangeData) => void) => void
-        removeChangeListener: () => void
+        removeChangeListener: (callback?: (data: FileChangeData) => void) => void
       }
       
       project: {
@@ -555,10 +555,10 @@ declare global {
       openExternal: (url: string) => Promise<void>
       
       onCommandLog: (callback: (data: CommandLogEntry) => void) => void
-      removeCommandLogListener: () => void
+      removeCommandLogListener: (callback?: (data: CommandLogEntry) => void) => void
       onTerminalData: (callback: (data: TerminalData) => void) => void
       onTerminalExit: (callback: (data: TerminalExitData) => void) => void
-      removeTerminalListeners: () => void
+      removeTerminalListeners: (callback?: ((data: TerminalData | TerminalExitData) => void)) => void
     }
   }
   

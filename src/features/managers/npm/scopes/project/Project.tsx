@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Empty, Spin, Modal, Form, Input, Switch, Select, Tag, Dropdown, Space, Tooltip, Table, Tabs, Card } from 'antd'
 import { ReloadOutlined, FolderOpenOutlined, PlusOutlined, SwapOutlined, FolderFilled, PlayCircleOutlined, CheckCircleOutlined, WarningOutlined, SyncOutlined, HistoryOutlined, SecurityScanOutlined, InfoCircleOutlined, DownloadOutlined, ApartmentOutlined, CloudDownloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../../../../stores/appStore'
@@ -14,12 +14,25 @@ import { NpmVersionPicker } from '../../../../../components/Package/NpmVersionPi
 import ProjectToolchainPanel from '../../../../../components/Toolchain/ProjectToolchainPanel'
 import ProjectPathBar from '../../../../../components/ProjectPathBar/ProjectPathBar'
 import { localizedModal } from '../../../../../utils/localizedFeedback'
+import { useT, type LabelTranslator } from '../../../../../i18n'
 import { VERSION_PAGE_SIZE, VersionChannelFilter, toVersionOptions, versionsForFilter } from '../../../../../utils/npmVersions'
 import { cleanPackageSummary, formatCompactNumber } from '../../../../../utils/npmDisplay'
 import { useDependencyHealthReminder } from '../../../../../hooks/useDependencyHealthReminder'
 import styles from './Project.module.css'
 
 const SEARCH_PAGE_SIZE = 10
+
+// Monotonic request id so a stale paged-search response cannot overwrite a
+// newer one when the user types quickly in the install autocomplete.
+let packageOptionsRequestId = 0
+
+// Same idea for the "switch version" dialog: opening A then B must not let
+// A's slower reply populate B's version list (installing would use it).
+let versionDialogRequestId = 0
+
+// Install-modal version loads: a stale reply for a replaced package name must
+// not auto-fill the wrong version into the form.
+let installVersionsRequestId = 0
 
 interface ProjectPageProps {
   hideToolchainPanel?: boolean
@@ -33,7 +46,9 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   const [installForm] = Form.useForm()
   const [moveDepForm] = Form.useForm()
   const [scripts, setScripts] = useState<string[]>([])
-  const [runningScript, setRunningScript] = useState<string>('')
+  const [runningScripts, setRunningScripts] = useState<Record<string, boolean>>({})
+  const [outputScript, setOutputScript] = useState<string>('')
+  const scriptRunIdRef = useRef(0)
   const [scriptOutput, setScriptOutput] = useState<string>('')
   const [scriptOutputVisible, setScriptOutputVisible] = useState(false)
   const [checkingAll, setCheckingAll] = useState(false)
@@ -65,95 +80,132 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   
   const currentPath = useAppStore((state) => state.currentPath)
   const addNotification = useAppStore((state) => state.addNotification)
+  const t = useT()
   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
   const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
   const setTerminalVisible = useCommandLogStore((state) => state.setVisible)
-  const { projectPackages, loading, projectError, fetchProjectPackages, installPackage, uninstallPackage, installSpecificVersion } = usePackageStore()
+  const projectPackages = usePackageStore((state) => state.projectPackages)
+  const projectLoading = usePackageStore((state) => state.projectLoading)
+  const projectError = usePackageStore((state) => state.projectError)
+  const mutating = usePackageStore((state) => state.mutating)
+  const fetchProjectPackages = usePackageStore((state) => state.fetchProjectPackages)
+  const installPackage = usePackageStore((state) => state.installPackage)
+  const uninstallPackage = usePackageStore((state) => state.uninstallPackage)
+  const installSpecificVersion = usePackageStore((state) => state.installSpecificVersion)
 
   useDependencyHealthReminder('npm', currentPath, !!currentPath && projectPackages.length > 0)
   
   useEffect(() => {
+    let watcherActive = false
     if (currentPath) {
       fetchProjectPackages(currentPath)
-      loadScripts()
-      startWatcher()
+      loadScripts(currentPath)
+      watcherActive = true
+      void startWatcher(currentPath, () => watcherActive)
     }
-    
+
     return () => {
+      watcherActive = false
       stopWatcher()
     }
   }, [currentPath])
-  
-  const startWatcher = async () => {
-    if (currentPath) {
-      // 先检查是否是有效的项目路径
-      try {
-        const projectInfo = await window.electronAPI.project.detect(currentPath)
-        if (projectInfo.hasPackageJson) {
-          await window.electronAPI.watcher.start(currentPath)
-          window.electronAPI.watcher.onChange((data) => {
-            if (data.path === currentPath) {
-              addNotification({
-                type: 'info',
-                message: `${data.file || 'dependency manifest'} 已变更`,
-                description: '正在自动刷新...'
-              })
-              fetchProjectPackages(currentPath, true)
-              loadScripts()
-            }
-          })
+
+  const startWatcher = async (path: string, isActive: () => boolean) => {
+    if (!path) return
+    try {
+      // Disarm any listener left over from a previous path before arming a new
+      // one: registration is async, so the previous effect's cleanup may have
+      // already run by the time this continuation resumes.
+      window.electronAPI?.watcher?.stop()
+      window.electronAPI?.watcher?.removeChangeListener()
+      const projectInfo = await window.electronAPI.project.detect(path)
+      if (!isActive()) return
+      if (projectInfo.hasPackageJson) {
+        await window.electronAPI.watcher.start(path)
+        if (!isActive()) {
+          // Stale: only unwatch this exact path. A newer effect may have already
+          // armed its own watcher/listener, and a full stop or listener teardown
+          // here would kill that registration (watch:stop supports per-path).
+          window.electronAPI?.watcher?.stop(path)
+          return
         }
-      } catch (error) {
-        console.warn('Failed to start watcher:', error)
+        window.electronAPI.watcher.onChange((data) => {
+          if (!isActive() || data.path !== path) return
+          addNotification({
+            type: 'info',
+            message: `${data.file || 'dependency manifest'} 已变更`,
+            description: '正在自动刷新...'
+          })
+          fetchProjectPackages(path, true)
+          loadScripts(path)
+        })
       }
+    } catch (error) {
+      console.warn('Failed to start watcher:', error)
     }
   }
-  
+
   const stopWatcher = () => {
     window.electronAPI?.watcher?.stop()
     window.electronAPI?.watcher?.removeChangeListener()
   }
   
   useEffect(() => {
-    if (projectPackages.length > 0) {
-      loadPackageSizes()
-    }
+    if (projectPackages.length === 0) return
+    // Size lookups race with project switches: a slow reply for the previous
+    // project must not label the current list with the wrong sizes.
+    let cancelled = false
+    void (async () => {
+      const entries = await Promise.all(
+        projectPackages.slice(0, 20).map(async (pkg) => {
+          if (pkg.size) {
+            return [pkg.name, { prettySize: pkg.size, fileCount: pkg.fileCount || 0 }] as const
+          }
+
+          try {
+            const size = await window.electronAPI.npm.getPackageSize(pkg.name, pkg.version)
+            return [pkg.name, size] as const
+          } catch {
+            return null
+          }
+        })
+      )
+      if (cancelled) return
+      const sizes = Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, any]>)
+      setPackageSizes(sizes)
+    })()
+    return () => { cancelled = true }
   }, [projectPackages])
   
-  const loadScripts = async () => {
+  const loadScripts = async (path: string) => {
+    if (!path) return
     try {
-      const result = await window.electronAPI.npm.getScripts(currentPath)
+      const result = await window.electronAPI.npm.getScripts(path)
+      // A reply for a project the user already switched away from must not
+      // overwrite the current project's script list.
+      if (useAppStore.getState().currentPath !== path) return
       setScripts(result)
     } catch (error) {
-      setScripts([])
+      if (useAppStore.getState().currentPath === path) setScripts([])
     }
-  }
-  
-  const loadPackageSizes = async () => {
-    const entries = await Promise.all(
-      projectPackages.slice(0, 20).map(async (pkg) => {
-        if (pkg.size) {
-          return [pkg.name, { prettySize: pkg.size, fileCount: pkg.fileCount || 0 }] as const
-        }
-
-        try {
-          const size = await window.electronAPI.npm.getPackageSize(pkg.name, pkg.version)
-          return [pkg.name, size] as const
-        } catch {
-          return null
-        }
-      })
-    )
-    const sizes = Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, any]>)
-    setPackageSizes(sizes)
   }
   
   const handleRefresh = async () => {
-    await fetchProjectPackages(currentPath)
-    await loadScripts()
+    const refreshed = await fetchProjectPackages(currentPath)
+    await loadScripts(currentPath)
+    if (!refreshed) {
+      // fetchProjectPackages resolves false when the current refresh failed;
+      // showing "refresh succeeded" here would contradict the error alert.
+      addNotification({
+        type: 'error',
+        message: t('npm.refreshFailed'),
+        description: usePackageStore.getState().projectError || undefined
+      })
+      return
+    }
     addNotification({
       type: 'success',
-      message: '刷新成功'
+      message: t('npm.refreshSucceeded')
     })
   }
   
@@ -216,13 +268,13 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       })
       addNotification({
         type: 'success',
-        message: '卸载成功',
-        description: `${packageName} 已卸载`
+        message: t('npm.uninstallSucceeded'),
+        description: t('npm.uninstalledDescription', { name: packageName })
       })
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '卸载失败',
+        message: t('npm.uninstallFailed'),
         description: error.message
       })
     }
@@ -243,7 +295,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       })
       setInstallVisible(false)
       installForm.resetFields()
-      await loadScripts()
+      await loadScripts(currentPath)
     } catch (error: any) {
       addNotification({
         type: 'error',
@@ -285,7 +337,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '打开路径失败',
+        message: t('npm.openPathFailed'),
         description: error.message
       })
     }
@@ -308,7 +360,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     setTerminalVisible(true)
     addNotification({
       type: 'success',
-      message: '终端已打开',
+      message: t('npm.terminalOpened'),
       description: currentPath
     })
   }
@@ -327,18 +379,22 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   const loadPackageOptions = async (query: string, page: number) => {
     const trimmedQuery = query.trim()
     if (!trimmedQuery) return
+    const requestId = ++packageOptionsRequestId
     try {
       const limit = page * SEARCH_PAGE_SIZE
       const result = await window.electronAPI.npm.search(trimmedQuery, limit + 1)
+      if (requestId !== packageOptionsRequestId) return
       const packages = uniqueByName(result)
       const visiblePackages = packages.slice(0, limit)
       const downloads = await loadSearchDownloads(visiblePackages)
+      if (requestId !== packageOptionsRequestId) return
       const hasMore = packages.length > visiblePackages.length
       setPackageSearchQuery(trimmedQuery)
       setPackageSearchPage(page)
       setPackageSearchHasMore(hasMore)
-      setPackageOptions(buildPackageOptions(visiblePackages, downloads))
+      setPackageOptions(buildPackageOptions(visiblePackages, downloads, t))
     } catch {
+      if (requestId !== packageOptionsRequestId) return
       setPackageOptions([])
       setPackageSearchHasMore(false)
     }
@@ -360,7 +416,9 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     const rawName = String(packageName)
     const versionMark = rawName.startsWith('@') ? rawName.indexOf('@', 1) : rawName.indexOf('@')
     const name = versionMark > 0 ? rawName.slice(0, versionMark) : rawName
+    const requestId = ++installVersionsRequestId
     const metadata = await window.electronAPI.npm.getVersionMetadata(name)
+    if (requestId !== installVersionsRequestId || installForm.getFieldValue('package') !== packageName) return
     setInstallVersionMetadata(metadata)
     setInstallVersionPage(1)
     const options = buildInstallVersionOptions(metadata, installVersionFilter, 1)
@@ -399,12 +457,17 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   }
   
   const handleRunScript = async (script: string) => {
-    setRunningScript(script)
+    // Scripts can run concurrently; a plain string flag would let the first
+    // finisher clear the second's loading state and overwrite its output.
+    const runId = ++scriptRunIdRef.current
+    setRunningScripts((prev) => ({ ...prev, [script]: true }))
+    setOutputScript(script)
     setScriptOutputVisible(true)
     setScriptOutput('正在执行...')
-    
+
     try {
       const output = await window.electronAPI.npm.runScript(currentPath, script)
+      if (runId !== scriptRunIdRef.current) return
       setScriptOutput(output)
       addNotification({
         type: 'success',
@@ -412,6 +475,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         description: `npm run ${script}`
       })
     } catch (error: any) {
+      if (runId !== scriptRunIdRef.current) return
       setScriptOutput(`执行失败: ${error.message}`)
       addNotification({
         type: 'error',
@@ -419,23 +483,30 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         description: error.message
       })
     } finally {
-      setRunningScript('')
+      setRunningScripts((prev) => {
+        if (!(script in prev)) return prev
+        const { [script]: _done, ...rest } = prev
+        return rest
+      })
     }
   }
   
   const handleCheckAllOutdated = async () => {
     setCheckingAll(true)
     try {
-      await fetchProjectPackages(currentPath)
+      // Bypass the 5-minute cache: this entry must show fresh outdated info.
+      const refreshed = await fetchProjectPackages(currentPath, true)
+      if (!refreshed) {
+        addNotification({
+          type: 'error',
+          message: t('npm.checkFailed'),
+          description: usePackageStore.getState().projectError || undefined
+        })
+        return
+      }
       addNotification({
         type: 'success',
-        message: '检查完成'
-      })
-    } catch (error: any) {
-      addNotification({
-        type: 'error',
-        message: '检查失败',
-        description: error.message
+        message: t('npm.checkComplete')
       })
     } finally {
       setCheckingAll(false)
@@ -534,6 +605,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   }
   
   const handleShowVersions = async (pkg: PackageInfo) => {
+    const requestId = ++versionDialogRequestId
     setSelectedPackage(pkg)
     setVersionMetadata(null)
     setVersions([])
@@ -541,21 +613,23 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     setPrereleaseVersionPage(1)
     try {
       const metadata = await window.electronAPI.npm.getVersionMetadata(pkg.name)
+      if (requestId !== versionDialogRequestId) return
       setVersionMetadata(metadata)
       setVersions(metadata.versions.map((version) => version.version))
       setVersionVisible(true)
     } catch (error: any) {
+      if (requestId !== versionDialogRequestId) return
       addNotification({
         type: 'error',
-        message: '获取版本列表失败',
+        message: t('npm.loadVersionsFailed'),
         description: error.message
       })
     }
   }
-  
+
   const handleInstallVersion = async (version: string) => {
     if (!selectedPackage) return
-    
+
     try {
       await installSpecificVersion({
         packageName: selectedPackage.name,
@@ -565,15 +639,15 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       })
       addNotification({
         type: 'success',
-        message: '版本切换成功',
-        description: `${selectedPackage.name}@${version} 已安装`
+        message: t('npm.versionSwitched'),
+        description: t('npm.versionInstalledDescription', { name: selectedPackage.name, version })
       })
       setVersionVisible(false)
       await fetchProjectPackages(currentPath)
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '版本切换失败',
+        message: t('npm.versionSwitchFailed'),
         description: error.message
       })
     }
@@ -608,21 +682,31 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   }
   
   const handleInstallFromDetail = async (version?: string) => {
-    if (version) {
-      await installSpecificVersion({
-        packageName: detailPackage,
-        version,
-        cwd: currentPath,
-        dev: true
-      })
-    } else {
-      await installPackage({
-        packageName: detailPackage,
-        cwd: currentPath
+    try {
+      if (version) {
+        await installSpecificVersion({
+          packageName: detailPackage,
+          version,
+          cwd: currentPath,
+          dev: true
+        })
+      } else {
+        await installPackage({
+          packageName: detailPackage,
+          cwd: currentPath
+        })
+      }
+      setDetailVisible(false)
+      await fetchProjectPackages(currentPath)
+    } catch (error: any) {
+      // Every other install path reports failures; this one must not stay
+      // silent with an unhandled rejection.
+      addNotification({
+        type: 'error',
+        message: t('npm.installFailed'),
+        description: error.message
       })
     }
-    setDetailVisible(false)
-    await fetchProjectPackages(currentPath)
   }
   
   const rowSelection = {
@@ -634,22 +718,22 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
 
   const columns = [
     {
-      title: '包名',
+      title: t('package.columnName'),
       dataIndex: 'name',
       key: 'name',
       width: 180,
       render: (text: string, record: PackageInfo) => (
         <Space>
-          <Button 
-            type="link" 
-            size="small" 
+          <Button
+            type="link"
+            size="small"
             style={{ padding: 0 }}
             onClick={() => handleShowDetail(text)}
           >
             {text}
           </Button>
           {record.outdated && (
-            <Tooltip title="有新版本可用">
+            <Tooltip title={t('package.updateAvailable')}>
               <WarningOutlined style={{ color: '#faad14' }} />
             </Tooltip>
           )}
@@ -657,26 +741,26 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       )
     },
     {
-      title: '描述',
+      title: t('common.description'),
       dataIndex: 'description',
       key: 'description',
       ellipsis: true,
       render: (text: string) => text || '-'
     },
     {
-      title: '类型',
+      title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
       width: 80,
       render: (text: PackageInfo['type']) => {
-        if (text === 'devDependencies') return <Tag color="orange">开发</Tag>
-        if (text === 'optionalDependencies') return <Tag color="blue">可选</Tag>
-        if (text === 'peerDependencies') return <Tag color="purple">同伴</Tag>
-        return <Tag color="green">生产</Tag>
+        if (text === 'devDependencies') return <Tag color="orange">{t('package.devShort')}</Tag>
+        if (text === 'optionalDependencies') return <Tag color="blue">{t('npm.tagOptional')}</Tag>
+        if (text === 'peerDependencies') return <Tag color="purple">{t('npm.tagPeer')}</Tag>
+        return <Tag color="green">{t('package.prodShort')}</Tag>
       }
     },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       width: 110,
@@ -687,18 +771,18 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       )
     },
     {
-      title: '版本',
+      title: t('common.version'),
       dataIndex: 'version',
       key: 'version',
       width: 80,
       render: (text: string) => <Tag>v{text}</Tag>
     },
     {
-      title: '最新',
+      title: t('npm.columnLatest'),
       dataIndex: 'latest',
       key: 'latest',
       width: 80,
-      render: (text: string, record: PackageInfo) => 
+      render: (text: string, record: PackageInfo) =>
         text ? (
           <Tag color={text !== record.version ? 'blue' : 'green'}>
             v{text}
@@ -706,37 +790,37 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         ) : '-'
     },
     {
-      title: '大小',
+      title: t('npm.columnSize'),
       key: 'size',
       width: 90,
       render: (_: any, record: PackageInfo) => {
         const size = packageSizes[record.name]
         return size ? (
-          <Tooltip title={`${size.fileCount} 个文件`}>
+          <Tooltip title={t('npm.fileCountTooltip', { count: size.fileCount })}>
             <Tag icon={<DownloadOutlined />}>{size.prettySize}</Tag>
           </Tooltip>
         ) : '-'
       }
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'action',
       width: 130,
       render: (_: any, record: PackageInfo) => (
         <Space>
           {record.outdated && (
-            <Tooltip title="更新">
+            <Tooltip title={t('common.update')}>
               <Button size="small" icon={<SyncOutlined />} onClick={() => handleUpdate(record.name)} />
             </Tooltip>
           )}
           <Dropdown menu={{
             items: [
-              { key: 'detail', label: '查看详情', icon: <InfoCircleOutlined /> },
-              { key: 'version', label: '切换版本', icon: <SwapOutlined /> },
-              { key: 'move', label: '切换类型', icon: <SwapOutlined /> },
-              { key: 'open', label: '打开路径', icon: <FolderFilled /> },
-              { key: 'changelog', label: '更新日志', icon: <HistoryOutlined /> },
-              { key: 'uninstall', label: '卸载', icon: <ReloadOutlined />, danger: true }
+              { key: 'detail', label: t('package.viewDetail'), icon: <InfoCircleOutlined /> },
+              { key: 'version', label: t('npm.switchVersion'), icon: <SwapOutlined /> },
+              { key: 'move', label: t('npm.switchType'), icon: <SwapOutlined /> },
+              { key: 'open', label: t('npm.openPath'), icon: <FolderFilled /> },
+              { key: 'changelog', label: t('npm.changelog'), icon: <HistoryOutlined /> },
+              { key: 'uninstall', label: t('package.uninstall'), icon: <ReloadOutlined />, danger: true }
             ],
             onClick: ({ key }) => {
               if (key === 'detail') {
@@ -756,14 +840,14 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
                 handleViewChangelog(record.name)
               } else if (key === 'uninstall') {
                 localizedModal.confirm({
-                  title: '确认卸载',
-                  content: `确定要卸载 ${record.name} 吗？`,
+                  title: t('npm.confirmUninstallTitle'),
+                  content: t('npm.confirmUninstall', { name: record.name }),
                   onOk: () => handleUninstall(record.name)
                 })
               }
             }
           }}>
-            <Button size="small">更多</Button>
+            <Button size="small">{t('npm.more')}</Button>
           </Dropdown>
         </Space>
       )
@@ -773,53 +857,53 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h2 className={styles.title}>项目依赖</h2>
+        <h2 className={styles.title}>{t('npm.projectDependenciesTitle')}</h2>
         <div className={styles.actions}>
           {!hideProjectSelector && <ProjectPathBar compact />}
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setInstallVisible(true)} disabled={!currentPath}>
-            安装包
+            {t('npm.installPackageTitle')}
           </Button>
           <Button icon={<CheckCircleOutlined />} onClick={handleCheckAllOutdated} loading={checkingAll} disabled={!currentPath}>
-            检查更新
+            {t('npm.checkUpdates')}
           </Button>
-          <Button 
-            icon={<SyncOutlined />} 
+          <Button
+            icon={<SyncOutlined />}
             onClick={handleUpdateSelected}
             loading={updatingSelected}
             disabled={!currentPath || selectedRowKeys.length === 0}
             type={selectedRowKeys.length > 0 ? 'primary' : 'default'}
           >
-            更新选中 ({selectedRowKeys.length})
+            {t('package.updateSelected', { count: selectedRowKeys.length })}
           </Button>
-          <Button 
+          <Button
             danger
-            icon={<ReloadOutlined />} 
+            icon={<ReloadOutlined />}
             onClick={handleUninstallSelected}
             loading={uninstallingSelected}
             disabled={!currentPath || selectedRowKeys.length === 0}
           >
-            卸载选中 ({selectedRowKeys.length})
+            {t('npm.uninstallSelected', { count: selectedRowKeys.length })}
           </Button>
           <Button icon={<SyncOutlined />} onClick={handleUpdateAll} disabled={!currentPath}>
-            更新全部
+            {t('common.updateAll')}
           </Button>
-          <Button 
-            icon={<SecurityScanOutlined />} 
+          <Button
+            icon={<SecurityScanOutlined />}
             onClick={() => setAuditVisible(true)} disabled={!currentPath}
           >
-            安全审计
+            {t('common.securityAudit')}
           </Button>
-          <Button 
-            icon={<ApartmentOutlined />} 
+          <Button
+            icon={<ApartmentOutlined />}
             onClick={() => setDepTreeVisible(true)} disabled={!currentPath}
           >
-            依赖树
+            {t('npm.dependencyTree')}
           </Button>
           <Button icon={<WarningOutlined />} onClick={() => setHealthVisible(true)} disabled={!currentPath}>
-            依赖诊断
+            {t('common.dependencyDiagnostics')}
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} disabled={!currentPath}>
-            刷新
+          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={projectLoading} disabled={!currentPath}>
+            {t('common.refresh')}
           </Button>
         </div>
       </div>
@@ -829,8 +913,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         <Alert
           type="info"
           showIcon
-          title="先选择项目目录"
-          description="选择包含 package.json 的目录后，即可查看依赖、运行脚本和执行更新。"
+          title={t('common.selectProjectFirst')}
+          description={t('npm.selectDirHint')}
           action={<ProjectPathBar compact />}
           style={{ marginBottom: 16 }}
         />
@@ -839,34 +923,34 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         <Alert
           type="error"
           showIcon
-          title="项目依赖读取失败"
+          title={t('npm.depsLoadFailed')}
           description={projectError}
-          action={<Button size="small" onClick={() => fetchProjectPackages(currentPath, true)}>重试</Button>}
+          action={<Button size="small" onClick={() => fetchProjectPackages(currentPath, true)}>{t('health.retry')}</Button>}
           style={{ marginBottom: 16 }}
         />
       )}
-      
+
       <Tabs items={[
         {
           key: 'deps',
-          label: '依赖管理',
+          label: t('npm.depsTab'),
           children: (
             <div className={styles.depsContent}>
               <Space style={{ marginBottom: 16 }}>
                 <Button icon={<FolderFilled />} onClick={handleOpenPackageJson} disabled={!currentPath}>
-                  打开 package.json
+                  {t('npm.openPackageJson')}
                 </Button>
               </Space>
-              
-              <Spin spinning={loading}>
+
+              <Spin spinning={projectLoading}>
                 {!currentPath ? (
-                  <Empty description="请选择项目目录开始管理" />
+                  <Empty description={t('npm.selectDirToStart')} />
                 ) : projectError ? (
-                  <Empty description="依赖读取失败，请重试" />
+                  <Empty description={t('npm.depsLoadFailedRetry')} />
                 ) : projectPackages.length === 0 ? (
-                  <Empty description="暂无依赖，请选择项目目录或安装新包" />
+                  <Empty description={t('npm.noDependencies')} />
                 ) : (
-                  <Table 
+                  <Table
                     dataSource={projectPackages}
                     columns={columns}
                     rowKey="name"
@@ -882,33 +966,33 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         },
         {
           key: 'scripts',
-          label: '脚本命令',
+          label: t('npm.scriptsTab'),
           children: (
             <div className={styles.scriptsContent}>
               <Space style={{ marginBottom: 16 }}>
                 <Button icon={<FolderOpenOutlined />} onClick={handleOpenTerminal}>
-                  打开终端
+                  {t('npm.openTerminal')}
                 </Button>
-                <Button icon={<ReloadOutlined />} onClick={loadScripts}>
-                  刷新脚本
+                <Button icon={<ReloadOutlined />} onClick={() => void loadScripts(currentPath)}>
+                  {t('npm.refreshScripts')}
                 </Button>
               </Space>
-              
+
               {scripts.length === 0 ? (
-                <Empty description="暂无脚本命令" />
+                <Empty description={t('npm.noScripts')} />
               ) : (
                 <div className={styles.scriptsList}>
                   {scripts.map(script => (
                     <Card key={script} className={styles.scriptCard}>
                       <div className={styles.scriptName}>{script}</div>
-                      <Button 
+                      <Button
                         type="primary"
                         size="small"
                         icon={<PlayCircleOutlined />}
                         onClick={() => handleRunScript(script)}
-                        loading={runningScript === script}
+                        loading={Boolean(runningScripts[script])}
                       >
-                        运行
+                        {t('common.run')}
                       </Button>
                     </Card>
                   ))}
@@ -918,40 +1002,42 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
           )
         }
       ]} />
-      
+
       <Modal
-        title="安装包"
+        title={t('npm.installPackageTitle')}
         open={installVisible}
         onCancel={() => setInstallVisible(false)}
         onOk={() => installForm.submit()}
-        okText="安装"
-        cancelText="取消"
+        okText={t('npm.install')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ disabled: mutating || projectLoading }}
       forceRender
       >
         <Form form={installForm} onFinish={handleInstall} layout="vertical" initialValues={{ dev: false }}>
-          <Form.Item name="package" label="包名" rules={[{ required: true, message: '请输入包名' }]}>
+          <Form.Item name="package" label={t('package.columnName')} rules={[{ required: true, message: t('npm.enterPackageName') }]}>
             <AutoComplete
               options={packageOptions}
               onSearch={searchInstallPackages}
               onPopupScroll={handlePackagePopupScroll}
-              popupRender={(menu) => renderPagedPopup(menu, packageSearchHasMore, packageSearchLoadingMore, SEARCH_PAGE_SIZE)}
+              popupRender={(menu) => renderPagedPopup(t, menu, packageSearchHasMore, packageSearchLoadingMore, SEARCH_PAGE_SIZE)}
               onChange={() => {
                 setInstallVersionMetadata(null)
                 setInstallVersionOptions([])
                 installForm.setFieldValue('version', undefined)
               }}
-              placeholder="例如: lodash"
+              placeholder={t('npm.exampleLodash')}
             />
           </Form.Item>
-          <Form.Item label="版本（可选）">
+          <Form.Item label={t('npm.versionOptional')}>
             <Space.Compact style={{ width: '100%' }}>
               <Form.Item name="version" noStyle>
                 <AutoComplete
                   options={installVersionOptions}
-                  placeholder="默认 latest，稳定版优先；可加载更多或预览版"
+                  placeholder={t('npm.versionPlaceholder')}
                   style={{ width: '100%' }}
                   onPopupScroll={handleVersionPopupScroll}
                   popupRender={(menu) => renderPagedPopup(
+                    t,
                     menu,
                     !!installVersionMetadata && versionsForFilter(installVersionMetadata, installVersionFilter).length > installVersionPage * VERSION_PAGE_SIZE,
                     false,
@@ -964,57 +1050,60 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
                 onChange={handleInstallVersionFilterChange}
                 style={{ width: 120 }}
                 options={[
-                  { value: 'stable', label: '稳定版' },
-                  { value: 'prerelease', label: '预览版' },
-                  { value: 'all', label: '全部' }
+                  { value: 'stable', label: t('npm.stable') },
+                  { value: 'prerelease', label: t('npm.prerelease') },
+                  { value: 'all', label: t('npm.all') }
                 ]}
               />
-              <Button onClick={loadInstallVersions}>获取版本</Button>
+              <Button onClick={loadInstallVersions}>{t('npm.loadVersions')}</Button>
             </Space.Compact>
             {installVersionMetadata && (
               <Space className={styles.installVersionActions} wrap>
-                <Tag color="green">稳定版 {installVersionMetadata.stable.length}</Tag>
-                <Tag color="gold">预览版 {installVersionMetadata.prerelease.length}</Tag>
-                <Tag>{versionFilterLabel(installVersionFilter)}显示 {Math.min(versionsForFilter(installVersionMetadata, installVersionFilter).length, installVersionPage * VERSION_PAGE_SIZE)}</Tag>
+                <Tag color="green">{t('npm.stableCount', { count: installVersionMetadata.stable.length })}</Tag>
+                <Tag color="gold">{t('npm.prereleaseCount', { count: installVersionMetadata.prerelease.length })}</Tag>
+                <Tag>{t('npm.filterShowing', {
+                  filter: versionFilterLabel(t, installVersionFilter),
+                  count: Math.min(versionsForFilter(installVersionMetadata, installVersionFilter).length, installVersionPage * VERSION_PAGE_SIZE)
+                })}</Tag>
               </Space>
             )}
           </Form.Item>
-          <Form.Item name="dev" label="作为开发依赖" valuePropName="checked">
+          <Form.Item name="dev" label={t('npm.asDevDependency')} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
       </Modal>
-      
+
       <Modal
-        title="切换依赖类型"
+        title={t('npm.switchDepType')}
         open={moveDepVisible}
         onCancel={() => setMoveDepVisible(false)}
         onOk={() => moveDepForm.submit()}
-        okText="切换"
-        cancelText="取消"
+        okText={t('npm.switch')}
+        cancelText={t('common.cancel')}
       forceRender
       >
         <Form form={moveDepForm} onFinish={handleMoveDep} layout="vertical">
-          <Form.Item name="packageName" label="包名">
+          <Form.Item name="packageName" label={t('package.columnName')}>
             <Input disabled />
           </Form.Item>
-          <Form.Item name="from" label="当前类型">
+          <Form.Item name="from" label={t('npm.currentType')}>
             <Select disabled>
-              <Select.Option value="dependencies">生产依赖</Select.Option>
-              <Select.Option value="devDependencies">开发依赖</Select.Option>
+              <Select.Option value="dependencies">{t('package.prodDependency')}</Select.Option>
+              <Select.Option value="devDependencies">{t('package.devDependency')}</Select.Option>
             </Select>
           </Form.Item>
-          <Form.Item name="to" label="目标类型" rules={[{ required: true }]}>
+          <Form.Item name="to" label={t('npm.targetType')} rules={[{ required: true }]}>
             <Select>
-              <Select.Option value="dependencies">生产依赖</Select.Option>
-              <Select.Option value="devDependencies">开发依赖</Select.Option>
+              <Select.Option value="dependencies">{t('package.prodDependency')}</Select.Option>
+              <Select.Option value="devDependencies">{t('package.devDependency')}</Select.Option>
             </Select>
           </Form.Item>
         </Form>
       </Modal>
-      
+
       <Modal
-        title={`切换版本 - ${selectedPackage?.name}`}
+        title={t('npm.switchVersionTitle', { name: selectedPackage?.name ?? '' })}
         open={versionVisible}
         onCancel={() => setVersionVisible(false)}
         footer={null}
@@ -1022,7 +1111,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       >
         <div className={styles.versionList}>
           <p style={{ marginBottom: 12, color: 'var(--text-secondary, #999)' }}>
-            当前版本: <Tag color="blue">{selectedPackage?.version}</Tag>
+            {t('package.currentVersionLabel')} <Tag color="blue">{selectedPackage?.version}</Tag>
           </p>
           <Spin spinning={versions.length === 0 && !versionMetadata}>
             <NpmVersionPicker
@@ -1041,7 +1130,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       </Modal>
       
       <Modal
-        title={`执行: npm run ${runningScript}`}
+        title={`执行: npm run ${outputScript}`}
         open={scriptOutputVisible}
         onCancel={() => setScriptOutputVisible(false)}
         footer={null}
@@ -1104,10 +1193,10 @@ function buildInstallVersionOptions(metadata: NpmVersionMetadata, filter: Versio
   return toVersionOptions(versions, page)
 }
 
-function buildPackageOptions(packages: any[], downloads: Record<string, number>) {
+function buildPackageOptions(packages: any[], downloads: Record<string, number>, t: LabelTranslator) {
   return packages.map((pkg: any) => ({
     value: pkg.name,
-    label: renderPackageOption(pkg, downloads[pkg.name] || pkg.downloads || 0)
+    label: renderPackageOption(t, pkg, downloads[pkg.name] || pkg.downloads || 0)
   }))
 }
 
@@ -1124,7 +1213,7 @@ async function loadSearchDownloads(packages: any[]): Promise<Record<string, numb
   return Object.fromEntries(entries)
 }
 
-function renderPackageOption(pkg: any, downloads: number): React.ReactNode {
+function renderPackageOption(t: LabelTranslator, pkg: any, downloads: number): React.ReactNode {
   return (
     <div className={styles.packageOption}>
       <Space size={6} className={styles.packageOptionHeader}>
@@ -1134,28 +1223,28 @@ function renderPackageOption(pkg: any, downloads: number): React.ReactNode {
           <Tag icon={<CloudDownloadOutlined />}>{formatCompactNumber(downloads)}</Tag>
         )}
       </Space>
-      <span className={styles.packageOptionDesc}>{cleanPackageSummary(pkg.description) || '暂无描述'}</span>
+      <span className={styles.packageOptionDesc}>{cleanPackageSummary(pkg.description) || t('common.noDescription')}</span>
     </div>
   )
 }
 
-function versionFilterLabel(filter: VersionChannelFilter): string {
-  if (filter === 'stable') return '稳定版'
-  if (filter === 'prerelease') return '预览版'
-  return '全部版本'
+function versionFilterLabel(t: LabelTranslator, filter: VersionChannelFilter): string {
+  if (filter === 'stable') return t('npm.stable')
+  if (filter === 'prerelease') return t('npm.prerelease')
+  return t('npm.allVersions')
 }
 
 function isNearPopupBottom(element: HTMLDivElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight < 48
 }
 
-function renderPagedPopup(menu: React.ReactElement, hasMore: boolean, loading: boolean, pageSize: number): React.ReactElement {
+function renderPagedPopup(t: LabelTranslator, menu: React.ReactElement, hasMore: boolean, loading: boolean, pageSize: number): React.ReactElement {
   return (
     <>
       {menu}
       {(hasMore || loading) && (
         <div className={styles.loadMoreOption}>
-          {loading ? '正在加载更多...' : `滑动到底部自动加载，每次 ${pageSize} 个`}
+          {loading ? t('npm.loadingMore') : t('npm.scrollHint', { count: pageSize })}
         </div>
       )}
     </>

@@ -25,4 +25,17 @@ describe('IPC failure transport', () => {
     const payload = await captureIpcFailure(() => { throw 'backend unavailable' })
     expect(() => unwrapIpcResult(payload)).toThrow('backend unavailable')
   })
+
+  it('does not misread business data that mimics the marker key', async () => {
+    // Registry payloads and user package.json files travel through the same
+    // channels; a marker-shaped object without a usable error must stay data.
+    const markerOnly = { __dhIpcFailureV1: true, name: 'package' }
+    expect(unwrapIpcResult(markerOnly)).toEqual(markerOnly)
+
+    const malformed = { __dhIpcFailureV1: true, error: {} }
+    expect(unwrapIpcResult(malformed)).toEqual(malformed)
+
+    const legacyKey = { __dependencyHubFailure: true, error: { message: 'old protocol' } }
+    expect(unwrapIpcResult(legacyKey)).toEqual(legacyKey)
+  })
 })

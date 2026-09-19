@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Checkbox, Descriptions, Empty, Form, Input, Modal, Popconfirm, Select, Space, Spin, Table, Tabs, Tag, Tooltip } from 'antd'
 import {
   BranchesOutlined,
@@ -171,6 +171,12 @@ const FlutterPage: React.FC = () => {
   const [assetForm] = Form.useForm()
   const [commandForm] = Form.useForm()
   const [publishForm] = Form.useForm()
+  // Monotonic epoch so a stale list() reply from a previous currentPath cannot
+  // overwrite the freshly loaded project data.
+  const loadEpochRef = useRef(0)
+  // Version loads are keyed to the package currently in the form; a stale
+  // reply for a replaced package must not fill the version select.
+  const versionRequestRef = useRef(0)
 
   const dependencyRows = useMemo(() => dependencies.map((dependency) => {
     const outdated = outdatedMap[dependency.name]
@@ -211,6 +217,7 @@ const FlutterPage: React.FC = () => {
   }
 
   const loadFlutterProject = async () => {
+    const epoch = ++loadEpochRef.current
     if (!currentPath) {
       setProjectInfo(null)
       setDependencies([])
@@ -222,6 +229,7 @@ const FlutterPage: React.FC = () => {
     setLoading(true)
     try {
       const detected = await window.electronAPI.flutter.detect(currentPath)
+      if (epoch !== loadEpochRef.current) return
       if (!detected.hasPubspec) {
         setProjectInfo({
           hasPubspec: false,
@@ -242,16 +250,18 @@ const FlutterPage: React.FC = () => {
         window.electronAPI.flutter.read(currentPath),
         window.electronAPI.flutter.outdated(currentPath).catch(() => ({ packages: [] }))
       ])
+      if (epoch !== loadEpochRef.current) return
       setProjectInfo(info)
       setDependencies(info.dependencies)
       setAssets(info.assets)
       setOutdatedMap(outdatedPackagesByName(outdated))
     } catch (error: any) {
+      if (epoch !== loadEpochRef.current) return
       setDependencies([])
       setAssets([])
       addNotification({ type: 'error', message: t('flutter.loadProjectFailed'), description: error.message })
     } finally {
-      setLoading(false)
+      if (epoch === loadEpochRef.current) setLoading(false)
     }
   }
 
@@ -304,14 +314,17 @@ const FlutterPage: React.FC = () => {
   const loadInstallVersions = async () => {
     const packageName = dependencyForm.getFieldValue('packageName')
     if (!packageName) return
+    const requestId = ++versionRequestRef.current
 
     try {
       const versions = await window.electronAPI.flutter.versions(packageName)
+      if (requestId !== versionRequestRef.current || dependencyForm.getFieldValue('packageName') !== packageName) return
       setVersionOptions(versions.map((version) => ({ value: version, label: version })))
       if (versions.length === 0) {
         addNotification({ type: 'info', message: t('package.noVersionInfo'), description: packageName })
       }
     } catch (error: any) {
+      if (requestId !== versionRequestRef.current) return
       setVersionOptions([])
       addNotification({ type: 'error', message: t('flutter.loadVersionsFailed'), description: error.message })
     }

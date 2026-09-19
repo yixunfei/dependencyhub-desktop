@@ -196,9 +196,13 @@ async function verifySearchAndHealth(service, roots) {
     assert(requests.some((url) => url.startsWith('/search.json?') && url.includes('q=monolog')), 'Packagist search encodes query parameters')
     assert(requests.some((url) => url.startsWith('/api/v1/search.json?') && url.includes('query=rack')), 'RubyGems search encodes query parameters')
   })
-  await service.search(roots.composer, 'composer', { text: 'test', registry: 'https://user:secret@example.test' })
-    .then(() => assert(false, 'registry credentials are rejected'))
-    .catch((error) => assert(error.message.includes('credentials'), 'Backend registry URLs reject embedded credentials'))
+  let backendCredentialsRejected = false
+  try {
+    await service.search(roots.composer, 'composer', { text: 'test', registry: 'https://user:secret@example.test' })
+  } catch (error) {
+    backendCredentialsRejected = /embedded credentials/i.test(error?.message || '')
+  }
+  assert(backendCredentialsRejected, 'Backend registry URLs reject embedded credentials before searching')
 
   const nugetHealth = await service.health(roots.nuget, 'nuget')
   assert(!nugetHealth.findings.some((item) => item.id.startsWith('nuget-content-hash-missing')), 'NuGet health accepts content-hashed lock entries')

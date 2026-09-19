@@ -51,40 +51,53 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
   const [versions, setVersions] = useState<string[]>([])
   
   useEffect(() => {
-    if (visible && packageName) {
-      loadPackageInfo()
-    }
-  }, [visible, packageName])
-  
-  const loadPackageInfo = async () => {
+    if (!visible || !packageName) return
+    // Clear the previous package's data up front, and guard against a stale
+    // reply: quickly opening A then B must not show A's data in B's modal —
+    // "install this version" would use the wrong package's version list.
+    setPackageInfo(null)
+    setSizeInfo(null)
+    setDependencyTree(null)
+    setReadme('')
+    setDependents(0)
+    setDownloads(null)
+    setVersions([])
+    let active = true
     setLoading(true)
-    try {
-      const [info, size, tree, readmeContent, dependentsCount, downloadStats, versionList] = await Promise.all([
-        window.electronAPI.npm.getPackageInfo(packageName),
-        window.electronAPI.npm.getPackageSize(packageName),
-        window.electronAPI.npm.getDependencyTree(packageName, undefined, 2),
-        window.electronAPI.npm.getReadme(packageName),
-        window.electronAPI.npm.getDependents(packageName),
-        window.electronAPI.npm.downloadStats(packageName),
-        window.electronAPI.npm.getVersions(packageName)
-      ])
-      
-      setPackageInfo(info)
-      setSizeInfo(size)
-      setDependencyTree(tree)
-      setReadme(readmeContent)
-      setDependents(dependentsCount)
-      setDownloads(downloadStats)
-      setVersions(versionList)
-    } catch (error) {
-      console.error('Failed to load package info:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-  
-  const convertToTreeData = (node: any): any => {
+    void (async () => {
+      try {
+        const [info, size, tree, readmeContent, dependentsCount, downloadStats, versionList] = await Promise.all([
+          window.electronAPI.npm.getPackageInfo(packageName),
+          window.electronAPI.npm.getPackageSize(packageName),
+          window.electronAPI.npm.getDependencyTree(packageName, undefined, 2),
+          window.electronAPI.npm.getReadme(packageName),
+          window.electronAPI.npm.getDependents(packageName),
+          window.electronAPI.npm.downloadStats(packageName),
+          window.electronAPI.npm.getVersions(packageName)
+        ])
+
+        if (!active) return
+        setPackageInfo(info)
+        setSizeInfo(size)
+        setDependencyTree(tree)
+        setReadme(readmeContent)
+        setDependents(dependentsCount)
+        setDownloads(downloadStats)
+        setVersions(versionList)
+      } catch (error) {
+        console.error('Failed to load package info:', error)
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => { active = false }
+  }, [visible, packageName])
+
+  const convertToTreeData = (node: any, parentKey = ''): any => {
     if (!node) return null
+    // Shared dependencies appear in several subtrees; a bare name@version key
+    // would collide and break antd Tree expansion state.
+    const key = parentKey ? `${parentKey}/${node.name}@${node.version}` : `${node.name}@${node.version}`
     return {
       title: (
         <Space>
@@ -92,8 +105,8 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
           <Text type="secondary">v{node.version}</Text>
         </Space>
       ),
-      key: `${node.name}@${node.version}`,
-      children: node.dependencies?.map((dep: any) => convertToTreeData(dep)) || []
+      key,
+      children: node.dependencies?.map((dep: any) => convertToTreeData(dep, key)) || []
     }
   }
   

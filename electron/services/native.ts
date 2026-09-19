@@ -1,7 +1,11 @@
-import { access, readFile, readdir, writeFile } from 'fs/promises'
+import { access, readFile, readdir } from 'fs/promises'
+import { existsSync } from 'fs'
 import { basename, extname, join, relative } from 'path'
+import { writeFileAtomic } from './atomicWrite'
 import { runLoggedCommand } from './commandRunner'
 import { resolveToolBin } from './toolchain'
+import { splitCommandLine } from './splitCommandLine'
+import { applyLineEnding, detectLineEnding } from './textLineEndings'
 
 export type NativeDependencyManager = 'vcpkg' | 'conan' | 'cmake' | 'library'
 export type NativeLibraryKind = 'shared' | 'static' | 'import' | 'framework'
@@ -227,7 +231,7 @@ export class NativeService {
       nextDependency
     ]
 
-    await writeFile(manifestPath, `${JSON.stringify({ ...manifest, dependencies: nextDependencies }, null, 2)}\n`, 'utf-8')
+    await writeFileAtomic(manifestPath, `${JSON.stringify({ ...manifest, dependencies: nextDependencies }, null, 2)}\n`)
   }
 
   private async removeVcpkgDependency(cwd: string, name: string): Promise<void> {
@@ -238,24 +242,39 @@ export class NativeService {
       dependencies: []
     })
     const dependencies = Array.isArray(manifest.dependencies) ? manifest.dependencies : []
-    await writeFile(manifestPath, `${JSON.stringify({
+    await writeFileAtomic(manifestPath, `${JSON.stringify({
       ...manifest,
       dependencies: dependencies.filter((item: any) => dependencyName(item) !== name)
-    }, null, 2)}\n`, 'utf-8')
+    }, null, 2)}\n`)
   }
 
   private async addConanRequirement(cwd: string, name: string, version?: string): Promise<void> {
+    this.assertConanManifestEditable(cwd)
     const conanPath = join(cwd, 'conanfile.txt')
     const content = await readFileOrDefault(conanPath, '[requires]\n\n[generators]\nCMakeDeps\nCMakeToolchain\n')
     const requirement = formatConanRequirement(name, version)
     const nextContent = upsertConanRequirement(content, requirement)
-    await writeFile(conanPath, nextContent, 'utf-8')
+    await writeFileAtomic(conanPath, nextContent)
   }
 
   private async removeConanRequirement(cwd: string, name: string): Promise<void> {
+    this.assertConanManifestEditable(cwd)
     const conanPath = join(cwd, 'conanfile.txt')
     const content = await readFileOrDefault(conanPath, '[requires]\n')
-    await writeFile(conanPath, removeConanRequirementLine(content, name), 'utf-8')
+    await writeFileAtomic(conanPath, removeConanRequirementLine(content, name))
+  }
+
+  /**
+   * Conan treats a directory containing both conanfile.txt and conanfile.py as
+   * an error, and writing a conanfile.txt stub next to an existing
+   * conanfile.py used to create exactly that illegal state (while uninstall
+   * reported success without removing anything). Refuse and ask for hand
+   * editing instead of corrupting the user's conan project.
+   */
+  private assertConanManifestEditable(cwd: string): void {
+    if (existsSync(join(cwd, 'conanfile.py'))) {
+      throw new Error('This project uses a conanfile.py manifest; DependencyHub cannot edit Python conan manifests automatically. Please edit conanfile.py by hand.')
+    }
   }
 
   private async executeCMake(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
@@ -500,6 +519,7 @@ function formatConanRequirement(name: string, version?: string): string {
 }
 
 function upsertConanRequirement(content: string, requirement: string): string {
+  const eol = detectLineEnding(content)
   const [name] = parseConanRequirement(requirement)
   const withoutExisting = removeConanRequirementLine(content, name)
   const lines = withoutExisting.split(/\r?\n/)
@@ -507,15 +527,16 @@ function upsertConanRequirement(content: string, requirement: string): string {
 
   if (requiresIndex >= 0) {
     lines.splice(requiresIndex + 1, 0, requirement)
-    return `${lines.join('\n').trimEnd()}\n`
+    return applyLineEnding(`${lines.join('\n').trimEnd()}\n`, eol)
   }
 
-  return `[requires]\n${requirement}\n\n${withoutExisting.trimEnd()}\n`
+  return applyLineEnding(`[requires]\n${requirement}\n\n${withoutExisting.trimEnd()}\n`, eol)
 }
 
 function removeConanRequirementLine(content: string, name: string): string {
+  const eol = detectLineEnding(content)
   let inRequires = false
-  return `${content
+  return applyLineEnding(`${content
     .split(/\r?\n/)
     .filter((rawLine) => {
       const line = rawLine.trim()
@@ -527,22 +548,38 @@ function removeConanRequirementLine(content: string, name: string): string {
       return parseConanRequirement(line)[0] !== name
     })
     .join('\n')
-    .trimEnd()}\n`
+    .trimEnd()}\n`, eol)
 }
 
 async function readJsonOrDefault(path: string, fallback: any): Promise<any> {
+  let raw: string
   try {
-    return JSON.parse(await readFile(path, 'utf-8'))
-  } catch {
-    return fallback
+    raw = await readFile(path, 'utf-8')
+  } catch (error) {
+    // Only a missing file legitimately falls back to a stub the caller will
+    // create. A transient read failure (EACCES/EBUSY) must not be treated as
+    // "missing", or the caller would overwrite the user's manifest with a stub.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return fallback
+    throw new Error(`Unable to read ${path}: ${(error as Error).message}`)
+  }
+  try {
+    // Editors on Windows may emit a BOM that breaks JSON.parse.
+    return JSON.parse(raw.replace(/^\uFEFF/, ''))
+  } catch (cause) {
+    // Returning the fallback here would let callers overwrite the user's full
+    // manifest with a stub, so a corrupt-but-present file must fail loudly.
+    throw new Error(`Failed to parse ${path}: ${cause instanceof Error ? cause.message : String(cause)}`)
   }
 }
 
 async function readFileOrDefault(path: string, fallback: string): Promise<string> {
   try {
     return await readFile(path, 'utf-8')
-  } catch {
-    return fallback
+  } catch (error) {
+    // Same rule as readJsonOrDefault: only ENOENT may fall back to a stub the
+    // caller then writes back.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return fallback
+    throw new Error(`Unable to read ${path}: ${(error as Error).message}`)
   }
 }
 
@@ -600,13 +637,6 @@ function normalizeVcpkgManifestDependency(name: string, version?: string, featur
 
 function safeManifestName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'native-project'
-}
-
-function splitCommandLine(commandLine: string): string[] {
-  return commandLine
-    .match(/"([^"]*)"|'([^']*)'|\S+/g)
-    ?.map((part) => part.replace(/^['"]|['"]$/g, '').trim())
-    .filter(Boolean) || []
 }
 
 function uniqueNativeDependencies(items: NativeDependencyInfo[]): NativeDependencyInfo[] {

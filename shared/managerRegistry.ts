@@ -1443,7 +1443,7 @@ export function getPlannedManagerDefinitions(): DependencyManagerDefinition[] {
 }
 
 export function getExtendedManagerDefinitions(): DependencyManagerDefinition[] {
-  return MANAGER_DEFINITIONS.filter((manager) => !manager.builtIn && !manager.route && manager.implemented)
+  return MANAGER_DEFINITIONS.filter((manager) => !manager.builtIn && manager.implemented)
 }
 
 export function getPreviewManagerDefinitions(): DependencyManagerDefinition[] {

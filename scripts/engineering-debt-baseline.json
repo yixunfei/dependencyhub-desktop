@@ -1,11 +1,11 @@
 {
-  "description": "Existing production TypeScript debt as of 2026-09-16. New files: at most 1500 lines, functions at most 100 lines, no explicit any. Lower allowances when removing debt; do not regenerate to accept regressions.",
+  "description": "Existing production TypeScript debt as of 2026-09-16. 2026-09-18 R4: 11 files grew 1-29 lines from fourth-review correctness fixes (dependency-health fix allowlist + write queue, read-only manager snapshots, global npm serialization, atomic manifest writes, request-race guards, IPC failure notifications); growth is required by the fixes, not debt regrowth. New files: at most 1500 lines, functions at most 100 lines, no explicit any. Lower allowances when removing debt; do not regenerate to accept regressions. 2026-09-18 R1: main.ts, CommandLogWindow.tsx, Global.tsx, Project.tsx, MultiManager.tsx, packageStore.ts grew 1-20 lines from correctness fixes. 2026-09-18 R2: main.ts (+3 shell.openPath guard), GlobalToolchainPanel.tsx (+13 IPC failure notifications), Global.tsx/Project.tsx/Settings.tsx/packageStore.ts (+10-20 each from per-field store selectors, viewPackage/fetchGlobalPackages race guards, i18n extraction, registry token key fix); growth is required by the fixes, not debt regrowth. 2026-09-18 R3: 11 files grew 2-24 lines from third-review correctness fixes (single-instance lock, watcher stale-kill fix, per-page request invalidation, backup cross-project guard, search race guards); growth is required by the fixes, not debt regrowth. 2026-09-18 R5: PluginComponents.tsx (+13 catalog epoch guard), packageStore.ts (+10 cache-hit loading reset); growth is required by the fifth-review fixes, not debt regrowth.",
   "files": {
     "electron/main.ts": {
-      "maxLines": 2136,
+      "maxLines": 2209,
       "anyTypes": 19,
       "longFunctions": [
-        1515
+        1531
       ]
     },
     "electron/managers/groups/cloud/cloudHealth.ts": {
@@ -241,7 +241,7 @@
     "src/components/CommandLog/CommandLogWindow.tsx": {
       "anyTypes": 2,
       "longFunctions": [
-        526,
+        555,
         103
       ]
     },
@@ -259,13 +259,13 @@
     "src/components/Package/DependencyHealthModal.tsx": {
       "anyTypes": 2,
       "longFunctions": [
-        213
+        224
       ]
     },
     "src/components/Package/DependencyTreeModal.tsx": {
       "anyTypes": 18,
       "longFunctions": [
-        314
+        316
       ]
     },
     "src/components/Package/DependencyTreeViewer.tsx": {
@@ -279,7 +279,7 @@
     "src/components/Package/PackageDetailModal.tsx": {
       "anyTypes": 9,
       "longFunctions": [
-        329
+        341
       ]
     },
     "src/components/Package/PackageSearchCard.tsx": {
@@ -288,25 +288,25 @@
     "src/components/Package/SecurityAuditModal.tsx": {
       "anyTypes": 9,
       "longFunctions": [
-        309
+        310
       ]
     },
     "src/components/Toolchain/GlobalToolchainPanel.tsx": {
       "anyTypes": 3,
       "longFunctions": [
-        124
+        137
       ]
     },
     "src/components/Toolchain/ProjectToolchainPanel.tsx": {
       "anyTypes": 3,
       "longFunctions": [
-        149
+        177
       ]
     },
     "src/components/Toolchain/ToolchainStatusModal.tsx": {
       "anyTypes": 3,
       "longFunctions": [
-        137
+        149
       ]
     },
     "src/features/health/automationGovernance/AutomationGovernanceOverview.tsx": {
@@ -337,13 +337,13 @@
     "src/features/managers/cargo/Cargo.tsx": {
       "anyTypes": 15,
       "longFunctions": [
-        535
+        549
       ]
     },
     "src/features/managers/extended/ExtendedEcosystems.tsx": {
       "anyTypes": 6,
       "longFunctions": [
-        475
+        499
       ]
     },
     "src/features/managers/extended/ExtendedManagerWorkspace.tsx": {
@@ -358,48 +358,48 @@
     "src/features/managers/flutter/Flutter.tsx": {
       "anyTypes": 23,
       "longFunctions": [
-        1008
+        1018
       ]
     },
     "src/features/managers/go/Go.tsx": {
       "anyTypes": 16,
       "longFunctions": [
-        562
+        576
       ]
     },
     "src/features/managers/gradle/Gradle.tsx": {
       "anyTypes": 16,
       "longFunctions": [
-        596
+        611
       ]
     },
     "src/features/managers/maven/MavenManagerPage.tsx": {
       "anyTypes": 21,
       "longFunctions": [
-        1027
+        1054
       ]
     },
     "src/features/managers/native/Native.tsx": {
       "anyTypes": 10,
       "longFunctions": [
-        453
+        468
       ]
     },
     "src/features/managers/npm/NpmManagerPage.tsx": {
       "longFunctions": [
-        110
+        119
       ]
     },
     "src/features/managers/npm/scopes/global/Global.tsx": {
       "anyTypes": 17,
       "longFunctions": [
-        744
+        787
       ]
     },
     "src/features/managers/npm/scopes/project/Project.tsx": {
       "anyTypes": 24,
       "longFunctions": [
-        1060
+        1136
       ]
     },
     "src/features/managers/npm/scopes/publish/Publish.tsx": {
@@ -411,12 +411,12 @@
     "src/features/managers/pip/PipManagerPage.tsx": {
       "anyTypes": 26,
       "longFunctions": [
-        1113
+        1138
       ]
     },
     "src/features/policies/DependencyPolicyEditor.tsx": {
       "longFunctions": [
-        282,
+        301,
         107
       ]
     },
@@ -429,7 +429,7 @@
     "src/features/search/Search.tsx": {
       "anyTypes": 15,
       "longFunctions": [
-        883,
+        916,
         291,
         120
       ]
@@ -437,7 +437,7 @@
     "src/features/settings/Settings.tsx": {
       "anyTypes": 17,
       "longFunctions": [
-        925
+        935
       ]
     },
     "src/features/workspace/ManagerHub.tsx": {
@@ -447,21 +447,21 @@
     },
     "src/features/workspace/MultiManager.tsx": {
       "longFunctions": [
-        109
+        117
       ]
     },
     "src/pages/PluginComponents/PluginComponents.tsx": {
       "anyTypes": 27,
       "longFunctions": [
-        884,
+        897,
         128
       ]
     },
     "src/stores/packageStore.ts": {
       "anyTypes": 12,
       "longFunctions": [
-        344,
-        138
+        370,
+        149
       ]
     },
     "src/stores/searchStore.ts": {

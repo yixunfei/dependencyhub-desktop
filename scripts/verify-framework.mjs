@@ -995,7 +995,13 @@ async function main() {
   const healthCenterSource = await readFeatureSource(join(process.cwd(), 'src', 'features', 'health', 'HealthCenter.tsx'))
   // UI copy lives in the dictionary now, so a source-text assertion on a label has to
   // look in two places: the key at the call site, and the value in the dictionary.
-  const dictionarySource = await readFile(join(process.cwd(), 'src', 'i18n', 'dictionaries.ts'), 'utf-8')
+  // Locale values were split into per-language modules; read the aggregate entry
+  // plus both language files so label assertions keep covering the real copy.
+  const dictionarySource = (await Promise.all([
+    readFile(join(process.cwd(), 'src', 'i18n', 'dictionaries.ts'), 'utf-8'),
+    readFile(join(process.cwd(), 'src', 'i18n', 'dictionaries', 'en-US.ts'), 'utf-8'),
+    readFile(join(process.cwd(), 'src', 'i18n', 'dictionaries', 'zh-CN.ts'), 'utf-8')
+  ])).join('\n')
   const healthWorkflowsSource = await readFile(join(process.cwd(), 'src', 'features', 'health', 'workflows.ts'), 'utf-8')
   const workflowSectionNavSource = await readFile(join(process.cwd(), 'src', 'features', 'health', 'components', 'WorkflowSectionNav.tsx'), 'utf-8')
   const workflowSectionHeaderSource = await readFile(join(process.cwd(), 'src', 'features', 'health', 'components', 'WorkflowSectionHeader.tsx'), 'utf-8')
@@ -1945,7 +1951,7 @@ async function main() {
     assert(exportedReleaseProvenanceText.includes('Release Provenance Attestation') && exportedReleaseProvenanceText.includes('Source / Git') && exportedReleaseProvenanceText.includes('Evidence Digests') && exportedReleaseProvenanceText.includes('fixture-app'), 'release provenance attestation exports Markdown source and digest evidence')
     const exportedReleaseProvenanceJson = await releaseProvenanceAttestation.exportJson(cwd)
     const exportedReleaseProvenanceJsonData = JSON.parse(await readFile(exportedReleaseProvenanceJson.path, 'utf-8'))
-    assert(exportedReleaseProvenanceJsonData.summary.artifactCount >= releaseProvenanceReport.summary.artifactCount && exportedReleaseProvenanceJsonData.artifacts.some((artifact) => artifact.relativePath.endsWith('release-bundle/release-bundle-manifest.json')) && exportedReleaseProvenanceJsonData.summary.selfReferencedEvidenceCount >= 0, 'release provenance attestation exports JSON artifact digest metadata')
+    assert(exportedReleaseProvenanceJsonData.summary.artifactCount >= releaseProvenanceReport.summary.artifactCount && exportedReleaseProvenanceJsonData.artifacts.some((artifact) => artifact.relativePath.endsWith('release-bundle/release-bundle-manifest.json')) && Number.isInteger(exportedReleaseProvenanceJsonData.summary.selfReferencedEvidenceCount) && exportedReleaseProvenanceJsonData.summary.selfReferencedEvidenceCount >= 0, 'release provenance attestation exports JSON artifact digest metadata')
     await governanceReleaseExceptions.revoke(cwd, releaseExceptionRecord.id, {
       reviewer: 'risk-board',
       reason: 'Exception revoked after bundle export smoke test'

@@ -26,6 +26,12 @@ const rememberPath = (path: string, paths: string[]) => {
   return normalized ? [normalized, ...paths.filter((item) => item !== normalized)].slice(0, 8) : paths
 }
 
+// Persisted state may be corrupted in localStorage; a non-string currentPath or a
+// malformed recentPaths would break the first render, so drop them to defaults.
+function isValidRecentPaths(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -61,7 +67,15 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'app-storage',
-      partialize: (state) => ({ currentPath: state.currentPath, recentPaths: state.recentPaths })
+      partialize: (state) => ({ currentPath: state.currentPath, recentPaths: state.recentPaths }),
+      merge: (persisted, current) => {
+        const persistedState = (persisted ?? {}) as Partial<AppState>
+        return {
+          ...current,
+          currentPath: typeof persistedState.currentPath === 'string' ? persistedState.currentPath : '',
+          recentPaths: isValidRecentPaths(persistedState.recentPaths) ? persistedState.recentPaths : []
+        }
+      }
     }
   )
 )

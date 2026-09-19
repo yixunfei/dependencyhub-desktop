@@ -1,6 +1,6 @@
 import { build } from 'esbuild'
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
@@ -9,12 +9,18 @@ const require = createRequire(import.meta.url)
 const directory = await mkdtemp(join(tmpdir(), 'dependencyhub-ipc-'))
 const main = join(directory, 'main.cjs')
 const preload = join(directory, 'preload.cjs')
+const page = join(directory, 'index.html')
+await writeFile(page, '<html><body>IPC verification</body></html>', 'utf-8')
 
 const fixture = `
 const { app, BrowserWindow } = require('electron')
 const { handleIpc } = require('./electron/ipcHandler')
 app.setPath('userData', ${JSON.stringify(join(directory, 'profile'))})
 app.disableHardwareAcceleration()
+// Restricted environments (containers/CI sandboxes) may block Chromium's GPU and
+// network-service subprocesses; these switches keep the fixture loadable there.
+app.commandLine.appendSwitch('no-sandbox')
+app.commandLine.appendSwitch('disable-gpu')
 handleIpc('manager:execute', async () => {
   throw Object.assign(new Error('Fixture cancelled'), {
     failure: { category: 'cancelled', operationId: 'ipc-fixture', retryable: true },
@@ -30,7 +36,7 @@ app.whenReady().then(async () => {
     preload: ${JSON.stringify(preload)}, contextIsolation: true, sandbox: true, nodeIntegration: false
   } })
   try {
-    await window.loadURL('data:text/html,<html><body>IPC verification</body></html>')
+    await window.loadFile(${JSON.stringify(page)})
     const result = await window.webContents.executeJavaScript(
       '(' + (async function () {
         const failed = await window.electronAPI.managers.execute('fixture', 'npm', { operation: 'sync' })
@@ -40,7 +46,7 @@ app.whenReady().then(async () => {
         return { failed, active, message }
       }).toString() + ')()'
     )
-    if (result.failed.__dependencyHubFailure !== true
+    if (result.failed.__dhIpcFailureV1 !== true
       || result.failed.error.failure.category !== 'cancelled'
       || result.failed.error.failure.operationId !== 'ipc-fixture'
       || result.failed.error.backup.path !== 'fixture-backup.json'
@@ -83,5 +89,10 @@ try {
     })
   })
 } finally {
-  await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  // On the timeout path the Electron process tree may still be releasing file
+  // handles; a cleanup failure must not replace the real error (e.g. report a
+  // timeout as a delete failure).
+  await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch((cleanupError) => {
+    console.warn(`IPC verification: failed to clean ${directory}: ${cleanupError.message}`)
+  })
 }

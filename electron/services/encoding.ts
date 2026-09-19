@@ -22,8 +22,8 @@ export function decodeCommandChunk(chunk: Buffer): string {
 
 export class CommandOutputDecoder {
   private readonly utf8Decoder = new TextDecoder('utf-8')
-  private readonly chunks: Buffer[] = []
-  private byteLength = 0
+  private gbDecoder: TextDecoder | undefined
+  private selectedDecoder: TextDecoder | undefined
   private text = ''
 
   write(chunk: Buffer): string {
@@ -32,9 +32,19 @@ export class CommandOutputDecoder {
       return this.text
     }
 
-    this.chunks.push(Buffer.from(chunk))
-    this.byteLength += chunk.length
-    this.text = decodeCommandBuffer(Buffer.concat(this.chunks, this.byteLength))
+    if (!this.selectedDecoder) {
+      try {
+        this.gbDecoder = new TextDecoder('gb18030')
+        const utf8 = new TextDecoder('utf-8').decode(chunk)
+        const gb18030 = this.gbDecoder.decode(chunk)
+        this.selectedDecoder = scoreDecodedText(gb18030) < scoreDecodedText(utf8)
+          ? new TextDecoder('gb18030')
+          : new TextDecoder('utf-8')
+      } catch {
+        this.selectedDecoder = new TextDecoder('utf-8')
+      }
+    }
+    this.text += this.selectedDecoder.decode(chunk, { stream: true })
     return this.text
   }
 }

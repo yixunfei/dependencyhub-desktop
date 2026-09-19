@@ -39,5 +39,5 @@ export function useDependencyHealthReminder(
     return () => {
       cancelled = true
     }
-  }, [manager, cwd, enabled, addNotification])
+  }, [manager, cwd, enabled, addNotification, t])
 }

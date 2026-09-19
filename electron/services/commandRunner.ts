@@ -19,6 +19,16 @@ export type CommandFailure = Error & {
   failure?: OperationFailure
 }
 
+/**
+ * Commands launched outside any operation context (plain read IPC handlers)
+ * previously had no timeout at all: a hung child (slow network mount, dead
+ * lock, first-time plugin download) kept the renderer request pending forever
+ * with no way to cancel it. The ambient context remains authoritative — an
+ * ambient context with timeoutMs undefined (explicit null disable) stays
+ * unlimited.
+ */
+const AMBIENTLESS_COMMAND_TIMEOUT_MS = 3 * 60 * 1000
+
 export interface LoggedCommandOptions {
   cwd?: string
   env?: NodeJS.ProcessEnv
@@ -33,13 +43,24 @@ export interface LoggedCommandOptions {
 export interface ShellFreeCommand {
   bin: string
   args: string[]
+  /**
+   * Windows cmd.exe wrappers must be spawned with windowsVerbatimArguments:
+   * libuv would otherwise re-quote the /c payload per MSVCRT rules (inner "
+   * becomes \"), and cmd.exe does not treat backslash as an escape character,
+   * so formatCmdArg's quoting would never survive to the child process.
+   */
+  windowsVerbatimArguments?: boolean
 }
 
 export function resolveShellFreeCommand(bin: string, args: string[]): ShellFreeCommand {
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin)) {
+    // Mirror node's own shell:true implementation: wrap the whole command line
+    // in one extra pair of quotes and pass the argv verbatim. cmd.exe /S then
+    // strips the outer quotes and executes the payload exactly as formatted.
     return {
       bin: 'cmd.exe',
-      args: ['/d', '/s', '/c', formatCmdCommand(bin, args)]
+      args: ['/d', '/s', '/c', `"${formatCmdCommand(bin, args)}"`],
+      windowsVerbatimArguments: true
     }
   }
 
@@ -70,7 +91,7 @@ export async function runLoggedCommand(
   const processRun = new CommandProcess(resolveShellFreeCommand(bin, args), {
     ...options,
     maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024,
-    timeoutMs: options.timeoutMs ?? ambient?.timeoutMs,
+    timeoutMs: options.timeoutMs ?? (ambient ? ambient.timeoutMs : AMBIENTLESS_COMMAND_TIMEOUT_MS),
     signal: options.signal ?? ambient?.signal,
     operationId: options.operationId ?? ambient?.operationId ?? logId
   }, scheduleEmit)
@@ -112,11 +133,25 @@ function formatCmdCommand(bin: string, args: string[]): string {
 function formatCmdArg(arg: string): string {
   if (arg.length === 0) return '""'
 
-  const safe = arg.replace(/[\r\n]/g, '')
-  const escaped = safe
-    .replace(/\^/g, '^^')
-    .replace(/"/g, '\\"')
-    .replace(/[&|<>()]/g, '^$&')
+  if (/[\r\n]/.test(arg)) {
+    // Stripping newlines silently changed the argument's meaning. Callers pass
+    // package names, versions and flags that never contain line breaks, so a
+    // newline here indicates a caller bug and must fail loudly.
+    throw new Error('Command arguments must not contain line breaks')
+  }
 
-  return /\s|["&|<>()^]/.test(safe) ? `"${escaped}"` : escaped
+  if (!/[\s"&|<>()^%]/.test(arg)) return arg
+
+  // cmd.exe does not treat backslash as an escape character, so an embedded "
+  // flips the quoting state and lets the rest of the argument escape the quotes.
+  // Arguments are package names, versions and paths, which can never contain a
+  // quote on Windows, so this indicates a caller bug and must fail loudly.
+  if (arg.includes('"')) {
+    throw new Error('Command arguments must not contain double quotes')
+  }
+
+  // cmd.exe does not interpret ^ inside double quotes, so quoted content must
+  // stay ^-free. %VAR% expands even inside quotes, so each % is emitted as ^%
+  // in a short unquoted gap between quoted segments: "abc"^%"def" -> abc%def.
+  return `"${arg.replace(/%/g, '"^%"')}"`
 }

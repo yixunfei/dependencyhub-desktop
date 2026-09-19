@@ -6,7 +6,7 @@ export async function exportPolicyAsCodePackAction(context: Pick<HealthData,
 >, format: PolicyAsCodeExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setPolicyAsCodePack } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -40,7 +40,7 @@ export async function exportPolicyAsCodePackAction(context: Pick<HealthData,
 export async function runReadinessGateAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setReadinessReport'>) {
   const { t, currentPath, addNotification, setReporting, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -69,7 +69,7 @@ export async function exportReadinessAction(context: Pick<HealthData,
 >, format: ReadinessGateExportFormat = 'markdown') {
   const { t, currentPath, addNotification, setReporting, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -101,7 +101,7 @@ export async function createSnapshotAction(context: Pick<HealthData,
 >) {
   const { t, currentPath, addNotification, setReporting, setSnapshots, setDependencyRollbackPlan } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -134,7 +134,7 @@ export async function createSnapshotAction(context: Pick<HealthData,
 export async function diffLatestSnapshotAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setSnapshotDiff'>) {
   const { t, currentPath, addNotification, setReporting, setSnapshotDiff } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -159,7 +159,7 @@ export async function diffLatestSnapshotAction(context: Pick<HealthData, 't' | '
 export async function restoreLatestSnapshotAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'loadOverview'>) {
   const { t, currentPath, addNotification, setReporting, loadOverview } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -193,7 +193,7 @@ export async function restoreSnapshotAction(context: Pick<HealthData,
 >, snapshot: SupplyChainSnapshotSummary) {
   const { t, currentPath, addNotification, setReporting, loadOverview } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -233,7 +233,7 @@ export async function openSnapshotAction(context: Pick<HealthData, 't' | 'addNot
 export async function ensurePolicyAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting'>) {
   const { t, currentPath, addNotification, setReporting } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -260,7 +260,7 @@ export async function ensurePolicyAction(context: Pick<HealthData, 't' | 'curren
 export async function ensureReadinessPolicyAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setReadinessReport'>) {
   const { t, currentPath, addNotification, setReporting, setReadinessReport } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 
@@ -302,7 +302,7 @@ export async function onReadinessPolicySavedAction(context: Pick<HealthData,
 export async function evaluatePolicyAction(context: Pick<HealthData, 't' | 'currentPath' | 'addNotification' | 'setReporting' | 'setPolicyEvaluation'>) {
   const { t, currentPath, addNotification, setReporting, setPolicyEvaluation } = context
   if (!currentPath) {
-    addNotification({ type: 'warning', message: t('health.selectProjectFirst') })
+    addNotification({ type: 'warning', message: t('common.selectProjectFirst') })
     return
   }
 

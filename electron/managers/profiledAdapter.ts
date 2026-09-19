@@ -18,6 +18,7 @@ import {
   ExtendedManagerService,
   type ExtendedManagerOperationRequest
 } from '../services/extendedManager'
+import { commandMutatesProjectFiles } from '../services/commandMutates'
 import type { ManagerAdapter } from './adapter'
 import { createManagerDescriptor } from './capabilities'
 
@@ -160,11 +161,14 @@ export class ProfiledManagerAdapter implements ManagerAdapter {
 
 function inferMutatingCommand(args: readonly string[]): boolean {
   if (args.length === 0) return false
-  const normalized = args.filter((arg) => !arg.startsWith('-')).join(' ').toLowerCase()
-  if (/\b(audit|check|validate|list|ls|show|info|tree|graph|outdated|search|why|diagnose|lint|providers)\b/.test(normalized) && !/\b(fix|upgrade|update)\b/.test(normalized)) {
-    return false
-  }
-  return /\b(install|add|require|remove|rm|uninstall|update|autoupdate|upgrade|sync|restore|resolve|lock|freeze|snapshot|instantiate|init|tidy|get|deps|fetch|edit|prune|clean|purge|build|apply|import|reconcile|generate-lockfiles)\b/.test(normalized)
+  // Delegate to the single authoritative classifier so the plan preview and the
+  // actual write-queue decision can never disagree.
+  if (commandMutatesProjectFiles([...args])) return true
+
+  // Verbs that only touch derived or remote state; they still deserve a
+  // confirmation step even though the shared classifier focuses on manifests.
+  const verb = (args.find((arg) => !arg.startsWith('-')) || '').toLowerCase()
+  return ['build', 'import', 'reconcile'].includes(verb)
 }
 
 function commandResult(

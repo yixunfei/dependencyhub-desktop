@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Descriptions, Empty, Form, Input, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Tooltip } from 'antd'
 import {
   ApiOutlined,
@@ -152,8 +152,15 @@ const NativePage: React.FC = () => {
     }
   ], [currentPath])
 
+  // Monotonic epoch so a stale detect/list reply from a previous currentPath
+  // cannot overwrite the freshly loaded project data (same guard as the other
+  // ecosystem pages; acting on stale data here would remove dependencies from
+  // the wrong project).
+  const loadEpochRef = useRef(0)
+
   useEffect(() => {
-    void loadNativeProject()
+    const epoch = ++loadEpochRef.current
+    void loadNativeProject(epoch)
   }, [currentPath])
 
   useDependencyHealthReminder('native', currentPath, !!currentPath && dependencies.length > 0)
@@ -165,7 +172,7 @@ const NativePage: React.FC = () => {
     addNotification({ type: 'info', message: 'Working directory changed', description: path })
   }
 
-  const loadNativeProject = async () => {
+  const loadNativeProject = async (epoch: number = ++loadEpochRef.current) => {
     if (!currentPath) {
       setProjectInfo(null)
       setDependencies([])
@@ -175,14 +182,17 @@ const NativePage: React.FC = () => {
     setLoading(true)
     try {
       const detected = await window.electronAPI.native.detect(currentPath)
+      if (epoch !== loadEpochRef.current) return
       const deps = await window.electronAPI.native.list(currentPath)
+      if (epoch !== loadEpochRef.current) return
       setProjectInfo(detected)
       setDependencies(deps)
     } catch (error: any) {
+      if (epoch !== loadEpochRef.current) return
       setDependencies([])
       addNotification({ type: 'error', message: 'Native project load failed', description: error.message })
     } finally {
-      setLoading(false)
+      if (epoch === loadEpochRef.current) setLoading(false)
     }
   }
 
@@ -202,8 +212,11 @@ const NativePage: React.FC = () => {
     setInstallVisible(true)
   }
 
+  const searchRequestRef = useRef(0)
+
   const searchNativePackages = async (query: string) => {
     const normalized = query.trim()
+    const requestId = ++searchRequestRef.current
     if (!normalized) {
       setSearchOptions([])
       return
@@ -211,12 +224,14 @@ const NativePage: React.FC = () => {
 
     try {
       const result = await window.electronAPI.native.search(normalized)
+      if (requestId !== searchRequestRef.current) return
       setSearchOptions(result.map((item) => ({
         value: item.name,
         label: `${item.name}${item.version ? ` (${item.version})` : ''} - ${item.manager}${item.source ? ` - ${item.source}` : ''}`,
         item
       })))
     } catch {
+      if (requestId !== searchRequestRef.current) return
       setSearchOptions([])
     }
   }
@@ -392,7 +407,7 @@ const NativePage: React.FC = () => {
             <strong>Native Dependencies</strong>
           </Space>
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={loadNativeProject} loading={loading} disabled={!currentPath}>Refresh</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => void loadNativeProject()} loading={loading} disabled={!currentPath}>Refresh</Button>
             <Button icon={<FileTextOutlined />} onClick={() => openFile(projectInfo?.cmakePath)} disabled={!projectInfo?.hasCMakeLists}>CMakeLists</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openInstallModal} disabled={actionsDisabled}>Add</Button>
             <Button icon={<ToolOutlined />} onClick={configureCMake} loading={loading} disabled={actionsDisabled || !projectInfo?.hasCMakeLists}>Configure</Button>

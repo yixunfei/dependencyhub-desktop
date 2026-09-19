@@ -1,7 +1,12 @@
-import { access, readFile, writeFile } from 'fs/promises'
+import { access, readFile } from 'fs/promises'
 import { join } from 'path'
+import { writeFileAtomic } from './atomicWrite'
 import { runLoggedCommand } from './commandRunner'
 import { resolveToolBin } from './toolchain'
+import { assertValidMavenCoordinate } from './maven'
+import { registryHttpGet } from './registryHttp'
+import { splitCommandLine } from './splitCommandLine'
+import { applyLineEnding, detectLineEnding } from './textLineEndings'
 import type { MavenSearchMode, MavenSearchOptions } from './maven'
 
 export interface GradleDependency {
@@ -92,6 +97,9 @@ export class GradleService {
     if (!args.groupId || !args.artifactId || !args.version) {
       throw new Error('groupId, artifactId and version are required')
     }
+    assertValidMavenCoordinate('groupId', args.groupId)
+    assertValidMavenCoordinate('artifactId', args.artifactId)
+    assertValidMavenCoordinate('version', args.version)
 
     const buildPath = await ensureBuildFile(args.cwd)
     const content = await readFile(buildPath, 'utf-8')
@@ -102,7 +110,7 @@ export class GradleService {
       : `    ${configuration} '${coordinate}'`
 
     const nextContent = upsertGradleDependency(content, line, args)
-    await writeFile(buildPath, nextContent, 'utf-8')
+    await writeFileAtomic(buildPath, nextContent)
   }
 
   async updateDependency(args: GradleAddDependencyArgs): Promise<void> {
@@ -120,7 +128,7 @@ export class GradleService {
     }
 
     const content = await readFile(buildPath, 'utf-8')
-    await writeFile(buildPath, removeGradleDependency(content, args), 'utf-8')
+    await writeFileAtomic(buildPath, removeGradleDependency(content, args))
   }
 
   async runTask(cwd: string, taskLine: string): Promise<string> {
@@ -177,7 +185,7 @@ async function ensureBuildFile(cwd: string): Promise<string> {
   try {
     await access(target)
   } catch {
-    await writeFile(target, 'plugins {\n}\n\ndependencies {\n}\n', 'utf-8')
+    await writeFileAtomic(target, 'plugins {\n}\n\ndependencies {\n}\n')
   }
   return target
 }
@@ -227,40 +235,43 @@ function cleanGradleVersion(value: string): string {
 }
 
 function upsertGradleDependency(content: string, line: string, dep: Pick<GradleDependency, 'groupId' | 'artifactId'>): string {
-  const withoutExisting = removeGradleDependency(content, dep)
+  const eol = detectLineEnding(content)
+  const withoutExisting = removeGradleDependency(content.replace(/\r\n/g, '\n'), dep)
 
-  if (withoutExisting.includes('dependencies {')) {
-    return withoutExisting.replace(/dependencies\s*\{/, (match) => `${match}\n${line}`)
+  // Anchor on a top-level (unindented) `dependencies {` so the token appearing
+  // inside a comment or string cannot inject the dependency into a wrong block.
+  let nextContent: string
+  if (/^dependencies\s*\{/m.test(withoutExisting)) {
+    nextContent = withoutExisting.replace(/^dependencies\s*\{/m, (match) => `${match}\n${line}`)
+  } else {
+    nextContent = `${withoutExisting.trimEnd()}\n\ndependencies {\n${line}\n}\n`
   }
 
-  return `${withoutExisting.trimEnd()}\n\ndependencies {\n${line}\n}\n`
+  return applyLineEnding(nextContent, eol)
 }
 
 function removeGradleDependency(content: string, dep: Pick<GradleDependency, 'groupId' | 'artifactId'> & { configuration?: string }): string {
-  return content
-    .split(/\r?\n/)
-    .filter((line) => {
-      if (dep.configuration && !line.trim().startsWith(dep.configuration)) return true
-      return !line.includes(`${dep.groupId}:${dep.artifactId}:`)
-        && !(line.includes(`group: '${dep.groupId}'`) && line.includes(`name: '${dep.artifactId}'`))
-        && !(line.includes(`group: "${dep.groupId}"`) && line.includes(`name: "${dep.artifactId}"`))
-    })
-    .join('\n')
+  const eol = detectLineEnding(content)
+  return applyLineEnding(
+    content
+      .split(/\r?\n/)
+      .filter((line) => {
+        if (dep.configuration && !line.trim().startsWith(dep.configuration)) return true
+        return !line.includes(`${dep.groupId}:${dep.artifactId}:`)
+          && !(line.includes(`group: '${dep.groupId}'`) && line.includes(`name: '${dep.artifactId}'`))
+          && !(line.includes(`group: "${dep.groupId}"`) && line.includes(`name: "${dep.artifactId}"`))
+      })
+      .join('\n'),
+    eol
+  )
 }
 
-async function httpsGet(url: string): Promise<string> {
-  const https = await import('https')
-  return new Promise((resolve, reject) => {
-    https.get(url, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'DependencyHubDesktop/1.0'
-      }
-    }, (res) => {
-      let data = ''
-      res.on('data', (chunk) => { data += chunk })
-      res.on('end', () => resolve(data))
-    }).on('error', reject)
+function httpsGet(url: string): Promise<string> {
+  return registryHttpGet(url, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'DependencyHubDesktop/1.0'
+    }
   })
 }
 
@@ -451,13 +462,6 @@ function uniqueGradleResults(items: GradleSearchResult[]): GradleSearchResult[] 
     seen.add(key)
     return true
   })
-}
-
-function splitCommandLine(commandLine: string): string[] {
-  return commandLine
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
 }
 
 function isGradleDependencyDoc(doc: any): boolean {

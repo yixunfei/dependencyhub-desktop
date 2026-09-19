@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Collapse, Descriptions, Empty, Form, Input, Modal, Popconfirm, Segmented, Select, Space, Spin, Switch, Table, Tag, Tooltip } from 'antd'
 import {
   ApartmentOutlined,
@@ -93,6 +93,13 @@ const MavenManagerPage: React.FC = () => {
   const [mavenPublishForm] = Form.useForm()
   const [mavenMirrorForm] = Form.useForm()
   const [mavenServerForm] = Form.useForm()
+  // Bumped whenever the currentPath effect re-runs: the three concurrent loads
+  // capture it read-only so a stale reply from the previous path is discarded.
+  const loadEpochRef = useRef(0)
+  // Version loads are keyed to the coordinate being requested; a stale reply
+  // must not fill another coordinate's version list (or auto-fill its first
+  // version into the form, which would install the wrong artifact).
+  const versionRequestRef = useRef(0)
 
   const mavenGoalButtons = useMemo(() => {
     return [...customMavenGoals, ...COMMON_MAVEN_GOALS.filter((goal) => !customMavenGoals.includes(goal))]
@@ -120,6 +127,7 @@ const MavenManagerPage: React.FC = () => {
   }, [customMavenGoals])
 
   useEffect(() => {
+    loadEpochRef.current += 1
     void loadProjectInfo()
     void loadMavenDependencies()
     void loadMavenInfo()
@@ -130,10 +138,14 @@ const MavenManagerPage: React.FC = () => {
       setProjectInfo(null)
       return
     }
+    const epoch = loadEpochRef.current
 
     try {
-      setProjectInfo(await window.electronAPI.project.detect(currentPath))
+      const info = await window.electronAPI.project.detect(currentPath)
+      if (epoch !== loadEpochRef.current) return
+      setProjectInfo(info)
     } catch {
+      if (epoch !== loadEpochRef.current) return
       setProjectInfo(null)
     }
   }
@@ -144,10 +156,12 @@ const MavenManagerPage: React.FC = () => {
       setMavenLatestMap({})
       return
     }
+    const epoch = loadEpochRef.current
 
     setMavenLoading(true)
     try {
       const detectedProject = await window.electronAPI.maven.detect(currentPath)
+      if (epoch !== loadEpochRef.current) return
       if (!detectedProject.hasPom) {
         setMavenDeps([])
         setMavenLatestMap({})
@@ -155,6 +169,7 @@ const MavenManagerPage: React.FC = () => {
       }
 
       const deps = await window.electronAPI.maven.list(currentPath)
+      if (epoch !== loadEpochRef.current) return
       setMavenDeps(deps)
       const latestEntries = await Promise.all(
         deps.slice(0, 20).map(async (dep) => {
@@ -166,23 +181,28 @@ const MavenManagerPage: React.FC = () => {
           }
         })
       )
+      if (epoch !== loadEpochRef.current) return
       setMavenLatestMap(Object.fromEntries(latestEntries))
     } catch (error: any) {
+      if (epoch !== loadEpochRef.current) return
       addNotification({
         type: 'error',
         message: '读取 Maven 依赖失败',
         description: error.message
       })
     } finally {
-      setMavenLoading(false)
+      if (epoch === loadEpochRef.current) setMavenLoading(false)
     }
   }
 
   const loadMavenInfo = async () => {
+    const epoch = loadEpochRef.current
     try {
       const info = await window.electronAPI.maven.info(currentPath)
+      if (epoch !== loadEpochRef.current) return
       setMavenInfo(info)
     } catch {
+      if (epoch !== loadEpochRef.current) return
       setMavenInfo(null)
     }
   }
@@ -398,31 +418,38 @@ const MavenManagerPage: React.FC = () => {
     const groupId = mavenForm.getFieldValue('groupId')
     const artifactId = mavenForm.getFieldValue('artifactId')
     if (!groupId || !artifactId) return
+    const requestId = ++versionRequestRef.current
     setMavenLoading(true)
     try {
       const versions = await window.electronAPI.maven.versions(groupId, artifactId)
+      const current = { groupId: mavenForm.getFieldValue('groupId'), artifactId: mavenForm.getFieldValue('artifactId') }
+      if (requestId !== versionRequestRef.current || current.groupId !== groupId || current.artifactId !== artifactId) return
       setMavenVersionOptions(versions.map((version) => ({ value: version, label: version })))
       if (versions.length > 0) {
         mavenForm.setFieldValue('version', versions[0])
       }
     } catch (error: any) {
+      if (requestId !== versionRequestRef.current) return
       addNotification({ type: 'error', message: '获取 Maven 版本失败', description: error.message })
     } finally {
-      setMavenLoading(false)
+      if (requestId === versionRequestRef.current) setMavenLoading(false)
     }
   }
 
   const showMavenVersions = async (dep: MavenDependencyInfo) => {
+    const requestId = ++versionRequestRef.current
     setMavenSelectedDep(dep)
     setMavenLoading(true)
     try {
       const versions = await window.electronAPI.maven.versions(dep.groupId, dep.artifactId)
+      if (requestId !== versionRequestRef.current) return
       setMavenVersionOptions(versions.map((version) => ({ value: version, label: version })))
       setMavenVersionVisible(true)
     } catch (error: any) {
+      if (requestId !== versionRequestRef.current) return
       addNotification({ type: 'error', message: '获取 Maven 版本失败', description: error.message })
     } finally {
-      setMavenLoading(false)
+      if (requestId === versionRequestRef.current) setMavenLoading(false)
     }
   }
 

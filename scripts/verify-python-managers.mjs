@@ -270,9 +270,13 @@ async function verifySearchAndHealth(service, roots) {
     assert(requests.some((url) => url.includes('/pypi/httpx/json')), 'PyPI search uses the package JSON endpoint')
     assert(requests.some((url) => url.includes('/search?') && url.includes('q=numpy')), 'Conda search encodes the query')
   })
-  await service.search(roots.uv, 'uv', { text: 'httpx', registry: 'https://user:secret@example.test' })
-    .then(() => assert(false, 'registry credentials are rejected'))
-    .catch((error) => assert(error.message.includes('credentials'), 'Python registry URLs reject embedded credentials'))
+  let pythonCredentialsRejected = false
+  try {
+    await service.search(roots.uv, 'uv', { text: 'httpx', registry: 'https://user:secret@example.test' })
+  } catch (error) {
+    pythonCredentialsRejected = /embedded credentials/i.test(error?.message || '')
+  }
+  assert(pythonCredentialsRejected, 'Python registry URLs reject embedded credentials before searching')
 
   const poetryHealth = await service.health(roots.poetry, 'poetry')
   assert(!poetryHealth.findings.some((item) => item.id.startsWith('poetry-content-hash-missing')), 'Poetry health accepts a content-hashed lockfile')

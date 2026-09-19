@@ -49,14 +49,30 @@ export const useSettingsStore = create<SettingsState>()(
       name: 'settings-storage',
       merge: (persisted, current) => {
         const persistedState = (persisted || {}) as Partial<SettingsState>
-        const hadLanguagePreference = persistedState.language === 'zh-CN' || persistedState.language === 'en-US'
+        const isLanguage = (value: unknown): value is AppLanguage => value === 'zh-CN' || value === 'en-US'
+        const isSource = (value: unknown): value is LanguageSource =>
+          value === 'default' || value === 'installer' || value === 'startup' || value === 'settings'
+        const isUpdateStrategy = (value: unknown): value is UpdateStrategy =>
+          value === 'recommended' || value === 'smart' || value === 'security' || value === 'latest'
+        const isConflictStrategy = (value: unknown): value is ConflictStrategy =>
+          value === 'prompt' || value === 'auto-recommended' || value === 'auto-security'
+        const isSensitivity = (value: unknown): value is SecuritySensitivity =>
+          value === 'high' || value === 'medium' || value === 'low'
+        const hadLanguagePreference = isLanguage(persistedState.language)
 
+        // Enum fields are whitelisted: a corrupted or older persisted value
+        // (e.g. language: "fr") must fall back to the current default instead
+        // of reaching the UI controls and the derived language-source logic.
         return {
           ...current,
-          ...persistedState,
-          language: persistedState.language || current.language,
+          language: isLanguage(persistedState.language) ? persistedState.language : current.language,
           languageInitialized: persistedState.languageInitialized ?? hadLanguagePreference,
-          languageSource: persistedState.languageSource || (hadLanguagePreference ? 'settings' : current.languageSource)
+          languageSource: isSource(persistedState.languageSource)
+            ? persistedState.languageSource
+            : (hadLanguagePreference ? 'settings' : current.languageSource),
+          updateStrategy: isUpdateStrategy(persistedState.updateStrategy) ? persistedState.updateStrategy : current.updateStrategy,
+          conflictStrategy: isConflictStrategy(persistedState.conflictStrategy) ? persistedState.conflictStrategy : current.conflictStrategy,
+          securitySensitivity: isSensitivity(persistedState.securitySensitivity) ? persistedState.securitySensitivity : current.securitySensitivity
         }
       }
     }

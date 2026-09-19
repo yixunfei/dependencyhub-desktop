@@ -40,6 +40,7 @@ export class CommandProcess {
         env: commandEnv(this.options.env),
         shell: false,
         windowsHide: true,
+        windowsVerbatimArguments: this.command.windowsVerbatimArguments === true,
         detached: process.platform !== 'win32'
       })
       this.child = child

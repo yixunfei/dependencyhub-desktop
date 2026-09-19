@@ -21,7 +21,7 @@ const ToolVersionsPage: React.FC = () => {
     setCurrentPath(path)
     addNotification({
       type: 'info',
-      message: t('toolchain.projectSwitched'),
+      message: t('common.workdirSwitched'),
       description: path
     })
   }

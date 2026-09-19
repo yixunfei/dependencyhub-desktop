@@ -9,7 +9,18 @@ import {
 
 function createElectronCredentialCipher(): CredentialCipher {
   if (!safeStorage.isEncryptionAvailable()) {
-    return createBase64CredentialCipher('base64-fallback')
+    // Product decision: keep saving on Linux hosts without a keyring, but the
+    // degraded state must be visible. CredentialMetadata.storage/encrypted
+    // already record it per credential; each save also logs a warning so the
+    // unencrypted persistence is impossible to miss in the logs.
+    const fallback = createBase64CredentialCipher('base64-fallback')
+    return {
+      ...fallback,
+      encrypt(value: string): string {
+        console.warn('Credential vault: OS secure storage is unavailable; saving credential with base64 fallback (NOT encrypted).')
+        return fallback.encrypt(value)
+      }
+    }
   }
 
   return {

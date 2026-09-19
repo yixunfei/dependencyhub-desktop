@@ -10,11 +10,24 @@ import { BatchVersionPreviewModal } from '../../../../../components/Package/Batc
 import { SecurityAuditModal } from '../../../../../components/Package/SecurityAuditModal'
 import { NpmVersionPicker } from '../../../../../components/Package/NpmVersionPicker'
 import { localizedModal } from '../../../../../utils/localizedFeedback'
+import { useT, type LabelTranslator } from '../../../../../i18n'
 import { VERSION_PAGE_SIZE, VersionChannelFilter, toVersionOptions, versionsForFilter } from '../../../../../utils/npmVersions'
 import { cleanPackageSummary, formatCompactNumber } from '../../../../../utils/npmDisplay'
 import styles from './Global.module.css'
 
 const SEARCH_PAGE_SIZE = 10
+
+// Monotonic request id for the "switch version" dialog: opening A then B must
+// not let A's slower reply populate B's version list.
+let versionDialogRequestId = 0
+
+// Monotonic request id so a stale paged-search response cannot overwrite a
+// newer one when the user types quickly in the install autocomplete.
+let packageOptionsRequestId = 0
+
+// Install-modal version loads: a stale reply for a replaced package name must
+// not auto-fill the wrong version into the form.
+let installVersionsRequestId = 0
 
 const GlobalPage: React.FC = () => {
   const [installVisible, setInstallVisible] = useState(false)
@@ -48,13 +61,28 @@ const GlobalPage: React.FC = () => {
   const [cachePath, setCachePath] = useState('')
   
   const addNotification = useAppStore((state) => state.addNotification)
+  const t = useT()
   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
   const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
-  const { globalPackages, loading, fetchGlobalPackages, installPackage, uninstallPackage, installSpecificVersion } = usePackageStore()
+  const globalPackages = usePackageStore((state) => state.globalPackages)
+  const globalLoading = usePackageStore((state) => state.globalLoading)
+  const mutating = usePackageStore((state) => state.mutating)
+  const fetchGlobalPackages = usePackageStore((state) => state.fetchGlobalPackages)
+  const installPackage = usePackageStore((state) => state.installPackage)
+  const uninstallPackage = usePackageStore((state) => state.uninstallPackage)
+  const installSpecificVersion = usePackageStore((state) => state.installSpecificVersion)
   
   useEffect(() => {
-    fetchGlobalPackages()
-    loadGlobalMeta()
+    // fetchGlobalPackages rethrows on failure; without this catch the mount
+    // would leave an unhandled rejection and render "no global dependencies".
+    fetchGlobalPackages().catch((error: any) => {
+      addNotification({
+        type: 'error',
+        message: t('npm.refreshFailed'),
+        description: error?.message
+      })
+    })
+    void loadGlobalMeta()
   }, [])
 
   const loadGlobalMeta = async () => {
@@ -72,26 +100,37 @@ const GlobalPage: React.FC = () => {
   }
   
   const handleRefresh = async () => {
-    await fetchGlobalPackages()
-    await loadGlobalMeta()
+    try {
+      await fetchGlobalPackages()
+      await loadGlobalMeta()
+    } catch (error: any) {
+      // fetchGlobalPackages rethrows on failure; surface it instead of a false success.
+      addNotification({
+        type: 'error',
+        message: t('npm.refreshFailed'),
+        description: error.message
+      })
+      return
+    }
     addNotification({
       type: 'success',
-      message: '刷新成功'
+      message: t('npm.refreshSucceeded')
     })
   }
-  
+
   const handleCheckAllOutdated = async () => {
     setCheckingAll(true)
     try {
-      await fetchGlobalPackages()
+      // Bypass the 5-minute cache: this entry must show fresh outdated info.
+      await fetchGlobalPackages(true)
       addNotification({
         type: 'success',
-        message: '检查完成'
+        message: t('npm.checkComplete')
       })
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '检查失败',
+        message: t('npm.checkFailed'),
         description: error.message
       })
     } finally {
@@ -107,13 +146,13 @@ const GlobalPage: React.FC = () => {
       })
       addNotification({
         type: 'success',
-        message: '卸载成功',
-        description: `${packageName} 已卸载`
+        message: t('npm.uninstallSucceeded'),
+        description: t('npm.uninstalledDescription', { name: packageName })
       })
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '卸载失败',
+        message: t('npm.uninstallFailed'),
         description: error.message
       })
     }
@@ -144,6 +183,9 @@ const GlobalPage: React.FC = () => {
 
   const searchInstallPackages = async (query: string) => {
     if (!query.trim()) {
+      // Invalidate in-flight searches so stale replies cannot repopulate the
+      // cleared suggestion list.
+      packageOptionsRequestId += 1
       setPackageOptions([])
       setPackageSearchQuery('')
       setPackageSearchPage(1)
@@ -156,18 +198,22 @@ const GlobalPage: React.FC = () => {
   const loadPackageOptions = async (query: string, page: number) => {
     const trimmedQuery = query.trim()
     if (!trimmedQuery) return
+    const requestId = ++packageOptionsRequestId
     try {
       const limit = page * SEARCH_PAGE_SIZE
       const result = await window.electronAPI.npm.search(trimmedQuery, limit + 1)
+      if (requestId !== packageOptionsRequestId) return
       const packages = uniqueByName(result)
       const visiblePackages = packages.slice(0, limit)
       const downloads = await loadSearchDownloads(visiblePackages)
+      if (requestId !== packageOptionsRequestId) return
       const hasMore = packages.length > visiblePackages.length
       setPackageSearchQuery(trimmedQuery)
       setPackageSearchPage(page)
       setPackageSearchHasMore(hasMore)
-      setPackageOptions(buildPackageOptions(visiblePackages, downloads))
+      setPackageOptions(buildPackageOptions(visiblePackages, downloads, t))
     } catch {
+      if (requestId !== packageOptionsRequestId) return
       setPackageOptions([])
       setPackageSearchHasMore(false)
     }
@@ -189,7 +235,9 @@ const GlobalPage: React.FC = () => {
     const rawName = String(packageName)
     const versionMark = rawName.startsWith('@') ? rawName.indexOf('@', 1) : rawName.indexOf('@')
     const name = versionMark > 0 ? rawName.slice(0, versionMark) : rawName
+    const requestId = ++installVersionsRequestId
     const metadata = await window.electronAPI.npm.getVersionMetadata(name)
+    if (requestId !== installVersionsRequestId || installForm.getFieldValue('package') !== packageName) return
     setInstallVersionMetadata(metadata)
     setInstallVersionPage(1)
     const options = buildInstallVersionOptions(metadata, installVersionFilter, 1)
@@ -228,6 +276,7 @@ const GlobalPage: React.FC = () => {
   }
   
   const handleShowVersions = async (pkg: PackageInfo) => {
+    const requestId = ++versionDialogRequestId
     setSelectedPackage(pkg)
     setVersionMetadata(null)
     setVersions([])
@@ -235,10 +284,12 @@ const GlobalPage: React.FC = () => {
     setPrereleaseVersionPage(1)
     try {
       const metadata = await window.electronAPI.npm.getVersionMetadata(pkg.name)
+      if (requestId !== versionDialogRequestId) return
       setVersionMetadata(metadata)
       setVersions(metadata.versions.map((version) => version.version))
       setVersionVisible(true)
     } catch (error: any) {
+      if (requestId !== versionDialogRequestId) return
       addNotification({
         type: 'error',
         message: '获取版本列表失败',
@@ -278,7 +329,7 @@ const GlobalPage: React.FC = () => {
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '打开路径失败',
+        message: t('npm.openPathFailed'),
         description: error.message
       })
     }
@@ -407,8 +458,8 @@ const GlobalPage: React.FC = () => {
 
           addNotification({
             type: successCount > 0 ? 'success' : 'error',
-            message: '批量卸载完成',
-            description: `成功: ${successCount}, 失败: ${failCount}`
+            message: t('npm.batchUninstallComplete'),
+            description: t('npm.batchResult', { succeeded: successCount, failed: failCount })
           })
 
           setSelectedRowKeys([])
@@ -416,7 +467,7 @@ const GlobalPage: React.FC = () => {
         } catch (error: any) {
           addNotification({
             type: 'error',
-            message: '批量卸载失败',
+            message: t('npm.batchUninstallFailed'),
             description: error.message
           })
         } finally {
@@ -458,7 +509,7 @@ const GlobalPage: React.FC = () => {
 
   const columns = [
     {
-      title: '包名',
+      title: t('package.columnName'),
       dataIndex: 'name',
       key: 'name',
       width: 200,
@@ -466,7 +517,7 @@ const GlobalPage: React.FC = () => {
         <Space>
           <span className={styles.pkgName}>{text}</span>
           {record.outdated && (
-            <Tooltip title="有新版本可用">
+            <Tooltip title={t('package.updateAvailable')}>
               <WarningOutlined style={{ color: '#faad14' }} />
             </Tooltip>
           )}
@@ -474,35 +525,35 @@ const GlobalPage: React.FC = () => {
       )
     },
     {
-      title: '描述',
+      title: t('common.description'),
       dataIndex: 'description',
       key: 'description',
       ellipsis: true,
       render: (text: string) => text || '-'
     },
     {
-      title: '当前版本',
+      title: t('common.currentVersion'),
       dataIndex: 'version',
       key: 'version',
       width: 120,
       render: (text: string) => <Tag>v{text}</Tag>
     },
     {
-      title: '最新版本',
+      title: t('npm.columnLatestVersion'),
       dataIndex: 'latest',
       key: 'latest',
       width: 120,
-      render: (text: string, record: PackageInfo) => 
+      render: (text: string, record: PackageInfo) =>
         text ? (
           <Space>
             <Tag color={text !== record.version ? 'blue' : 'green'}>
               v{text}
             </Tag>
             {text !== record.version && (
-              <Tooltip title="查看更新日志">
-                <Button 
-                  size="small" 
-                  type="link" 
+              <Tooltip title={t('npm.viewChangelog')}>
+                <Button
+                  size="small"
+                  type="link"
                   icon={<HistoryOutlined />}
                   onClick={() => handleViewChangelog(record.name)}
                 />
@@ -512,23 +563,23 @@ const GlobalPage: React.FC = () => {
         ) : '-'
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'action',
       width: 150,
       render: (_: any, record: PackageInfo) => (
         <Space>
           {record.outdated && (
-            <Tooltip title="更新">
+            <Tooltip title={t('common.update')}>
               <Button size="small" icon={<SyncOutlined />} onClick={() => handleUpdate(record.name)} />
             </Tooltip>
           )}
           <Dropdown menu={{
             items: [
-              { key: 'detail', label: '查看详情', icon: <InfoCircleOutlined /> },
-              { key: 'version', label: '切换版本', icon: <SwapOutlined /> },
-              { key: 'open', label: '打开文件路径', icon: <FolderFilled /> },
-              { key: 'changelog', label: '查看更新日志', icon: <HistoryOutlined /> },
-              { key: 'uninstall', label: '卸载', icon: <ReloadOutlined />, danger: true }
+              { key: 'detail', label: t('package.viewDetail'), icon: <InfoCircleOutlined /> },
+              { key: 'version', label: t('npm.switchVersion'), icon: <SwapOutlined /> },
+              { key: 'open', label: t('npm.openFilePath'), icon: <FolderFilled /> },
+              { key: 'changelog', label: t('npm.viewChangelog'), icon: <HistoryOutlined /> },
+              { key: 'uninstall', label: t('package.uninstall'), icon: <ReloadOutlined />, danger: true }
             ],
             onClick: ({ key }) => {
               if (key === 'detail') {
@@ -542,84 +593,84 @@ const GlobalPage: React.FC = () => {
                 handleViewChangelog(record.name)
               } else if (key === 'uninstall') {
                 localizedModal.confirm({
-                  title: '确认卸载',
-                  content: `确定要卸载 ${record.name} 吗？`,
+                  title: t('npm.confirmUninstallTitle'),
+                  content: t('npm.confirmUninstall', { name: record.name }),
                   onOk: () => handleUninstall(record.name)
                 })
               }
             }
           }}>
-            <Button size="small">更多</Button>
+            <Button size="small">{t('npm.more')}</Button>
           </Dropdown>
         </Space>
       )
     }
   ]
-  
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h2 className={styles.title}>全局依赖</h2>
+        <h2 className={styles.title}>{t('npm.globalDependenciesTitle')}</h2>
         <div className={styles.actions}>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setInstallVisible(true)}>
-            全局安装包
+            {t('npm.installGlobalPackage')}
           </Button>
           <Button icon={<CheckCircleOutlined />} onClick={handleCheckAllOutdated} loading={checkingAll}>
-            检查更新
+            {t('npm.checkUpdates')}
           </Button>
-          <Button 
-            icon={<SyncOutlined />} 
+          <Button
+            icon={<SyncOutlined />}
             onClick={handleUpdateSelected}
             loading={updatingSelected}
             disabled={selectedRowKeys.length === 0}
             type={selectedRowKeys.length > 0 ? 'primary' : 'default'}
           >
-            更新选中 ({selectedRowKeys.length})
+            {t('package.updateSelected', { count: selectedRowKeys.length })}
           </Button>
-          <Button 
+          <Button
             danger
-            icon={<ReloadOutlined />} 
+            icon={<ReloadOutlined />}
             onClick={handleUninstallSelected}
             loading={uninstallingSelected}
             disabled={selectedRowKeys.length === 0}
           >
-            卸载选中 ({selectedRowKeys.length})
+            {t('npm.uninstallSelected', { count: selectedRowKeys.length })}
           </Button>
           <Button icon={<SyncOutlined />} onClick={handleUpdateAll}>
-            更新全部
+            {t('common.updateAll')}
           </Button>
-          <Button 
-            icon={<ApartmentOutlined />} 
+          <Button
+            icon={<ApartmentOutlined />}
             onClick={() => setDepTreeVisible(true)}
           >
-            依赖树
+            {t('npm.dependencyTree')}
           </Button>
           <Button icon={<SecurityScanOutlined />} onClick={() => setAuditVisible(true)}>
-            安全审计
+            {t('common.securityAudit')}
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading}>
-            刷新
+          <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={globalLoading}>
+            {t('common.refresh')}
           </Button>
         </div>
       </div>
-      
+
       <Descriptions size="small" column={1} bordered style={{ marginBottom: 16 }}>
-        <Descriptions.Item label="全局前缀">
+        <Descriptions.Item label={t('npm.globalPrefix')}>
           <Space>
             <span>{globalPrefix || '-'}</span>
             {globalPrefix && (
               <Button size="small" icon={<FolderOpenOutlined />} onClick={() => window.electronAPI.system.openPath(globalPrefix)}>
-                打开
+                {t('common.open')}
               </Button>
             )}
           </Space>
         </Descriptions.Item>
-        <Descriptions.Item label="npm 缓存">
+        <Descriptions.Item label={t('npm.cachePath')}>
           <Space>
             <span>{cachePath || '-'}</span>
             {cachePath && (
               <Button size="small" icon={<FolderOpenOutlined />} onClick={() => window.electronAPI.system.openPath(cachePath)}>
-                打开
+                {t('common.open')}
               </Button>
             )}
           </Space>
@@ -627,11 +678,11 @@ const GlobalPage: React.FC = () => {
       </Descriptions>
 
       <div className={styles.content}>
-        <Spin spinning={loading}>
+        <Spin spinning={globalLoading}>
           {globalPackages.length === 0 ? (
-            <Empty description="暂无全局依赖" />
+            <Empty description={t('npm.noGlobalDependencies')} />
           ) : (
-            <Table 
+            <Table
               dataSource={globalPackages}
               columns={columns}
               rowKey="name"
@@ -642,40 +693,42 @@ const GlobalPage: React.FC = () => {
           )}
         </Spin>
       </div>
-      
+
       <Modal
-        title="全局安装包"
+        title={t('npm.installGlobalPackage')}
         open={installVisible}
         onCancel={() => setInstallVisible(false)}
         onOk={() => installForm.submit()}
-        okText="安装"
-        cancelText="取消"
+        okText={t('npm.install')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ disabled: mutating || globalLoading }}
       forceRender
       >
         <Form form={installForm} onFinish={handleInstall} layout="vertical">
-          <Form.Item name="package" label="包名" rules={[{ required: true, message: '请输入包名' }]}>
+          <Form.Item name="package" label={t('package.columnName')} rules={[{ required: true, message: t('npm.enterPackageName') }]}>
             <AutoComplete
               options={packageOptions}
               onSearch={searchInstallPackages}
               onPopupScroll={handlePackagePopupScroll}
-              popupRender={(menu) => renderPagedPopup(menu, packageSearchHasMore, packageSearchLoadingMore, SEARCH_PAGE_SIZE)}
+              popupRender={(menu) => renderPagedPopup(t, menu, packageSearchHasMore, packageSearchLoadingMore, SEARCH_PAGE_SIZE)}
               onChange={() => {
                 setInstallVersionMetadata(null)
                 setInstallVersionOptions([])
                 installForm.setFieldValue('version', undefined)
               }}
-              placeholder="例如: typescript"
+              placeholder={t('npm.exampleTypescript')}
             />
           </Form.Item>
-          <Form.Item label="版本（可选）">
+          <Form.Item label={t('npm.versionOptional')}>
             <Space.Compact style={{ width: '100%' }}>
               <Form.Item name="version" noStyle>
                 <AutoComplete
                   options={installVersionOptions}
-                  placeholder="默认 latest，稳定版优先；可加载更多或预览版"
+                  placeholder={t('npm.versionPlaceholder')}
                   style={{ width: '100%' }}
                   onPopupScroll={handleVersionPopupScroll}
                   popupRender={(menu) => renderPagedPopup(
+                    t,
                     menu,
                     !!installVersionMetadata && versionsForFilter(installVersionMetadata, installVersionFilter).length > installVersionPage * VERSION_PAGE_SIZE,
                     false,
@@ -688,26 +741,29 @@ const GlobalPage: React.FC = () => {
                 onChange={handleInstallVersionFilterChange}
                 style={{ width: 120 }}
                 options={[
-                  { value: 'stable', label: '稳定版' },
-                  { value: 'prerelease', label: '预览版' },
-                  { value: 'all', label: '全部' }
+                  { value: 'stable', label: t('npm.stable') },
+                  { value: 'prerelease', label: t('npm.prerelease') },
+                  { value: 'all', label: t('npm.all') }
                 ]}
               />
-              <Button onClick={loadInstallVersions}>获取版本</Button>
+              <Button onClick={loadInstallVersions}>{t('npm.loadVersions')}</Button>
             </Space.Compact>
             {installVersionMetadata && (
               <Space className={styles.installVersionActions} wrap>
-                <Tag color="green">稳定版 {installVersionMetadata.stable.length}</Tag>
-                <Tag color="gold">预览版 {installVersionMetadata.prerelease.length}</Tag>
-                <Tag>{versionFilterLabel(installVersionFilter)}显示 {Math.min(versionsForFilter(installVersionMetadata, installVersionFilter).length, installVersionPage * VERSION_PAGE_SIZE)}</Tag>
+                <Tag color="green">{t('npm.stableCount', { count: installVersionMetadata.stable.length })}</Tag>
+                <Tag color="gold">{t('npm.prereleaseCount', { count: installVersionMetadata.prerelease.length })}</Tag>
+                <Tag>{t('npm.filterShowing', {
+                  filter: versionFilterLabel(t, installVersionFilter),
+                  count: Math.min(versionsForFilter(installVersionMetadata, installVersionFilter).length, installVersionPage * VERSION_PAGE_SIZE)
+                })}</Tag>
               </Space>
             )}
           </Form.Item>
         </Form>
       </Modal>
-      
+
       <Modal
-        title={`切换版本 - ${selectedPackage?.name}`}
+        title={t('npm.switchVersionTitle', { name: selectedPackage?.name ?? '' })}
         open={versionVisible}
         onCancel={() => setVersionVisible(false)}
         footer={null}
@@ -715,7 +771,7 @@ const GlobalPage: React.FC = () => {
       >
         <div className={styles.versionList}>
           <p style={{ marginBottom: 12, color: '#999' }}>
-            当前版本: <Tag color="blue">{selectedPackage?.version}</Tag>
+            {t('package.currentVersionLabel')} <Tag color="blue">{selectedPackage?.version}</Tag>
           </p>
           <Spin spinning={versions.length === 0 && !versionMetadata}>
             <NpmVersionPicker
@@ -763,7 +819,7 @@ const GlobalPage: React.FC = () => {
 
 export default GlobalPage
 
-function uniqueByName(packages: any[]): any[] {
+function uniqueByName(packages: PackageInfo[]): PackageInfo[] {
   const seen = new Set<string>()
   return packages.filter((pkg) => {
     const key = String(pkg.name || '').toLowerCase()
@@ -778,14 +834,17 @@ function buildInstallVersionOptions(metadata: NpmVersionMetadata, filter: Versio
   return toVersionOptions(versions, page)
 }
 
-function buildPackageOptions(packages: any[], downloads: Record<string, number>) {
-  return packages.map((pkg: any) => ({
+// Search results optionally carry download stats that stored PackageInfo lacks.
+type SearchPackage = PackageInfo & { downloads?: number }
+
+function buildPackageOptions(packages: SearchPackage[], downloads: Record<string, number>, t: LabelTranslator) {
+  return packages.map((pkg) => ({
     value: pkg.name,
-    label: renderPackageOption(pkg, downloads[pkg.name] || pkg.downloads || 0)
+    label: renderPackageOption(t, pkg, downloads[pkg.name] || pkg.downloads || 0)
   }))
 }
 
-async function loadSearchDownloads(packages: any[]): Promise<Record<string, number>> {
+async function loadSearchDownloads(packages: SearchPackage[]): Promise<Record<string, number>> {
   const entries = await Promise.all(packages.map(async (pkg) => {
     if (pkg.downloads) return [pkg.name, pkg.downloads] as const
     try {
@@ -798,7 +857,7 @@ async function loadSearchDownloads(packages: any[]): Promise<Record<string, numb
   return Object.fromEntries(entries)
 }
 
-function renderPackageOption(pkg: any, downloads: number): React.ReactNode {
+function renderPackageOption(t: LabelTranslator, pkg: any, downloads: number): React.ReactNode {
   return (
     <div className={styles.packageOption}>
       <Space size={6} className={styles.packageOptionHeader}>
@@ -808,28 +867,28 @@ function renderPackageOption(pkg: any, downloads: number): React.ReactNode {
           <Tag icon={<CloudDownloadOutlined />}>{formatCompactNumber(downloads)}</Tag>
         )}
       </Space>
-      <span className={styles.packageOptionDesc}>{cleanPackageSummary(pkg.description) || '暂无描述'}</span>
+      <span className={styles.packageOptionDesc}>{cleanPackageSummary(pkg.description) || t('common.noDescription')}</span>
     </div>
   )
 }
 
-function versionFilterLabel(filter: VersionChannelFilter): string {
-  if (filter === 'stable') return '稳定版'
-  if (filter === 'prerelease') return '预览版'
-  return '全部版本'
+function versionFilterLabel(t: LabelTranslator, filter: VersionChannelFilter): string {
+  if (filter === 'stable') return t('npm.stable')
+  if (filter === 'prerelease') return t('npm.prerelease')
+  return t('npm.allVersions')
 }
 
 function isNearPopupBottom(element: HTMLDivElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight < 48
 }
 
-function renderPagedPopup(menu: React.ReactElement, hasMore: boolean, loading: boolean, pageSize: number): React.ReactElement {
+function renderPagedPopup(t: LabelTranslator, menu: React.ReactElement, hasMore: boolean, loading: boolean, pageSize: number): React.ReactElement {
   return (
     <>
       {menu}
       {(hasMore || loading) && (
         <div className={styles.loadMoreOption}>
-          {loading ? '正在加载更多...' : `滑动到底部自动加载，每次 ${pageSize} 个`}
+          {loading ? t('npm.loadingMore') : t('npm.scrollHint', { count: pageSize })}
         </div>
       )}
     </>

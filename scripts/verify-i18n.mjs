@@ -1,4 +1,5 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { CJK_CHARACTERS, CJK_CLASS_ID } from './cjk-characters.mjs'
 
@@ -32,7 +33,10 @@ import { CJK_CHARACTERS, CJK_CLASS_ID } from './cjk-characters.mjs'
  */
 
 const DICTIONARIES = ['en-US', 'zh-CN']
-const SOURCE = join('src', 'i18n', 'dictionaries.ts')
+const DICTIONARY_FILES = {
+  'en-US': join('src', 'i18n', 'dictionaries', 'en-US.ts'),
+  'zh-CN': join('src', 'i18n', 'dictionaries', 'zh-CN.ts')
+}
 // The i18n modules legitimately hold Chinese source text (the zh-CN dictionary and the
 // literal fallback map), so the ratchet below skips the whole directory.
 const I18N_DIR = 'src/i18n'
@@ -55,19 +59,19 @@ function bail(message) {
   process.exit(1)
 }
 
-function parseDictionary(source, language) {
-  const start = source.indexOf(`'${language}': {`)
-  assert(start >= 0, `${SOURCE} does not define the ${language} dictionary`)
+function parseDictionary(source, file, language) {
+  const start = source.indexOf('= {')
+  assert(start >= 0, `${file} does not define the ${language} dictionary`)
   if (start < 0) return { entries: new Map(), duplicates: [] }
 
-  const end = source.indexOf('\n  }', start)
+  const end = source.lastIndexOf('\n}')
   assert(end > start, `the ${language} dictionary is not terminated as expected`)
   if (end <= start) return { entries: new Map(), duplicates: [] }
 
   const entries = new Map()
   const duplicates = []
   for (const line of source.slice(start, end).split('\n')) {
-    const match = /^ {4}'([^']+)': (.*?),?$/.exec(line)
+    const match = /^ {2}'([^']+)': (.*?),?$/.exec(line)
     if (!match) continue
     const [, key, value] = match
     if (entries.has(key)) duplicates.push(key)
@@ -76,8 +80,11 @@ function parseDictionary(source, language) {
   return { entries, duplicates }
 }
 
-const source = await readFile(SOURCE, 'utf-8')
-const parsed = new Map(DICTIONARIES.map((language) => [language, parseDictionary(source, language)]))
+const parsed = new Map(DICTIONARIES.map((language) => {
+  const file = DICTIONARY_FILES[language]
+  const source = readFileSync(file, 'utf-8')
+  return [language, parseDictionary(source, file, language)]
+}))
 
 for (const [language, { entries, duplicates }] of parsed) {
   assert(entries.size > 0, `the ${language} dictionary is empty`)
@@ -132,7 +139,7 @@ const toKey = (file) => file.split(sep).join('/')
 
 const unknownKeys = new Map()
 for (const file of rendererFiles) {
-  if (toKey(file) === toKey(SOURCE)) continue
+  if (toKey(file).startsWith(`${I18N_DIR}/`)) continue
   const contents = await readFile(file, 'utf-8')
   for (const match of contents.matchAll(/\bt\(\s*'([^']+)'\s*\)/g)) {
     const key = match[1]
@@ -149,7 +156,7 @@ assert(
 const current = new Map()
 for (const file of rendererFiles) {
   const key = toKey(file)
-  if (key === toKey(SOURCE) || key === toKey(join('src', 'i18n.ts')) || key.startsWith(`${I18N_DIR}/`)) continue
+  if (key === toKey(join('src', 'i18n.ts')) || key.startsWith(`${I18N_DIR}/`)) continue
   // Tests are excluded. A test that pins a localized string has to contain that
   // string, so counting it as untranslated copy is a category error: this ratchet
   // measures product copy. Asserting the real Chinese is what makes such a test

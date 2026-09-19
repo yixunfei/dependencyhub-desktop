@@ -49,6 +49,10 @@ const quiet = optionTokens.has('--quiet') || optionTokens.has('silent')
 const allowUnsigned = optionTokens.has('--allow-unsigned') || optionTokens.has('allow-unsigned')
 
 const result = await verify(projectPath)
+// Exit status deliberately tracks the envelope verification only: a valid
+// signature over an envelope whose source reports are incomplete still
+// returns 0 and keeps `status: blocked` for reviewers. Full release gating on
+// blocked evidence belongs to verify-release-trust.mjs, which exits non-zero.
 const strictFailure = ['mismatch', 'invalid'].includes(result.verificationStatus) ||
   (!allowUnsigned && !optional && ['not-signed', 'unsigned', 'key-unavailable'].includes(result.verificationStatus))
 const optionalSkip = optional && result.verificationStatus === 'not-signed'
@@ -109,12 +113,24 @@ async function verify(root) {
   let keyId
 
   if (!signatureResult.value) {
-    findings.push({
-      id: 'signature:not-signed',
-      severity: optional ? 'warning' : 'blocked',
-      summary: 'No release-signature.json envelope has been exported.',
-      evidence: [signatureResult.error || 'missing']
-    })
+    if (signatureResult.missing) {
+      findings.push({
+        id: 'signature:not-signed',
+        severity: optional ? 'warning' : 'blocked',
+        summary: 'No release-signature.json envelope has been exported.',
+        evidence: [signatureResult.error || 'missing']
+      })
+    } else {
+      // A present-but-unreadable envelope is corruption, not "not signed yet":
+      // --optional only covers the genuinely absent file.
+      verificationStatus = 'invalid'
+      findings.push({
+        id: 'signature:invalid',
+        severity: 'blocked',
+        summary: 'Existing release-signature.json cannot be parsed.',
+        evidence: [signatureResult.error || 'unreadable']
+      })
+    }
   } else {
     const existing = signatureResult.value
     const signature = existing.signature
@@ -222,7 +238,12 @@ async function readJson(path) {
   try {
     return { value: JSON.parse(await readFile(path, 'utf-8')) }
   } catch (error) {
-    return { error: error?.message || String(error) }
+    // Distinguish "not exported yet" from "corrupted": only ENOENT may be
+    // treated as unsigned by the --optional mode.
+    return {
+      error: error?.message || String(error),
+      missing: error?.code === 'ENOENT'
+    }
   }
 }
 

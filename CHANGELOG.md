@@ -72,6 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   close and swallows the rest of the file, or strips comments first and corrupts
   every string containing `//`. Every bucket reconciles against the per-file
   totals the ratchet uses, so a gap in the parser cannot silently under-report.
+- The extended ecosystem page's operation list, dependencies table, command runner, and
+  standard operation plan resolve their copy through the dictionary. 52 keys added (45
+  `extended.*`, 3 `status.*`, and 4 shared), and `extended.opInstall`/`extended.opTree`
+  were not added at all: the existing `common.addDependency` and
+  `package.tabDependencyTree` already say exactly that.
 
 ### Changed
 - The Flutter manager page resolves all of its copy through the dictionary. It held the
@@ -144,6 +149,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/verify-framework.mjs` asserts the nine health workflow groups by
   dictionary key plus dictionary value rather than by source literal, so the
   grouping guarantee survives localization.
+- `ExtendedEcosystems.tsx` is clear of the ratchet: 468 hardcoded CJK characters removed
+  (5,830 -> 5,362), 14 files remain, and the user-visible share drops from 2,520 to 1,695.
+  The page's own select-directory button is gone as well - `ProjectPathBar` already renders
+  one, and the page's private handler duplicated the shared one down to its notification,
+  which already had a key. That is the same defect the health center had, and removing it
+  pays for `const t = useT()` inside a function that sits at its recorded budget.
+- `health.selectProjectFirst` and `toolchain.projectSwitched` were feature-scoped names for
+  generic messages. They are `common.selectProjectFirst` (34 call sites) and
+  `common.workdirSwitched` now, so the extended ecosystem page does not add a third copy.
 
 ### Fixed
 - `health.notDetected` rendered 未识别 ("unrecognized") where the English said "Not
@@ -193,6 +207,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HealthCenter.test.tsx`, `HealthReportFailures.test.tsx`, and
   `reportLoading.test.tsx` asserted Chinese UI text, which passed only because the
   copy was hardcoded. They pin the language and assert the dictionary value now.
+- `implementationStatusText` returned hardcoded 可用 / 预览 / 规划中, and both of its
+  callers render it to the user: the extended ecosystem page header and the workspace
+  landing page's manager cards. An English install therefore showed Chinese status tags on
+  the landing page. It takes a translator and resolves `status.*` at render.
+- `OPERATION_OPTIONS` in the extended ecosystem page carried resolved labels at module
+  scope, so it could not be translated at all. It carries `labelKey: TranslationKey` and is
+  mapped through `t` in a memo, which also means a language switch re-renders it.
 ## [1.0.3] - 2026-09-17
 
 ### Fixed

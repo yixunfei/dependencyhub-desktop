@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AutoComplete, Button, Collapse, Descriptions, Empty, Form, Input, Modal, Popconfirm, Segmented, Select, Space, Spin, Switch, Table, Tag, Tooltip } from 'antd'
 import {
   ApartmentOutlined,
@@ -102,6 +102,14 @@ const PipManagerPage: React.FC = () => {
   const [pipConfigForm] = Form.useForm()
   const [pipMirrorForm] = Form.useForm()
   const [pipPublishForm] = Form.useForm()
+  // Bumped by the load-triggering effects: concurrent loads capture it read-only
+  // so a stale reply from a previous currentPath/scope cannot overwrite new data.
+  const loadEpochRef = useRef(0)
+  const projectInfoEpochRef = useRef(0)
+  // Version loads are keyed to the package being requested; a stale reply must
+  // not fill another package's version list (or auto-fill its first version
+  // into the form, which would install the wrong package/version pair).
+  const versionRequestRef = useRef(0)
 
   const pipRows = useMemo<PipPackageRow[]>(() => {
     return pipPackages.map((pkg) => ({
@@ -128,6 +136,7 @@ const PipManagerPage: React.FC = () => {
   useDependencyHealthReminder('pip', currentPath, Boolean(currentPath && pipRows.length > 0))
 
   useEffect(() => {
+    projectInfoEpochRef.current += 1
     void loadProjectInfo()
     void loadPipCredentials()
   }, [currentPath])
@@ -141,6 +150,7 @@ const PipManagerPage: React.FC = () => {
   }
 
   useEffect(() => {
+    loadEpochRef.current += 1
     void loadPipPackages()
     void loadPipTooling()
   }, [currentPath, pipScope, pipConfigScope, breakSystemPackages])
@@ -150,10 +160,14 @@ const PipManagerPage: React.FC = () => {
       setProjectInfo(null)
       return
     }
+    const epoch = ++projectInfoEpochRef.current
 
     try {
-      setProjectInfo(await window.electronAPI.project.detect(currentPath))
+      const info = await window.electronAPI.project.detect(currentPath)
+      if (epoch !== projectInfoEpochRef.current) return
+      setProjectInfo(info)
     } catch {
+      if (epoch !== projectInfoEpochRef.current) return
       setProjectInfo(null)
     }
   }
@@ -165,6 +179,7 @@ const PipManagerPage: React.FC = () => {
   })
 
   const loadPipPackages = async () => {
+    const epoch = loadEpochRef.current
     setPipLoading(true)
     try {
       const options = getPipOptions()
@@ -172,9 +187,11 @@ const PipManagerPage: React.FC = () => {
         window.electronAPI.pip.list(options),
         window.electronAPI.pip.outdated(options)
       ])
+      if (epoch !== loadEpochRef.current) return
       setPipPackages(packages)
       setPipOutdated(Object.fromEntries(outdated.map((pkg) => [normalizePackageKey(pkg.name), pkg])))
     } catch (error: any) {
+      if (epoch !== loadEpochRef.current) return
       setPipPackages([])
       setPipOutdated({})
       addNotification({
@@ -183,19 +200,22 @@ const PipManagerPage: React.FC = () => {
         description: error.message
       })
     } finally {
-      setPipLoading(false)
+      if (epoch === loadEpochRef.current) setPipLoading(false)
     }
   }
 
   const loadPipTooling = async () => {
+    const epoch = loadEpochRef.current
     try {
       const [config, cacheDir] = await Promise.all([
         window.electronAPI.pip.configList(pipConfigScope),
         window.electronAPI.pip.cacheDir()
       ])
+      if (epoch !== loadEpochRef.current) return
       setPipConfig(config)
       setPipCacheDir(cacheDir)
     } catch {
+      if (epoch !== loadEpochRef.current) return
       setPipConfig([])
       setPipCacheDir('')
     }
@@ -559,31 +579,37 @@ const PipManagerPage: React.FC = () => {
   const loadPipVersions = async () => {
     const packageName = pipForm.getFieldValue('packageName')
     if (!packageName) return
+    const requestId = ++versionRequestRef.current
     setPipLoading(true)
     try {
       const versions = await window.electronAPI.pip.versions(packageName)
+      if (requestId !== versionRequestRef.current || pipForm.getFieldValue('packageName') !== packageName) return
       setPipVersionOptions(versions.map((version) => ({ value: version, label: version })))
       if (versions.length > 0) {
         pipForm.setFieldValue('version', versions[0])
       }
     } catch (error: any) {
+      if (requestId !== versionRequestRef.current) return
       addNotification({ type: 'error', message: '获取 pip 版本失败', description: error.message })
     } finally {
-      setPipLoading(false)
+      if (requestId === versionRequestRef.current) setPipLoading(false)
     }
   }
 
   const showPipVersions = async (pkg: PipPackageInfo) => {
+    const requestId = ++versionRequestRef.current
     setPipSelectedPackage(pkg)
     setPipLoading(true)
     try {
       const versions = await window.electronAPI.pip.versions(pkg.name)
+      if (requestId !== versionRequestRef.current) return
       setPipVersionOptions(versions.map((version) => ({ value: version, label: version })))
       setPipVersionVisible(true)
     } catch (error: any) {
+      if (requestId !== versionRequestRef.current) return
       addNotification({ type: 'error', message: '获取 pip 版本失败', description: error.message })
     } finally {
-      setPipLoading(false)
+      if (requestId === versionRequestRef.current) setPipLoading(false)
     }
   }
 

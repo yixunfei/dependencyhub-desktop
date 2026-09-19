@@ -70,28 +70,33 @@ async function readTrustPolicy(root) {
       warningChecks: checks.filter((check) => check.status === 'warning')
     }
   } catch (error) {
+    // Only a genuinely absent file may be waived by --optional; a corrupted
+    // policy is a blocked finding like any other unreadable evidence.
+    const missing = error?.code === 'ENOENT'
+    const softSkip = missing && optional
+    const title = missing ? 'Release trust policy is missing' : 'Release trust policy cannot be parsed'
     return {
       generatedAt: new Date().toISOString(),
       projectPath: root,
       path,
-      status: optional ? 'warning' : 'blocked',
-      missing: true,
+      status: softSkip ? 'warning' : 'blocked',
+      missing,
       checkCount: 0,
       passedCheckCount: 0,
-      warningCheckCount: optional ? 1 : 0,
-      blockedCheckCount: optional ? 0 : 1,
+      warningCheckCount: softSkip ? 1 : 0,
+      blockedCheckCount: softSkip ? 0 : 1,
       signatureVerified: false,
       signed: false,
-      blockedChecks: optional ? [] : [{
+      blockedChecks: softSkip ? [] : [{
         id: 'release-trust-policy:missing',
         status: 'blocked',
-        title: 'Release trust policy is missing',
+        title,
         summary: error?.message || String(error)
       }],
-      warningChecks: optional ? [{
+      warningChecks: softSkip ? [{
         id: 'release-trust-policy:missing',
         status: 'warning',
-        title: 'Release trust policy is missing',
+        title,
         summary: error?.message || String(error)
       }] : []
     }

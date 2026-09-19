@@ -502,7 +502,7 @@ export class SupplyChainService {
   }
 
   async createSnapshot(cwd: string, options: SnapshotOptions = {}): Promise<SnapshotResult> {
-    const id = timestampId()
+    const id = `${timestampId()}-${randomSuffix()}`
     const files = await readSupplyChainFiles(cwd)
     const snapshot = {
       id,
@@ -2417,6 +2417,8 @@ function sha256(content: string): string {
 function safeSpdxId(value: string): string {
   return value.replace(/[^A-Za-z0-9.-]/g, '-')
 }
+
+function randomSuffix(): string { return Math.random().toString(36).slice(2, 8) }
 
 function timestampId(): string {
   return new Date().toISOString().replace(/[:.]/g, '-')

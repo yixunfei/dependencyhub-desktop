@@ -258,7 +258,7 @@ function buildFindings(artifacts, errors, options) {
   if (errors['provenance-attestation']) {
     findings.push(finding({
       id: 'source:provenance-attestation',
-      severity: 'warning',
+      severity: options.optional ? 'warning' : 'blocked',
       title: 'Release provenance attestation is unavailable',
       summary: errors['provenance-attestation'],
       recommendation: 'Export release provenance so artifact digests can be cross-checked against source attestation.',

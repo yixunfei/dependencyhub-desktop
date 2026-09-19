@@ -4,6 +4,7 @@ import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { createLogId } from './commandLogger'
 import { commandEnv, decodeCommandChunk } from './encoding'
+import { terminateProcessTree } from './processTree'
 
 interface TerminalSession {
   id: string
@@ -28,11 +29,18 @@ export class TerminalService {
       cwd: workingDirectory,
       env: commandEnv({ TERM: process.env.TERM || 'xterm-256color' }),
       shell: false,
-      windowsHide: true
+      windowsHide: true,
+      // POSIX: become a process-group leader so kill() can terminate the shell
+      // together with every long-running child it spawned.
+      detached: process.platform !== 'win32'
     })
 
     const session: TerminalSession = { id, cwd: workingDirectory, child }
     this.sessions.set(id, session)
+
+    // A destroyed stdin (shell already exited but 'close' not yet delivered)
+    // must not surface as an uncaughtException and take down the main process.
+    child.stdin.on('error', () => undefined)
 
     child.stdout.on('data', (chunk) => {
       this.send('terminal:data', { id, data: decodeCommandChunk(chunk), stream: 'stdout' })
@@ -44,6 +52,13 @@ export class TerminalService {
 
     child.on('error', (error) => {
       this.send('terminal:data', { id, data: `${error.message}\n`, stream: 'stderr' })
+      // spawn ENOENT (missing shell / blocked by security software) may never
+      // be followed by 'close'; drop the dead session so the table cannot
+      // accumulate and write() reports a deterministic error.
+      if (this.sessions.get(id) === session) {
+        this.sessions.delete(id)
+        this.send('terminal:exit', { id, code: null })
+      }
     })
 
     child.on('close', (code) => {
@@ -59,19 +74,36 @@ export class TerminalService {
     if (!session || session.child.killed) {
       throw new Error('Terminal session is not available')
     }
-    session.child.stdin.write(data)
+    const stdin = session.child.stdin
+    if (stdin.destroyed || stdin.writableEnded) {
+      throw new Error('Terminal session is not available')
+    }
+    stdin.write(data, () => {
+      // Swallow late write errors (e.g. stream destroyed between check and write).
+    })
   }
 
-  kill(id: string): void {
+  async kill(id: string): Promise<void> {
     const session = this.sessions.get(id)
     if (!session) return
-    session.child.kill()
     this.sessions.delete(id)
+    try {
+      // Killing only the shell leaves `npm run dev` / `vite` grandchildren
+      // holding ports and files; terminate the whole tree instead.
+      await terminateProcessTree(session.child)
+    } catch (error) {
+      console.warn('Failed to terminate terminal process tree:', error)
+      try {
+        session.child.kill('SIGKILL')
+      } catch {
+        // Already gone.
+      }
+    }
   }
 
   killAll(): void {
-    for (const id of this.sessions.keys()) {
-      this.kill(id)
+    for (const id of [...this.sessions.keys()]) {
+      void this.kill(id).catch(() => undefined)
     }
   }
 
