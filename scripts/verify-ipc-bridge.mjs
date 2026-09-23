@@ -79,7 +79,12 @@ try {
   await new Promise((resolve, reject) => {
     const env = { ...process.env }
     delete env.ELECTRON_RUN_AS_NODE
-    const child = spawn(require('electron'), [main], { env, windowsHide: true, stdio: 'inherit' })
+    // Linux's zygote reads sandbox switches before the main script executes;
+    // app.commandLine.appendSwitch alone is too late on hosted runners.
+    const args = process.platform === 'linux'
+      ? ['--no-sandbox', '--disable-dev-shm-usage', main]
+      : [main]
+    const child = spawn(require('electron'), args, { env, windowsHide: true, stdio: 'inherit' })
     const timeout = setTimeout(() => {
       child.kill()
       reject(new Error('Electron IPC verification timed out'))
