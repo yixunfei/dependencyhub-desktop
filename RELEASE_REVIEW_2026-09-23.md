@@ -30,6 +30,10 @@
 - Windows x64 安装版/便携版构建成功；打包 GUI 烟测确认 index.html 页面启动。Electron IPC 验证通过。
 - 已跟踪文本的常见 GitHub token/私钥标记扫描未发现匹配（并非完整秘密检测证明）。
 
+## 跨平台 CI 复核
+
+首次远端 Windows CI 通过，Linux 在 hardening 的 cmd.exe 断言失败。根因是验证脚本对所有平台都要求 Windows 包装；生产代码只在 Windows 包装 .cmd/.bat，行为正确。验证已按平台检查：Windows 保留完整转义/真实 spawn 测试，非 Windows 检查命令及 argv 不经 cmd.exe 改写。修复后本地 hardening 68 项通过，提交后重跑双平台 CI。此修复仅涉及验证脚本与报告，不改变已构建的应用代码。
+
 ## 发布范围与限制
 
 - 发布 Windows x64 安装版、便携版、SHA-256 校验文件；本轮没有构建或实机验证 macOS/Linux 发行包。

@@ -251,6 +251,11 @@ async function testReportFailureVisibility() {
 // B2 — cmd.exe quoting keeps metacharacters literal and % expansion impossible.
 function testCmdArgumentQuoting() {
   const wrapped = resolveShellFreeCommand('npm.cmd', ['run', 't', '--', '--grep', 'a&b'])
+  if (process.platform !== 'win32') {
+    assert(wrapped.bin === 'npm.cmd', 'B2 non-Windows commands do not invoke cmd.exe')
+    assert(wrapped.args.at(-1) === 'a&b', 'B2 non-Windows argv remains literal without shell escaping')
+    return
+  }
   const command = wrapped.args[3]
   assert(wrapped.bin === 'cmd.exe', 'B2 .cmd entrypoints are wrapped through cmd.exe')
   assert(wrapped.windowsVerbatimArguments === true, 'B2 the cmd.exe wrapper declares verbatim argv passing')
