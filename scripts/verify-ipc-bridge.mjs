@@ -21,6 +21,9 @@ app.disableHardwareAcceleration()
 // network-service subprocesses; these switches keep the fixture loadable there.
 app.commandLine.appendSwitch('no-sandbox')
 app.commandLine.appendSwitch('disable-gpu')
+// Hosted Linux runners can restrict /dev/shm; keep the IPC fixture's shared
+// memory in the writable temporary directory without changing app settings.
+if (process.platform === 'linux') app.commandLine.appendSwitch('disable-dev-shm-usage')
 handleIpc('manager:execute', async () => {
   throw Object.assign(new Error('Fixture cancelled'), {
     failure: { category: 'cancelled', operationId: 'ipc-fixture', retryable: true },
