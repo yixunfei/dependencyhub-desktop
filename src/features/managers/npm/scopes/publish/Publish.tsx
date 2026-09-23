@@ -1,119 +1,189 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { Button, Card, Form, Input, Select, Alert, Descriptions, Tag, Space, Switch } from 'antd'
-import { FolderOpenOutlined, CloudUploadOutlined, CheckCircleOutlined, WarningOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button, Form } from 'antd'
+import type { FormInstance } from 'antd'
+import { FolderOpenOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../../../../stores/appStore'
+import { useT } from '../../../../../i18n'
 import { localizedMessage as message } from '../../../../../utils/localizedFeedback'
 import styles from './Publish.module.css'
+import PublishCheckCard from './PublishCheckCard'
+import PublishConfigCard from './PublishConfigCard'
+import type { CredentialOption, PackageJsonDocument, PublishCheckResult, PublishFormValues } from './publishTypes'
 
-const PublishPage: React.FC = () => {
-  const [projectPath, setProjectPath] = useState('')
-  const [checkResult, setCheckResult] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-  const [checking, setChecking] = useState(false)
-  const [form] = Form.useForm()
-  const [editMode, setEditMode] = useState(false)
-  const [packageJson, setPackageJson] = useState<any>(null)
-  const [saveLoading, setSaveLoading] = useState(false)
+const describeError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+/** Loads the npm credentials from the vault and maps them to Select options. */
+function useNpmCredentials() {
   const [credentials, setCredentials] = useState<CredentialMetadata[]>([])
-  
-  const addNotification = useAppStore((state) => state.addNotification)
-
-  const credentialOptions = useMemo(() => credentials.map((credential) => ({
-    value: credential.id,
-    label: `${credential.label} ${credential.secretPreview}`
-  })), [credentials])
-
-  const loadCredentials = async () => {
+  const loadCredentials = useCallback(async () => {
     try {
       setCredentials(await window.electronAPI.credentials.list({ managerId: 'npm' }))
     } catch {
       setCredentials([])
     }
-  }
+  }, [])
+  const credentialOptions = useMemo(() => credentials.map((credential) => ({
+    value: credential.id,
+    label: `${credential.label} ${credential.secretPreview}`
+  })), [credentials])
+  return { credentialOptions, loadCredentials }
+}
+
+/**
+ * Owns the selected project, the readiness check result, and the loaded
+ * package.json. Keeps the editor form fields in sync with the check result.
+ */
+export function usePackageCheck(form: FormInstance<PublishFormValues>) {
+  const requestId = useRef(0)
+  const [projectPath, setProjectPath] = useState('')
+  const [checkResult, setCheckResult] = useState<PublishCheckResult | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [packageJson, setPackageJson] = useState<PackageJsonDocument | null>(null)
+  const addNotification = useAppStore((state) => state.addNotification)
+  const t = useT()
 
   useEffect(() => {
-    void loadCredentials()
-  }, [])
-  
-  useEffect(() => {
-    if (projectPath && checkResult?.packageInfo) {
-      form.setFieldsValue({
-        name: checkResult.packageInfo.name,
-        version: checkResult.packageInfo.version,
-        description: checkResult.packageInfo.description || '',
-        license: checkResult.packageInfo.license || '',
-        author: typeof checkResult.packageInfo.author === 'string' 
-          ? checkResult.packageInfo.author 
-          : checkResult.packageInfo.author?.name || '',
-        homepage: checkResult.packageInfo.homepage || '',
-        repository: typeof checkResult.packageInfo.repository === 'string'
-          ? checkResult.packageInfo.repository
-          : checkResult.packageInfo.repository?.url || ''
-      })
-    }
-  }, [projectPath, checkResult])
-  
-  const handleSelectDirectory = async () => {
-    const path = await window.electronAPI.selectDirectory()
-    if (path) {
-      setProjectPath(path)
-      setCheckResult(null)
-      setEditMode(false)
-    }
+    if (!projectPath || !checkResult?.packageInfo) return
+    const info = checkResult.packageInfo
+    form.setFieldsValue({
+      name: info.name,
+      version: info.version,
+      description: info.description || '',
+      license: info.license || '',
+      author: typeof info.author === 'string' ? info.author : info.author?.name || '',
+      homepage: info.homepage || '',
+      repository: typeof info.repository === 'string' ? info.repository : info.repository?.url || ''
+    })
+  }, [projectPath, checkResult, form])
+
+  const selectProject = (path: string) => {
+    requestId.current += 1
+    setProjectPath(path)
+    setCheckResult(null)
+    setPackageJson(null)
+    setChecking(false)
+    form.resetFields()
   }
-  
+
   const handleCheck = async () => {
     if (!projectPath) {
-      message.warning('请先选择项目目录')
+      message.warning(t('npm.publish.selectDirFirst'))
       return
     }
-    
+    const currentRequest = ++requestId.current
     setChecking(true)
+    setCheckResult(null)
+    setPackageJson(null)
     try {
-      const result = await window.electronAPI.publish.check(projectPath)
+      const [result, document] = await Promise.all([
+        window.electronAPI.publish.check(projectPath),
+        window.electronAPI.project.readPackage(projectPath)
+      ])
+      if (currentRequest !== requestId.current) return
       setCheckResult(result)
-      
-      const pkg = await window.electronAPI.project.readPackage(projectPath)
-      setPackageJson(pkg)
-    } catch (error: any) {
+      setPackageJson(document)
+    } catch (error) {
+      if (currentRequest !== requestId.current) return
       addNotification({
         type: 'error',
-        message: '检查失败',
-        description: error.message
+        message: t('npm.publish.checkFailed'),
+        description: describeError(error)
       })
     } finally {
-      setChecking(false)
+      if (currentRequest === requestId.current) setChecking(false)
     }
   }
-  
-  const handlePublish = async (values: any) => {
-    if (!checkResult?.canPublish) {
-      message.error('请先检查项目并解决所有错误')
-      return
-    }
 
-    if (!values.version?.trim()) {
-      message.warning('请填写发布版本号')
+  /** Applies a package.json document written by the publish flow back to state. */
+  const applyWrittenPackage = (updatedPackage: PackageJsonDocument, version: string) => {
+    setPackageJson(updatedPackage)
+    setCheckResult((prev) => prev
+      ? { ...prev, packageInfo: prev.packageInfo ? { ...prev.packageInfo, version } : prev.packageInfo }
+      : prev)
+  }
+
+  return { projectPath, checkResult, checking, packageJson, selectProject, handleCheck, applyWrittenPackage }
+}
+
+/** Owns edit mode state and the save-package.json flow. */
+function usePackageEditor(deps: {
+  form: FormInstance<PublishFormValues>
+  packageJson: PackageJsonDocument | null
+  projectPath: string
+  onRecheck: () => Promise<void>
+}) {
+  const [editMode, setEditMode] = useState(false)
+  const [saveLoading, setSaveLoading] = useState(false)
+  const addNotification = useAppStore((state) => state.addNotification)
+  const t = useT()
+
+  const handleSavePackageJson = async () => {
+    setSaveLoading(true)
+    try {
+      const values = await deps.form.validateFields()
+      const updatedPackage = {
+        ...deps.packageJson,
+        name: values.name,
+        version: values.version,
+        description: values.description,
+        license: values.license,
+        author: values.author,
+        homepage: values.homepage,
+        repository: values.repository
+      }
+      await window.electronAPI.project.writePackage(deps.projectPath, updatedPackage)
+      addNotification({
+        type: 'success',
+        message: t('npm.publish.packageJsonUpdated')
+      })
+      setEditMode(false)
+      await deps.onRecheck()
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        message: t('npm.publish.saveFailed'),
+        description: describeError(error)
+      })
+    } finally {
+      setSaveLoading(false)
+    }
+  }
+
+  return { editMode, setEditMode, saveLoading, handleSavePackageJson }
+}
+
+/** Owns the submit-publish flow, including version write-back and credentials. */
+function usePackagePublisher(deps: {
+  checkResult: PublishCheckResult | null
+  packageJson: PackageJsonDocument | null
+  projectPath: string
+  applyWrittenPackage: (updatedPackage: PackageJsonDocument, version: string) => void
+  reloadCredentials: () => Promise<void>
+}) {
+  const [loading, setLoading] = useState(false)
+  const addNotification = useAppStore((state) => state.addNotification)
+  const t = useT()
+
+  const handlePublish = async (values: PublishFormValues) => {
+    if (!deps.checkResult?.canPublish) {
+      message.error(t('npm.publish.checkFirst'))
       return
     }
-    
+    if (!values.version?.trim()) {
+      message.warning(t('npm.publish.versionRequired'))
+      return
+    }
     setLoading(true)
     try {
       const publishVersion = values.version.trim()
-      if (packageJson && publishVersion !== checkResult.packageInfo.version) {
+      if (deps.packageJson && publishVersion !== deps.checkResult.packageInfo?.version) {
         const updatedPackage = {
-          ...packageJson,
+          ...deps.packageJson,
           version: publishVersion
         }
-        await window.electronAPI.project.writePackage(projectPath, updatedPackage)
-        setPackageJson(updatedPackage)
-        setCheckResult((prev: any) => prev ? {
-          ...prev,
-          packageInfo: {
-            ...prev.packageInfo,
-            version: publishVersion
-          }
-        } : prev)
+        await window.electronAPI.project.writePackage(deps.projectPath, updatedPackage)
+        deps.applyWrittenPackage(updatedPackage, publishVersion)
       }
 
       let credentialId = values.credentialId
@@ -128,11 +198,11 @@ const PublishPage: React.FC = () => {
           url: values.registry
         })
         credentialId = credential.id
-        await loadCredentials()
+        await deps.reloadCredentials()
       }
 
       await window.electronAPI.publish.publish({
-        cwd: projectPath,
+        cwd: deps.projectPath,
         tag: values.tag,
         access: values.access,
         registry: values.registry,
@@ -142,277 +212,143 @@ const PublishPage: React.FC = () => {
       })
       addNotification({
         type: 'success',
-        message: '发布成功',
-        description: `${checkResult.packageInfo.name}@${publishVersion} 已成功发布`
+        message: t('npm.publish.succeeded'),
+        description: t('npm.publish.succeededDescription', {
+          name: deps.checkResult.packageInfo?.name || '',
+          version: publishVersion
+        })
       })
-    } catch (error: any) {
+    } catch (error) {
       addNotification({
         type: 'error',
-        message: '发布失败',
-        description: error.message
+        message: t('npm.publish.failed'),
+        description: describeError(error)
       })
     } finally {
       setLoading(false)
     }
   }
-  
-  const handleSavePackageJson = async () => {
-    setSaveLoading(true)
-    try {
-      const values = await form.validateFields()
-      
-      const updatedPackage = {
-        ...packageJson,
-        name: values.name,
-        version: values.version,
-        description: values.description,
-        license: values.license,
-        author: values.author,
-        homepage: values.homepage,
-        repository: values.repository
-      }
-      
-      await window.electronAPI.project.writePackage(projectPath, updatedPackage)
-      
-      addNotification({
-        type: 'success',
-        message: 'package.json 已更新'
-      })
-      
-      setEditMode(false)
-      await handleCheck()
-    } catch (error: any) {
-      addNotification({
-        type: 'error',
-        message: '保存失败',
-        description: error.message
-      })
-    } finally {
-      setSaveLoading(false)
-    }
+
+  return { loading, handlePublish }
+}
+
+/**
+ * Composes the publish page state: directory selection, readiness checks,
+ * package editing, credentials, and the publish flow itself.
+ */
+function usePublishPage() {
+  const [form] = Form.useForm<PublishFormValues>()
+  const check = usePackageCheck(form)
+  const credentials = useNpmCredentials()
+  const editor = usePackageEditor({
+    form,
+    packageJson: check.packageJson,
+    projectPath: check.projectPath,
+    onRecheck: check.handleCheck
+  })
+  const publisher = usePackagePublisher({
+    checkResult: check.checkResult,
+    packageJson: check.packageJson,
+    projectPath: check.projectPath,
+    applyWrittenPackage: check.applyWrittenPackage,
+    reloadCredentials: credentials.loadCredentials
+  })
+
+  const handleSelectDirectory = async () => {
+    const path = await window.electronAPI.selectDirectory()
+    if (!path) return
+    check.selectProject(path)
+    editor.setEditMode(false)
   }
-  
+
+  return {
+    form,
+    projectPath: check.projectPath,
+    checkResult: check.checkResult,
+    checking: check.checking,
+    editMode: editor.editMode,
+    setEditMode: editor.setEditMode,
+    saveLoading: editor.saveLoading,
+    loading: publisher.loading,
+    credentialOptions: credentials.credentialOptions as CredentialOption[],
+    handleSelectDirectory,
+    handleCheck: check.handleCheck,
+    handleSavePackageJson: editor.handleSavePackageJson,
+    handlePublish: publisher.handlePublish,
+    loadCredentials: credentials.loadCredentials
+  }
+}
+
+const PublishPage: React.FC = () => {
+  const t = useT()
+  const {
+    form,
+    projectPath,
+    checkResult,
+    checking,
+    editMode,
+    setEditMode,
+    saveLoading,
+    loading,
+    credentialOptions,
+    handleSelectDirectory,
+    handleCheck,
+    handleSavePackageJson,
+    handlePublish,
+    loadCredentials
+  } = usePublishPage()
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h2 className={styles.title}>发布管理</h2>
+        <h2 className={styles.title}>{t('npm.publish.title')}</h2>
         <div className={styles.pathSelector}>
-          <span className={styles.label}>项目路径:</span>
-          <span className={styles.path}>{projectPath || '未选择'}</span>
+          <span className={styles.label}>{t('npm.publish.projectPath')}</span>
+          <span className={styles.path}>{projectPath || t('npm.publish.noProject')}</span>
           <Button
             icon={<FolderOpenOutlined />}
+            disabled={loading || saveLoading}
             onClick={handleSelectDirectory}
           >
-            选择目录
+            {t('npm.publish.selectDir')}
           </Button>
           <Button
             type="primary"
             icon={<CheckCircleOutlined />}
             onClick={handleCheck}
             loading={checking}
-            disabled={!projectPath}
+            disabled={!projectPath || loading || saveLoading}
           >
-            检查项目
+            {t('npm.publish.check')}
           </Button>
         </div>
       </div>
-      
+
       {checkResult && (
         <div className={styles.content}>
-          <Card 
-            title={
-              <Space>
-                <span>检查结果</span>
-                {checkResult.packageInfo && (
-                  <Switch
-                    checked={editMode}
-                    onChange={setEditMode}
-                    checkedChildren={<EditOutlined />}
-                    unCheckedChildren="查看"
-                  />
-                )}
-              </Space>
-            } 
-            className={styles.checkCard}
-            extra={
-              editMode && (
-                <Button 
-                  type="primary" 
-                  icon={<SaveOutlined />} 
-                  onClick={handleSavePackageJson}
-                  loading={saveLoading}
-                >
-                  保存
-                </Button>
-              )
-            }
-          >
-            {checkResult.canPublish ? (
-              <Alert
-                title="项目检查通过"
-                description="可以安全地发布此包"
-                type="success"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            ) : (
-              <Alert
-                title="项目检查未通过"
-                description="请解决以下错误后再发布"
-                type="error"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            )}
-            
-            {editMode ? (
-              <Form form={form} layout="vertical">
-                <Form.Item name="name" label="包名" rules={[{ required: true }]}>
-                  <Input />
-                </Form.Item>
-                <Form.Item name="version" label="版本" rules={[{ required: true }]}>
-                  <Input />
-                </Form.Item>
-                <Form.Item name="description" label="描述">
-                  <Input.TextArea rows={2} />
-                </Form.Item>
-                <Form.Item name="license" label="许可证">
-                  <Input />
-                </Form.Item>
-                <Form.Item name="author" label="作者">
-                  <Input />
-                </Form.Item>
-                <Form.Item name="homepage" label="主页">
-                  <Input />
-                </Form.Item>
-                <Form.Item name="repository" label="仓库">
-                  <Input />
-                </Form.Item>
-              </Form>
-            ) : (
-              <>
-                {checkResult.packageInfo && (
-                  <Descriptions bordered column={1} style={{ marginBottom: 16 }}>
-                    <Descriptions.Item label="包名">{checkResult.packageInfo.name}</Descriptions.Item>
-                    <Descriptions.Item label="版本">{checkResult.packageInfo.version}</Descriptions.Item>
-                    <Descriptions.Item label="描述">
-                      {checkResult.packageInfo.description || '无'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="许可证">{checkResult.packageInfo.license || '无'}</Descriptions.Item>
-                    <Descriptions.Item label="主入口">{checkResult.packageInfo.main || 'index.js'}</Descriptions.Item>
-                  </Descriptions>
-                )}
-                
-                {checkResult.errors.length > 0 && (
-                  <div className={styles.errorList}>
-                    <h4><WarningOutlined /> 错误 ({checkResult.errors.length})</h4>
-                    {checkResult.errors.map((error: string, index: number) => (
-                      <Tag key={index} color="error">{error}</Tag>
-                    ))}
-                  </div>
-                )}
-                
-                {checkResult.warnings.length > 0 && (
-                  <div className={styles.warningList}>
-                    <h4>警告 ({checkResult.warnings.length})</h4>
-                    {checkResult.warnings.map((warning: string, index: number) => (
-                      <Tag key={index} color="warning">{warning}</Tag>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </Card>
-          
+          <PublishCheckCard
+            form={form}
+            checkResult={checkResult}
+            editMode={editMode}
+            onEditModeChange={setEditMode}
+            saveLoading={saveLoading}
+            onSave={handleSavePackageJson}
+          />
           {checkResult.canPublish && !editMode && (
-            <Card title="发布配置" className={styles.publishCard}>
-              <Form
-                form={form}
-                onFinish={handlePublish}
-                layout="vertical"
-                initialValues={{ tag: 'latest', access: 'public', overrideReadinessGate: false }}
-              >
-                <Form.Item name="tag" label="发布标签">
-                  <Select>
-                    <Select.Option value="latest">latest</Select.Option>
-                    <Select.Option value="next">next</Select.Option>
-                    <Select.Option value="beta">beta</Select.Option>
-                    <Select.Option value="alpha">alpha</Select.Option>
-                  </Select>
-                </Form.Item>
-
-                <Form.Item
-                  name="version"
-                  label="发布版本号"
-                  rules={[{ required: true, message: '请输入版本号' }]}
-                  extra="发布前会写入 package.json"
-                >
-                  <Input placeholder="例如: 1.0.1" />
-                </Form.Item>
-                
-                <Form.Item name="access" label="访问权限">
-                  <Select>
-                    <Select.Option value="public">公开</Select.Option>
-                    <Select.Option value="restricted">受限（私有）</Select.Option>
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item name="registry" label="Registry（可选）">
-                  <Input placeholder="例如: https://registry.npmjs.org/" />
-                </Form.Item>
-
-                <Form.Item name="credentialId" label="凭据保险箱">
-                  <Select
-                    allowClear
-                    options={credentialOptions}
-                    placeholder="选择已保存的 npm token"
-                    onDropdownVisibleChange={(open) => {
-                      if (open) void loadCredentials()
-                    }}
-                  />
-                </Form.Item>
-
-                <Form.Item name="token" label="一次性 Token">
-                  <Input.Password placeholder="不保存时仅用于本次 npm publish" />
-                </Form.Item>
-
-                <Form.Item name="saveCredential" valuePropName="checked">
-                  <Switch checkedChildren="保存到保险箱" unCheckedChildren="不保存" />
-                </Form.Item>
-
-                <Alert
-                  type="warning"
-                  showIcon
-                  message="Production readiness gate runs before npm publish"
-                  description="Blocked readiness checks stop publishing unless an approved override is enabled."
-                  style={{ marginBottom: 16 }}
-                />
-
-                <Form.Item name="overrideReadinessGate" valuePropName="checked">
-                  <Switch checkedChildren="Override gate" unCheckedChildren="Gate enforced" />
-                </Form.Item>
-                
-                <Form.Item>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    icon={<CloudUploadOutlined />}
-                    loading={loading}
-                    size="large"
-                    block
-                  >
-                    发布到 npm
-                  </Button>
-                </Form.Item>
-              </Form>
-            </Card>
+            <PublishConfigCard
+              form={form}
+              loading={loading}
+              credentialOptions={credentialOptions}
+              onPublish={handlePublish}
+              onReloadCredentials={loadCredentials}
+            />
           )}
         </div>
       )}
-      
+
       {!checkResult && (
         <div className={styles.empty}>
-          <p>选择项目目录并点击"检查项目"以开始发布流程</p>
+          <p>{t('npm.publish.emptyHint')}</p>
         </div>
       )}
     </div>

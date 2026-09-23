@@ -37,6 +37,7 @@ Desktop.ini
 # Local agent/tool working state (session plans, workspace memory)
 .zcode/
 .workbuddy-ai/
+.workbuddy/
 
 # Temporary files
 *.tmp

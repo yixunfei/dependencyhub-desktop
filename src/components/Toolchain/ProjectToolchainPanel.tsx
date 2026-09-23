@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Card, Input, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { DeleteOutlined, FolderOpenOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { TOOL_LABELS, TOOL_ORDER, TOOL_PLACEHOLDERS } from '../../domain/toolchains/metadata'
@@ -27,6 +27,9 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
   const [statuses, setStatuses] = useState<ToolStatus[]>([])
   const [paths, setPaths] = useState<Record<ToolName, string>>(emptyPaths)
   const [loading, setLoading] = useState(false)
+  // Toolchain checks take seconds; switching projects must not let project
+  // A's late response overwrite project B's panel.
+  const loadEpochRef = useRef(0)
 
   const statusMap = useMemo(() => {
     return Object.fromEntries(statuses.map((status) => [status.tool, status])) as Record<ToolName, ToolStatus>
@@ -40,15 +43,18 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
 
   const loadProjectToolchain = async () => {
     if (!projectPath) return
+    const epoch = ++loadEpochRef.current
     setLoading(true)
     try {
       const [config, result] = await Promise.all([
         window.electronAPI.project.toolchain.get(projectPath),
         window.electronAPI.project.toolchain.check(projectPath)
       ])
+      if (epoch !== loadEpochRef.current) return
       setPaths(pathsFromConfig(config))
       setStatuses(result)
     } catch (error) {
+      if (epoch !== loadEpochRef.current) return
       // A silent failure here would leave stale/empty version columns and the
       // user would not know the toolchain check never ran.
       addNotification({
@@ -57,7 +63,7 @@ const ProjectToolchainPanel: React.FC<ProjectToolchainPanelProps> = ({ projectPa
         description: error instanceof Error ? error.message : String(error)
       })
     } finally {
-      setLoading(false)
+      if (epoch === loadEpochRef.current) setLoading(false)
     }
   }
 

@@ -288,6 +288,7 @@ export class FlutterService {
   async addAsset(args: { cwd: string; path: string }): Promise<void> {
     const normalized = normalizeAssetPath(args.path)
     if (!normalized) throw new Error('Asset path is required')
+    if (/[\r\n]/.test(normalized)) throw new Error('Asset path must be a single-line value')
     const pubspecPath = join(args.cwd, PUBSPEC_FILE)
     const content = await readFile(pubspecPath, 'utf-8')
     await writeFileAtomic(pubspecPath, upsertAsset(content, normalized))
@@ -946,6 +947,21 @@ function validateDependencyArgs(args: FlutterDependencyArgs): void {
   if (!args.packageName?.trim()) throw new Error('Package name is required')
   if (args.source === 'path' && !args.path?.trim()) throw new Error('Path dependency requires a path')
   if (args.source === 'git' && !args.git?.trim()) throw new Error('Git dependency requires a git URL')
+  // These values are written into a multi-line YAML manifest verbatim;
+  // rejecting control characters keeps one field from injecting extra YAML
+  // lines or breaking the document structure.
+  const inlineFields: Array<[string, string | undefined]> = [
+    ['packageName', args.packageName],
+    ['version', args.version],
+    ['path', args.path],
+    ['git', args.git]
+  ]
+  for (const [field, value] of inlineFields) {
+    if (value && /[\r\n]/.test(value)) throw new Error(`${field} must be a single-line value`)
+  }
+  if (!/^[a-z0-9_]+$/.test(args.packageName.trim())) {
+    throw new Error(`Invalid pub package name: ${args.packageName}`)
+  }
 }
 
 function parseJson<T>(value: string, fallback: T): T {

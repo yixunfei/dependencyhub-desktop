@@ -253,6 +253,12 @@ export class NativeService {
     const conanPath = join(cwd, 'conanfile.txt')
     const content = await readFileOrDefault(conanPath, '[requires]\n\n[generators]\nCMakeDeps\nCMakeToolchain\n')
     const requirement = formatConanRequirement(name, version)
+    // The requirement is spliced into a line-based manifest: anything beyond a
+    // plain conan reference (newlines in particular) injects whole new
+    // sections/requirements into conanfile.txt.
+    if (!/^[A-Za-z0-9_.+@-]+(\/[A-Za-z0-9_.+@-]+)?$/.test(requirement)) {
+      throw new Error(`Invalid conan package reference: ${requirement}`)
+    }
     const nextContent = upsertConanRequirement(content, requirement)
     await writeFileAtomic(conanPath, nextContent)
   }
@@ -261,7 +267,11 @@ export class NativeService {
     this.assertConanManifestEditable(cwd)
     const conanPath = join(cwd, 'conanfile.txt')
     const content = await readFileOrDefault(conanPath, '[requires]\n')
-    await writeFileAtomic(conanPath, removeConanRequirementLine(content, name))
+    const result = removeConanRequirementLine(content, name)
+    if (!result.removed) {
+      throw new Error(`Conan requirement ${name} was not found in conanfile.txt`)
+    }
+    await writeFileAtomic(conanPath, result.content)
   }
 
   /**
@@ -521,7 +531,7 @@ function formatConanRequirement(name: string, version?: string): string {
 function upsertConanRequirement(content: string, requirement: string): string {
   const eol = detectLineEnding(content)
   const [name] = parseConanRequirement(requirement)
-  const withoutExisting = removeConanRequirementLine(content, name)
+  const withoutExisting = removeConanRequirementLine(content, name).content
   const lines = withoutExisting.split(/\r?\n/)
   const requiresIndex = lines.findIndex((line) => line.trim().toLowerCase() === '[requires]')
 
@@ -533,10 +543,14 @@ function upsertConanRequirement(content: string, requirement: string): string {
   return applyLineEnding(`[requires]\n${requirement}\n\n${withoutExisting.trimEnd()}\n`, eol)
 }
 
-function removeConanRequirementLine(content: string, name: string): string {
+function removeConanRequirementLine(content: string, name: string): { content: string; removed: boolean } {
   const eol = detectLineEnding(content)
   let inRequires = false
-  return applyLineEnding(`${content
+  let removed = false
+  // Conan package names are lowercase by spec; compare case-insensitively so
+  // a case typo does not silently "remove" nothing.
+  const target = name.trim().toLowerCase()
+  const next = `${content
     .split(/\r?\n/)
     .filter((rawLine) => {
       const line = rawLine.trim()
@@ -545,10 +559,15 @@ function removeConanRequirementLine(content: string, name: string): string {
         return true
       }
       if (!inRequires || !line || line.startsWith('#')) return true
-      return parseConanRequirement(line)[0] !== name
+      if (parseConanRequirement(line)[0].toLowerCase() === target) {
+        removed = true
+        return false
+      }
+      return true
     })
     .join('\n')
-    .trimEnd()}\n`, eol)
+    .trimEnd()}\n`
+  return { content: applyLineEnding(next, eol), removed }
 }
 
 async function readJsonOrDefault(path: string, fallback: any): Promise<any> {

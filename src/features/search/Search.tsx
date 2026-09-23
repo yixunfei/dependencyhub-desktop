@@ -117,6 +117,10 @@ const SearchPage: React.FC = () => {
   const [suggestOptions, setSuggestOptions] = useState<Array<{ value: string; label: React.ReactNode }>>([])
   const [results, setResults] = useState<SearchItem[]>([])
   const [loading, setLoading] = useState(false)
+  // Installs share neither the search spinner nor a single global lock: a
+  // separate flag keeps double-clicked installs from running in parallel and
+  // stops a finished search from clearing an in-flight install's indicator.
+  const [installing, setInstalling] = useState(false)
   const [versionLoading, setVersionLoading] = useState(false)
   const [versions, setVersions] = useState<string[]>([])
   const [npmVersionMetadata, setNpmVersionMetadata] = useState<NpmVersionMetadata | null>(null)
@@ -275,7 +279,8 @@ const SearchPage: React.FC = () => {
   }
 
   const handleInstall = async (item: SearchItem, version?: string) => {
-    setLoading(true)
+    if (installing) return
+    setInstalling(true)
     try {
       if (item.type === 'npm') {
         await installPackage({
@@ -360,7 +365,7 @@ const SearchPage: React.FC = () => {
         description: error.message
       })
     } finally {
-      setLoading(false)
+      setInstalling(false)
     }
   }
 
@@ -475,8 +480,9 @@ const SearchPage: React.FC = () => {
         <Button
           size="small"
           type="primary"
+          loading={installing}
           onClick={() => handleInstall(record)}
-          disabled={(record.type === 'maven' || record.type === 'gradle') && !record.version && !record.latestVersion}
+          disabled={installing || ((record.type === 'maven' || record.type === 'gradle') && !record.version && !record.latestVersion)}
         >
           {record.type === 'maven' || record.type === 'gradle' ? '添加依赖' : '安装'}
         </Button>

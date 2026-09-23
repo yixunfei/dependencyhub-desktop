@@ -641,10 +641,18 @@ function upsertSettingsBlock(content: string, blockName: string, itemXml: string
   }
 
   if (content.includes(`<${blockName}>`)) {
-    return content.replace(new RegExp(`</${blockName}>`), `${itemXml}\n  </${blockName}>`)
+    const next = content.replace(new RegExp(`</${blockName}>`), `${itemXml}\n  </${blockName}>`)
+    if (next !== content) return next
   }
 
-  return content.replace(/<\/settings>/, `  <${blockName}>\n${itemXml}\n  </${blockName}>\n</settings>`)
+  const next = content.replace(/<\/settings>/, `  <${blockName}>\n${itemXml}\n  </${blockName}>\n</settings>`)
+  if (next === content) {
+    // A settings.xml without a closing </settings> anchor is not a valid
+    // settings document; replacing nothing and reporting success silently
+    // discarded the user's configuration change.
+    throw new Error('settings.xml is not a valid settings document (missing </settings>); fix or remove the file and retry.')
+  }
+  return next
 }
 
 function escapeRegExp(value: string): string {

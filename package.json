@@ -1,6 +1,6 @@
 {
   "name": "dependencyhub-desktop",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Cross-platform desktop workspace for multi-ecosystem project dependency management, toolchains, security health, and release governance",
   "author": "yixunfei",
   "homepage": "https://github.com/yixunfei/dependencyhub-desktop#readme",

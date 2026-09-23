@@ -89,7 +89,9 @@ export class SystemService {
     const platform = process.platform
 
     if (platform === 'win32') {
-      launchDetached('cmd.exe', ['/K', 'cd', '/d', cwd], { cwd, windowsHide: false })
+      // spawn's cwd already selects the directory. Avoid putting a path in
+      // cmd source, where percent expansions can rewrite even quoted text.
+      launchDetached('cmd.exe', ['/D', '/K'], { cwd, windowsHide: false })
     } else if (platform === 'darwin') {
       launchDetached('open', ['-a', 'Terminal.app', cwd], { cwd })
     } else if (platform === 'linux') {
@@ -103,13 +105,14 @@ export class SystemService {
  * EACCES when the terminal binary is missing) must be consumed or it becomes
  * an uncaughtException that takes the whole main process down.
  */
-function launchDetached(bin: string, args: string[], options: { cwd: string; windowsHide?: boolean }): void {
+function launchDetached(bin: string, args: string[], options: { cwd: string; windowsHide?: boolean; verbatim?: boolean }): void {
   try {
     const child = spawn(bin, args, {
       cwd: options.cwd,
       detached: true,
       stdio: 'ignore',
-      windowsHide: options.windowsHide ?? true
+      windowsHide: options.windowsHide ?? true,
+      windowsVerbatimArguments: options.verbatim ?? false
     })
     child.on('error', (error) => {
       console.warn(`Failed to launch ${bin}:`, error.message)

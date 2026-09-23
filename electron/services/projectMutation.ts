@@ -45,9 +45,12 @@ export async function withProjectMutation<T>(cwd: string, task: () => Promise<T>
     }
   }
 
-  const run = awaitQueuedTurn(previous, enter)
-  const queued = run.catch(() => undefined)
+  const { result: run, completion } = awaitQueuedTurn(previous, enter)
+  const queued = completion.catch(() => undefined)
   projectMutationQueues.set(key, queued)
+  void queued.then(() => {
+    if (projectMutationQueues.get(key) === queued) projectMutationQueues.delete(key)
+  })
   try {
     return await run
   } finally {
@@ -57,38 +60,33 @@ export async function withProjectMutation<T>(cwd: string, task: () => Promise<T>
     } else {
       queueDepth.delete(key)
     }
-    if (projectMutationQueues.get(key) === queued) projectMutationQueues.delete(key)
   }
 }
 
-function awaitQueuedTurn<T>(previous: Promise<unknown>, task: () => Promise<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    let settled = false
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
+function awaitQueuedTurn<T>(previous: Promise<unknown>, task: () => Promise<T>): {
+  result: Promise<T>
+  completion: Promise<unknown>
+} {
+  let expired = false
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true
       reject(Object.assign(
         new Error(`Timed out after ${QUEUE_WAIT_TIMEOUT_MS} ms waiting for the previous project operation`),
         { category: 'timeout', retryable: true }
       ))
     }, QUEUE_WAIT_TIMEOUT_MS)
-
-    const chain = previous.then(task, task)
-    chain.then(
-      (value) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        reject(error)
-      }
-    )
   })
+  const start = async () => {
+    clearTimeout(timer)
+    if (expired) return undefined as T
+    return await task()
+  }
+  // Caller timeout must not release the serialization tail while an earlier
+  // mutation is still running. The timer bounds waiting, never execution.
+  const completion = previous.then(start, start)
+  return { result: Promise.race([completion, timeout]), completion }
 }
 
 export function projectMutationQueueSize(): number {

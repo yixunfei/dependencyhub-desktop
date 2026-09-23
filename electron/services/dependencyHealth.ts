@@ -250,7 +250,14 @@ export class DependencyHealthService {
       })
       return stdout || stderr || 'Command completed.'
     } catch (error: any) {
-      return [error.stdout, error.stderr, error.message].filter(Boolean).join('\n') || 'Command failed.'
+      // Returning the error text as a normal result made a failed fix look
+      // like a successful one: the UI could not tell "repaired" apart from
+      // "failed with output", and no recovery path ever fired.
+      const detail = [error?.stdout, error?.stderr, error?.message].filter(Boolean).join('\n') || 'Command failed.'
+      const wrapped = new Error(detail) as Error & { stdout?: string; stderr?: string }
+      wrapped.stdout = error?.stdout
+      wrapped.stderr = error?.stderr
+      throw wrapped
     }
   }
 

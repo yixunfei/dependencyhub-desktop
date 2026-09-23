@@ -101,9 +101,20 @@ function localizeTextNode(node: Text, language: AppLanguage) {
     return
   }
 
-  if (!hasCjk(current) && !original) return
+  if (!hasCjk(current)) {
+    if (!original) return
+    // A non-CJK value here is either this localizer's own translation or new
+    // content React just wrote (a counter, a version string). Blindly
+    // re-applying the translation of the recorded source overwrote React's
+    // new value — and React, believing the DOM is current, never corrected it.
+    // If it matches our translation it is our own write: leave it. Otherwise
+    // React wrote it and wins: adopt it as the new source.
+    if (current === translateText(language, original)) return
+    originalTextNodes.set(node, current)
+    return
+  }
 
-  const source = hasCjk(current) ? current : original || current
+  const source = current
   const translated = translateText(language, source)
 
   if (hasCjk(source)) {

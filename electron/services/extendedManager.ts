@@ -1,8 +1,10 @@
+import { rString, juliaString } from './interpreterStrings'
 import { recoverCommandFailure } from './commandRecovery'
 import { createHash } from 'crypto'
 import { access, mkdir, readFile, readdir, unlink, writeFile } from 'fs/promises'
-import { dirname, isAbsolute, join, relative, resolve } from 'path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'path'
 import { writeFileAtomic } from './atomicWrite'
+import { manifestContentToWritable, readManifestContent } from './manifestContent'
 import {
   MANAGER_DEFINITIONS,
   getManagerDefinition,
@@ -106,6 +108,8 @@ export interface ExtendedManagerBackupFile {
   hash: string
   size: number
   exists: boolean
+  /** 'base64' when the file is binary (e.g. bun.lockb); stored content is then base64. */
+  encoding?: 'base64'
 }
 
 export interface ExtendedManagerBackup {
@@ -503,7 +507,7 @@ export class ExtendedManagerService {
       try {
         await access(targetPath)
         actualExists = true
-        actualHash = sha256(await readText(targetPath))
+        actualHash = sha256((await readManifestContent(targetPath)).content)
       } catch { }
       if (expectedState?.[file.file] && (expectedState[file.file].exists !== actualExists || (actualExists && expectedState[file.file].hash !== actualHash))) {
         conflicts.push({ file: file.file, expectedExists: expectedState[file.file].exists, actualExists, expectedHash: expectedState[file.file].hash, actualHash })
@@ -513,7 +517,7 @@ export class ExtendedManagerService {
       await mkdir(dirname(targetPath), { recursive: true })
       if (file.exists) {
         // Restoring user manifests must be as atomic as backing them up.
-        await writeFileAtomic(targetPath, file.content)
+        await writeFileAtomic(targetPath, manifestContentToWritable(file))
       } else {
         try { await unlink(targetPath) } catch { }
       }
@@ -585,13 +589,13 @@ async function operationTemplate(
     case 'renv':
       if (request.operation === 'install') {
         requirePackage()
-        return { args: ['-e', `renv::install("${packageSpec}")`], requirements, warnings }
+        return { args: ['-e', `renv::install("${rString(packageSpec)}")`], requirements, warnings }
       }
       if (request.operation === 'remove') {
         requirePackage()
-        return { args: ['-e', `renv::remove("${request.packageName || ''}")`], requirements, warnings }
+        return { args: ['-e', `renv::remove("${rString(request.packageName || '')}")`], requirements, warnings }
       }
-      if (request.operation === 'update') return { args: ['-e', request.packageName ? `renv::update("${request.packageName}")` : 'renv::update()'], requirements, warnings }
+      if (request.operation === 'update') return { args: ['-e', request.packageName ? `renv::update("${rString(request.packageName)}")` : 'renv::update()'], requirements, warnings }
       if (request.operation === 'outdated' || request.operation === 'sync') return { args: ['-e', 'renv::status()'], requirements, warnings }
       if (request.operation === 'tree' || request.operation === 'list') return { args: ['-e', 'renv::dependencies()'], requirements, warnings }
       if (request.operation === 'lock') return { args: ['-e', 'renv::snapshot()'], requirements, warnings }
@@ -601,16 +605,16 @@ async function operationTemplate(
       if (request.operation === 'install') {
         requirePackage()
         return {
-          args: ['--project=.', '-e', request.version ? `using Pkg; Pkg.add(name="${request.packageName || ''}", version="${request.version}")` : `using Pkg; Pkg.add("${request.packageName || ''}")`],
+          args: ['--project=.', '-e', request.version ? `using Pkg; Pkg.add(name="${juliaString(request.packageName || '')}", version="${juliaString(request.version)}")` : `using Pkg; Pkg.add("${juliaString(request.packageName || '')}")`],
           requirements,
           warnings
         }
       }
       if (request.operation === 'remove') {
         requirePackage()
-        return { args: ['--project=.', '-e', `using Pkg; Pkg.rm("${request.packageName || ''}")`], requirements, warnings }
+        return { args: ['--project=.', '-e', `using Pkg; Pkg.rm("${juliaString(request.packageName || '')}")`], requirements, warnings }
       }
-      if (request.operation === 'update') return { args: ['--project=.', '-e', request.packageName ? `using Pkg; Pkg.update("${request.packageName}")` : 'using Pkg; Pkg.update()'], requirements, warnings }
+      if (request.operation === 'update') return { args: ['--project=.', '-e', request.packageName ? `using Pkg; Pkg.update("${juliaString(request.packageName)}")` : 'using Pkg; Pkg.update()'], requirements, warnings }
       if (request.operation === 'outdated') return { args: ['--project=.', '-e', 'using Pkg; Pkg.status(; outdated=true)'], requirements, warnings }
       if (request.operation === 'tree' || request.operation === 'list') return { args: ['--project=.', '-e', 'using Pkg; Pkg.status()'], requirements, warnings }
       if (request.operation === 'lock') return { args: ['--project=.', '-e', 'using Pkg; Pkg.resolve()'], requirements, warnings }
@@ -1127,8 +1131,16 @@ async function createCommandBackup(
     }
     // Once access confirms existence, a read failure must abort the backup rather
     // than silently turning a real manifest into an empty file on restore.
-    const content = await readText(filePath)
-    return { file, hash: sha256(content), size: Buffer.byteLength(content, 'utf-8'), exists: true, content }
+    // Binary lockfiles (bun.lockb) are stored as base64 so restore is lossless.
+    const stored = await readManifestContent(filePath)
+    return {
+      file,
+      hash: sha256(stored.content),
+      size: stored.bytes,
+      exists: true,
+      content: stored.content,
+      ...(stored.encoding ? { encoding: stored.encoding } : {})
+    }
   }))
 
   const id = `${manager.id}-${timestampId()}`
@@ -1148,7 +1160,7 @@ async function createCommandBackup(
   // Same guarantee as the snapshot store: the fallback must be readable even if
   // the process died while writing it.
   await writeFileAtomic(path, JSON.stringify(payload, null, 2))
-  await pruneCommandBackups(cwd)
+  await pruneCommandBackups(cwd, path)
 
   return {
     ...payload,
@@ -1157,18 +1169,22 @@ async function createCommandBackup(
 }
 
 /** Command backups accumulate one per mutation and nothing ever removed them. */
-async function pruneCommandBackups(cwd: string): Promise<void> {
+async function pruneCommandBackups(cwd: string, keepPath?: string): Promise<void> {
   const dir = join(cwd, BACKUP_DIR)
   const files = await readdir(dir).catch(() => [] as string[])
   if (files.length <= MAX_COMMAND_BACKUPS) return
 
+  // Sort by the embedded ISO timestamp, never the whole filename: a naive
+  // string sort keys on the manager id first, which could delete the backup
+  // that was just written for a not-yet-finished command and break rollback.
+  const keepFile = keepPath ? basename(keepPath) : null
   const stale = files
-    .filter((file) => file.endsWith('.json'))
-    .sort()
-    .reverse()
+    .filter((file) => file.endsWith('.json') && file !== keepFile)
+    .map((file) => ({ file, stamp: /-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/.exec(file)?.[1] || '' }))
+    .sort((a, b) => b.stamp.localeCompare(a.stamp))
     .slice(MAX_COMMAND_BACKUPS)
 
-  await Promise.all(stale.map((file) => unlink(join(dir, file)).catch(() => undefined)))
+  await Promise.all(stale.map(({ file }) => unlink(join(dir, file)).catch(() => undefined)))
 }
 
 function resolveBackupPath(cwd: string, backupPath: string): string {

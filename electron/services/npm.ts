@@ -4,6 +4,8 @@ import { join } from 'path'
 import { BrowserWindow } from 'electron'
 import { registryHttpGet } from './registryHttp'
 import { resolveShellFreeCommand, runLoggedCommand } from './commandRunner'
+import { terminateProcessTree } from './processTree'
+import { writeFileAtomic } from './atomicWrite'
 import { setCommandLogWindow } from './commandLogger'
 import { resolveToolBin } from './toolchain'
 
@@ -267,7 +269,10 @@ export class NpmService {
         windowsVerbatimArguments: command.windowsVerbatimArguments === true
       })
       const timeout = setTimeout(() => {
-        child.kill()
+        // npm on Windows runs under a cmd.exe wrapper: killing only the
+        // wrapper leaves the real npm/node grandchild running (and writing
+        // .npmrc). Terminate the whole tree instead.
+        void terminateProcessTree(child)
         reject(new Error('Login timed out after 10 minutes'))
       }, 10 * 60 * 1000)
 
@@ -475,7 +480,7 @@ export class NpmService {
           windowsVerbatimArguments: command.windowsVerbatimArguments === true
       })
       const timeout = setTimeout(() => {
-        child.kill()
+        void terminateProcessTree(child)
         reject(new Error('Add user timed out after 10 minutes'))
       }, 10 * 60 * 1000)
 
@@ -533,32 +538,58 @@ export class NpmService {
   }
 
   async getDependencyTree(packageName: string, version?: string, depth: number = 2): Promise<any> {
+    // Unbounded recursion made this effectively never resolve: every node
+    // re-fetched `npm view` serially, with no memoization and no node budget.
+    const clampedDepth = Math.min(Math.max(0, Math.floor(depth) || 0), 4)
+    return await this.buildDependencyTree(packageName, version, clampedDepth, new Map(), { remaining: 500 })
+  }
+
+  private async buildDependencyTree(
+    packageName: string,
+    version: string | undefined,
+    depth: number,
+    memo: Map<string, Promise<any>>,
+    budget: { remaining: number }
+  ): Promise<any> {
+    const key = `${packageName}@${version || 'latest'}#${depth}`
+    const cached = memo.get(key)
+    if (cached) return await cached
+    const task = this.fetchDependencyTree(packageName, version, depth, memo, budget)
+    memo.set(key, task)
+    return await task
+  }
+
+  private async fetchDependencyTree(
+    packageName: string,
+    version: string | undefined,
+    depth: number,
+    memo: Map<string, Promise<any>>,
+    budget: { remaining: number }
+  ): Promise<any> {
     try {
       const pkgVersion = version || 'latest'
       const { stdout } = await this.executeNpm(['view', normalizePackageSpec(packageName, pkgVersion), 'dependencies', '--json'])
       const dependencies = parseJson(stdout, {})
-      
+
       if (!dependencies || Object.keys(dependencies).length === 0) {
         return { name: packageName, version: pkgVersion, dependencies: [] }
       }
-      
+
       const tree: any = {
         name: packageName,
         version: pkgVersion,
         dependencies: []
       }
-      
-      if (depth > 0) {
-        for (const [depName, depVersion] of Object.entries(dependencies)) {
-          const subTree = await this.getDependencyTree(depName, depVersion as string, depth - 1)
-          tree.dependencies.push(subTree)
-        }
-      } else {
-        for (const [depName, depVersion] of Object.entries(dependencies)) {
+
+      for (const [depName, depVersion] of Object.entries(dependencies)) {
+        if (depth <= 0 || budget.remaining <= 0) {
           tree.dependencies.push({ name: depName, version: depVersion, dependencies: [] })
+          continue
         }
+        budget.remaining -= 1
+        tree.dependencies.push(await this.buildDependencyTree(depName, depVersion as string, depth - 1, memo, budget))
       }
-      
+
       return tree
     } catch (error) {
       return { name: packageName, version: version || 'latest', dependencies: [] }

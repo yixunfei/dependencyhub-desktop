@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-23
+
+### Release highlights
+- Add MCP registry search, A2A endpoint declarations/lock evidence, and LLM provider/model configuration with connectivity checks.
+- Expand Chinese/English localization across health, toolchains, search, package operations and publishing.
+- Serialize project writes even when waiting callers time out; expired queued writes never execute later.
+- Preserve binary and non-UTF8 manifest bytes in backups; improve recovery, cancellation and failure reporting.
+- Correct SwiftPM package argument order and comment-aware edits; reject unsupported complex syntax without rewriting it.
+- Wire R/Julia literal escaping into generated commands, including Julia dollar interpolation. Avoid embedding Windows terminal paths in shell source.
+- Correct Azure OpenAI probe authentication/URL and refuse redirects on probes carrying API keys.
+- Discard stale npm publish checks after switching projects.
+- Ship Windows x64 installer and portable executables with SHA-256 checksums. Other platforms are not binary artifacts of this release.
+
+The detailed entries below describe changes since 1.0.3.
+
+
 ### Added
 - `scripts/cjk-characters.mjs` holds the one definition of what counts as CJK, shared
   by the ratchet and the coverage report so the two cannot disagree. It also exports an

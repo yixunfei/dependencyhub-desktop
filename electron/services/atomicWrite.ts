@@ -7,9 +7,9 @@ import { randomUUID } from 'crypto'
  * truncated manifest. The unique staging name also keeps concurrent writers
  * from clobbering each other's snapshot.
  */
-export async function writeFileAtomic(path: string, content: string): Promise<void> {
+export async function writeFileAtomic(path: string, content: string | Buffer): Promise<void> {
   const tmpPath = `${path}.${randomUUID()}.tmp`
-  await writeFile(tmpPath, content, 'utf-8')
+  await writeFile(tmpPath, content)
   try {
     await rename(tmpPath, path)
   } catch (error) {

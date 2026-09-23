@@ -1,4 +1,5 @@
 import { access, mkdir, readFile, writeFile } from 'fs/promises'
+import { randomUUID } from 'crypto'
 import { dirname, join, resolve } from 'path'
 import type { DependencyManagerId } from '../../shared/managerRegistry'
 import { httpLimiter } from './concurrency'
@@ -84,9 +85,19 @@ const REPORT_CACHE_TTL_MS = 30_000
 
 export class RegistryReachabilityService {
   private readonly checker: RegistryEndpointChecker
+  /**
+   * Cache scope for this instance. The report cache key omits the checker by
+   * design (production shares one default checker across panels), but that
+   * means an injected checker — a reachability probe mock in verification or
+   * tests — would read and write the shared entry: a mock that reports every
+   * endpoint as reachable leaked into a later instance that expected failures,
+   * for the whole TTL window. Injected checkers therefore get a private scope.
+   */
+  private readonly cacheScope: string
 
   constructor(options: { checker?: RegistryEndpointChecker } = {}) {
     this.checker = options.checker || defaultEndpointChecker
+    this.cacheScope = options.checker ? `injected-${randomUUID()}` : 'default'
   }
 
   async discover(cwd: string): Promise<RegistryEndpoint[]> {
@@ -115,7 +126,7 @@ export class RegistryReachabilityService {
     // endpoints within a second of each other; probing once per burst keeps the
     // results consistent without hammering a private feed.
     return await cachedReport(
-      `registryReachability:${root}:${checkOptions.timeoutMs}`,
+      `registryReachability:${this.cacheScope}:${root}:${checkOptions.timeoutMs}`,
       REPORT_CACHE_TTL_MS,
       async () => {
         const endpoints = await this.discover(root)

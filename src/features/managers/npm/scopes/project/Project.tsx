@@ -50,6 +50,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   const [runningScripts, setRunningScripts] = useState<Record<string, boolean>>({})
   const [outputScript, setOutputScript] = useState<string>('')
   const scriptRunIdRef = useRef(0)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const watcherDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [scriptOutput, setScriptOutput] = useState<string>('')
   const [scriptOutputVisible, setScriptOutputVisible] = useState(false)
   const [checkingAll, setCheckingAll] = useState(false)
@@ -132,13 +134,21 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         }
         window.electronAPI.watcher.onChange((data) => {
           if (!isActive() || data.path !== path) return
-          addNotification({
-            type: 'info',
-            message: `${data.file || 'dependency manifest'} 已变更`,
-            description: '正在自动刷新...'
-          })
-          fetchProjectPackages(path, true)
-          loadScripts(path)
+          // Editors with format-on-save and build tools rewrite the manifest
+          // in bursts; without debounce every fs event triggered a
+          // notification plus a full forced refresh.
+          if (watcherDebounceRef.current) clearTimeout(watcherDebounceRef.current)
+          watcherDebounceRef.current = setTimeout(() => {
+            watcherDebounceRef.current = null
+            if (!isActive()) return
+            addNotification({
+              type: 'info',
+              message: t('npm.manifestChanged', { file: data.file || 'dependency manifest' }),
+              description: t('npm.autoRefreshing')
+            })
+            fetchProjectPackages(path, true)
+            loadScripts(path)
+          }, 500)
         })
       }
     } catch (error) {
@@ -244,8 +254,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
 
       addNotification({
         type: successCount > 0 ? 'success' : 'info',
-        message: '批量更新完成',
-        description: `成功: ${successCount}, 失败: ${failCount}`
+        message: t('npm.batchUpdateComplete'),
+        description: t('npm.batchResult', { succeeded: successCount, failed: failCount })
       })
 
       setSelectedRowKeys([])
@@ -253,7 +263,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '批量更新失败',
+        message: t('npm.batchUpdateFailed'),
         description: error.message
       })
     } finally {
@@ -291,8 +301,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       })
       addNotification({
         type: 'success',
-        message: '安装成功',
-        description: `${values.package} 已成功安装`
+        message: t('npm.installSucceeded'),
+        description: t('npm.installedDescription', { name: values.package })
       })
       setInstallVisible(false)
       installForm.resetFields()
@@ -300,7 +310,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '安装失败',
+        message: t('npm.installFailed'),
         description: error.message
       })
     }
@@ -316,8 +326,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       })
       addNotification({
         type: 'success',
-        message: '依赖类型已切换',
-        description: `${values.packageName} 已从 ${values.from} 移动到 ${values.to}`
+        message: t('npm.depTypeSwitched'),
+        description: t('npm.depTypeMoved', { name: values.packageName, from: values.from, to: values.to })
       })
       setMoveDepVisible(false)
       moveDepForm.resetFields()
@@ -325,7 +335,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '切换失败',
+        message: t('npm.switchFailed'),
         description: error.message
       })
     }
@@ -351,7 +361,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '打开package.json失败',
+        message: t('npm.openPackageJsonFailed'),
         description: error.message
       })
     }
@@ -366,15 +376,27 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     })
   }
 
-  const searchInstallPackages = async (query: string) => {
+  const searchInstallPackages = (query: string) => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+      searchDebounceRef.current = null
+    }
     if (!query.trim()) {
+      // Invalidate any in-flight search so its late response cannot
+      // repopulate the options being cleared here.
+      packageOptionsRequestId += 1
       setPackageOptions([])
       setPackageSearchQuery('')
       setPackageSearchPage(1)
       setPackageSearchHasMore(false)
       return
     }
-    await loadPackageOptions(query, 1)
+    // Every keystroke used to fire a full registry search plus a batch of
+    // download-stat requests.
+    searchDebounceRef.current = setTimeout(() => {
+      searchDebounceRef.current = null
+      void loadPackageOptions(query, 1)
+    }, 300)
   }
 
   const loadPackageOptions = async (query: string, page: number) => {
@@ -418,14 +440,24 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     const versionMark = rawName.startsWith('@') ? rawName.indexOf('@', 1) : rawName.indexOf('@')
     const name = versionMark > 0 ? rawName.slice(0, versionMark) : rawName
     const requestId = ++installVersionsRequestId
-    const metadata = await window.electronAPI.npm.getVersionMetadata(name)
-    if (requestId !== installVersionsRequestId || installForm.getFieldValue('package') !== packageName) return
-    setInstallVersionMetadata(metadata)
-    setInstallVersionPage(1)
-    const options = buildInstallVersionOptions(metadata, installVersionFilter, 1)
-    setInstallVersionOptions(options)
-    if (options[0]) {
-      installForm.setFieldValue('version', options[0].value)
+    // The button onClick references this async function directly; an
+    // unhandled rejection surfaced as a generic "unexpected error".
+    try {
+      const metadata = await window.electronAPI.npm.getVersionMetadata(name)
+      if (requestId !== installVersionsRequestId || installForm.getFieldValue('package') !== packageName) return
+      setInstallVersionMetadata(metadata)
+      setInstallVersionPage(1)
+      const options = buildInstallVersionOptions(metadata, installVersionFilter, 1)
+      setInstallVersionOptions(options)
+      if (options[0]) {
+        installForm.setFieldValue('version', options[0].value)
+      }
+    } catch (error: any) {
+      addNotification({
+        type: 'error',
+        message: t('npm.loadVersionsFailed'),
+        description: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 
@@ -464,7 +496,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     setRunningScripts((prev) => ({ ...prev, [script]: true }))
     setOutputScript(script)
     setScriptOutputVisible(true)
-    setScriptOutput('正在执行...')
+    setScriptOutput(t('npm.running'))
 
     try {
       const output = await window.electronAPI.npm.runScript(currentPath, script)
@@ -472,15 +504,15 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       setScriptOutput(output)
       addNotification({
         type: 'success',
-        message: '脚本执行完成',
+        message: t('npm.scriptComplete'),
         description: `npm run ${script}`
       })
     } catch (error: any) {
       if (runId !== scriptRunIdRef.current) return
-      setScriptOutput(`执行失败: ${error.message}`)
+      setScriptOutput(t('npm.scriptOutputFailed', { message: error.message }))
       addNotification({
         type: 'error',
-        message: '脚本执行失败',
+        message: t('npm.scriptFailed'),
         description: error.message
       })
     } finally {
@@ -520,7 +552,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     if (outdatedPackages.length === 0) {
       addNotification({
         type: 'info',
-        message: '所有包已是最新版本'
+        message: t('npm.allUpToDate')
       })
       return
     }
@@ -533,19 +565,19 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     if (selectedRowKeys.length === 0) {
       addNotification({
         type: 'warning',
-        message: '请先选择要更新的包'
+        message: t('npm.selectUpdateFirst')
       })
       return
     }
 
-    const packagesToUpdate = projectPackages.filter(pkg => 
+    const packagesToUpdate = projectPackages.filter(pkg =>
       selectedRowKeys.includes(pkg.name) && pkg.outdated
     )
-    
+
     if (packagesToUpdate.length === 0) {
       addNotification({
         type: 'warning',
-        message: '没有可更新的包'
+        message: t('npm.noUpdatablePackages')
       })
       return
     }
@@ -558,14 +590,14 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
     if (selectedRowKeys.length === 0) {
       addNotification({
         type: 'warning',
-        message: '请先选择要卸载的包'
+        message: t('npm.selectUninstallFirst')
       })
       return
     }
 
     localizedModal.confirm({
-      title: '确认批量卸载',
-      content: `确定要卸载选中的 ${selectedRowKeys.length} 个包吗？`,
+      title: t('npm.confirmBatchUninstallTitle'),
+      content: t('npm.confirmBatchUninstall', { count: selectedRowKeys.length }),
       onOk: async () => {
         setUninstallingSelected(true)
         let successCount = 0
@@ -586,8 +618,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
 
           addNotification({
             type: successCount > 0 ? 'success' : 'error',
-            message: '批量卸载完成',
-            description: `成功: ${successCount}, 失败: ${failCount}`
+            message: t('npm.batchUninstallComplete'),
+            description: t('npm.batchResult', { succeeded: successCount, failed: failCount })
           })
 
           setSelectedRowKeys([])
@@ -595,7 +627,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
         } catch (error: any) {
           addNotification({
             type: 'error',
-            message: '批量卸载失败',
+            message: t('npm.batchUninstallFailed'),
             description: error.message
           })
         } finally {
@@ -1131,7 +1163,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
       </Modal>
       
       <Modal
-        title={`执行: npm run ${outputScript}`}
+        title={t('npm.scriptOutputTitle', { script: outputScript })}
         open={scriptOutputVisible}
         onCancel={() => setScriptOutputVisible(false)}
         footer={null}

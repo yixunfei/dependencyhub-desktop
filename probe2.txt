@@ -1,1 +1,0 @@
-plain utf8 no bom

@@ -95,15 +95,24 @@ function normalizeProjectPath(path: string): string {
   return path.trim().replace(/[\\/]+$/, '').toLowerCase()
 }
 
-function isCacheShape(value: unknown): value is Record<string, CacheData> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  return Object.values(value).every((entry) =>
-    !!entry &&
-    typeof entry === 'object' &&
-    typeof (entry as CacheData).lastUpdate === 'number' &&
-    Array.isArray((entry as CacheData).projectPackages) &&
-    Array.isArray((entry as CacheData).globalPackages)
-  )
+/** Cap on cached per-project package lists; browsing many projects must not grow memory/localStorage writes without bound. */
+const MAX_CACHED_PROJECTS = 10
+
+/**
+ * install/uninstall/update/installSpecificVersion run concurrently from
+ * different UI entry points but shared a single `mutating` boolean: the first
+ * operation to finish cleared the flag of every operation still running.
+ * Count in-flight operations instead.
+ */
+let mutationDepth = 0
+type MutationSet = (partial: Partial<PackageState>) => void
+function beginMutation(set: MutationSet): void {
+  mutationDepth += 1
+  set({ mutating: true })
+}
+function endMutation(set: MutationSet): void {
+  mutationDepth = Math.max(0, mutationDepth - 1)
+  if (mutationDepth === 0) set({ mutating: false })
 }
 
 async function fetchPackageDetailsBatch(packageNames: string[], batchSize = 5): Promise<Record<string, any>> {
@@ -157,9 +166,14 @@ export const usePackageStore = create<PackageState>()(
         return state.cache[normalizeProjectPath(path)] || null
       },
       
-      setCache: (path, data) => set((state) => ({
-        cache: { ...state.cache, [normalizeProjectPath(path)]: data }
-      })),
+      setCache: (path, data) => set((state) => {
+        const key = normalizeProjectPath(path)
+        // Insertion order doubles as recency order: re-inserting a key moves
+        // it to the end, so the oldest entries are evicted first.
+        const entries = Object.entries(state.cache).filter(([existing]) => existing !== key)
+        while (entries.length >= MAX_CACHED_PROJECTS) entries.shift()
+        return { cache: { ...Object.fromEntries(entries), [key]: data } }
+      }),
       
       clearCache: (path) => {
         if (path) {
@@ -425,7 +439,7 @@ export const usePackageStore = create<PackageState>()(
       },
       
       installPackage: async (args: InstallArgs) => {
-        set({ mutating: true })
+        beginMutation(set)
         try {
           await window.electronAPI.npm.install(args)
           if (args.global) {
@@ -441,12 +455,12 @@ export const usePackageStore = create<PackageState>()(
           console.error('Failed to install package:', error)
           throw error
         } finally {
-          set({ mutating: false })
+          endMutation(set)
         }
       },
-      
+
       uninstallPackage: async (args: UninstallArgs) => {
-        set({ mutating: true })
+        beginMutation(set)
         try {
           await window.electronAPI.npm.uninstall(args)
           if (args.global) {
@@ -461,12 +475,12 @@ export const usePackageStore = create<PackageState>()(
           console.error('Failed to uninstall package:', error)
           throw error
         } finally {
-          set({ mutating: false })
+          endMutation(set)
         }
       },
-      
+
       updatePackage: async (args: UpdateArgs) => {
-        set({ mutating: true })
+        beginMutation(set)
         try {
           await window.electronAPI.npm.update(args)
           if (args.global) {
@@ -481,12 +495,12 @@ export const usePackageStore = create<PackageState>()(
           console.error('Failed to update package:', error)
           throw error
         } finally {
-          set({ mutating: false })
+          endMutation(set)
         }
       },
-      
+
       installSpecificVersion: async (args: InstallVersionArgs) => {
-        set({ mutating: true })
+        beginMutation(set)
         try {
           await window.electronAPI.npm.installVersion(args)
           if (args.global) {
@@ -500,21 +514,26 @@ export const usePackageStore = create<PackageState>()(
           console.error('Failed to install specific version:', error)
           throw error
         } finally {
-          set({ mutating: false })
+          endMutation(set)
         }
       }
     }),
     {
       name: 'package-storage',
       partialize: (state) => ({
-        cache: state.cache,
+        // The cache holds full package lists per project and grows without
+        // bound; persisting it eventually exceeds the localStorage quota and
+        // throws on every write. Keep only the project path across sessions.
         currentProjectPath: state.currentProjectPath
       }),
-      // Persisted cache may be corrupted (null / non-object) in localStorage;
-      // drop it instead of letting every fetch index into garbage.
+      // Persisted state may be corrupted (null / non-object) in localStorage;
+      // accept only the fields we actually persist.
       merge: (persisted, current) => {
         const persistedState = (persisted ?? {}) as Partial<PackageState>
-        return { ...current, ...persistedState, cache: isCacheShape(persistedState.cache) ? persistedState.cache : {} }
+        return {
+          ...current,
+          currentProjectPath: typeof persistedState.currentProjectPath === 'string' ? persistedState.currentProjectPath : current.currentProjectPath
+        }
       }
     }
   )

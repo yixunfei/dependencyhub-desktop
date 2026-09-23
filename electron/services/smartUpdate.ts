@@ -68,9 +68,19 @@ export class SmartUpdateService {
       result.latest = stableVersions[0]
     }
 
-    result.hasSecurityUpdate = stableVersions.some(version =>
-      normalizedSecurityVersions.has(version) && semver.gt(version, currentVersion)
-    )
+    // currentVersion may be a range (^1.2.3), an alias (npm:pkg@1.0) or a
+    // workspace/git reference — none of them parse as semver, and an
+    // unguarded semver.gt would throw the whole analysis away.
+    const currentParsed = semver.parse(currentVersion)
+    result.hasSecurityUpdate = currentParsed
+      ? stableVersions.some(version => {
+        try {
+          return normalizedSecurityVersions.has(version) && semver.gt(version, currentParsed!)
+        } catch {
+          return false
+        }
+      })
+      : false
     result.safe = result.hasSecurityUpdate
       ? this.findSafeVersion(stableVersions, currentVersion, normalizedSecurityVersions)
       : null

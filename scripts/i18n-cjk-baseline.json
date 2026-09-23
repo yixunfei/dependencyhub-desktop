@@ -9,12 +9,9 @@
     "src/features/managers/gradle/Gradle.tsx": 371,
     "src/features/managers/maven/MavenManagerPage.tsx": 694,
     "src/features/managers/npm/NpmManagerPage.tsx": 88,
-    "src/features/managers/npm/scopes/global/Global.tsx": 368,
-    "src/features/managers/npm/scopes/project/Project.tsx": 574,
-    "src/features/managers/npm/scopes/publish/Publish.tsx": 246,
     "src/features/managers/pip/PipManagerPage.tsx": 813,
     "src/features/search/Search.tsx": 357,
-    "src/features/settings/Settings.tsx": 701,
+    "src/features/settings/Settings.tsx": 124,
     "src/features/workspace/MultiManager.tsx": 89,
     "src/stores/packageStore.ts": 40
   }

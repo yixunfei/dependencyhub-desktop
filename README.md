@@ -16,9 +16,16 @@
 
 </div>
 
-> 当前版本：**1.0.3**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases) 下载）。
+> 当前版本：**1.1.0**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases) 下载）。
 
 ## 简体中文
+
+### 1.1.0 更新重点
+
+- AI 工作区增加 MCP 注册表搜索、A2A Agent 端点清单与锁证据；独立的 LLM 服务商页面管理模型、默认服务商、API Key 和连接测试。
+- 完善健康中心、工具链、搜索和 npm 发布页面的中英文文案，并增加翻译完整性检查。
+- 加强项目写入串行化、失败诊断、取消/超时、备份保留与二进制锁文件恢复；修复跨项目发布检查串用和 SwiftPM 清单编辑问题。
+- 发行附件提供 Windows x64 安装版、便携版与 `SHA256SUMS.txt`；macOS/Linux 可从源码构建，本次不提供对应二进制附件。
 
 ### 项目定位
 
@@ -53,7 +60,7 @@ DependencyHub Desktop 已从最初的 npm 依赖小工具升级为**项目依赖
 | Dart | Flutter pub | `pubspec.yaml` / `pubspec.lock` | `pub outdated`、依赖树、OSV 审计、发布前检查 |
 | C / C++ | CMake / vcpkg / Conan | `CMakeLists.txt`、`vcpkg.json`、`conanfile.*` | 原生库搜索、构建任务、工具链与锁文件 |
 
-#### AI 依赖（MCP / Skills / Agents）
+#### AI 依赖与服务商（MCP / Skills / Agents / A2A）
 
 AI 工具链本身也是依赖面：MCP 服务器、Agent Skills 和 Agent 指令文件都会影响运行时的行为与权限，因此和包管理器一样需要清单、锁证据和漂移检查。本页把它们作为一等生态接入：
 
@@ -62,11 +69,15 @@ AI 工具链本身也是依赖面：MCP 服务器、Agent Skills 和 Agent 指�
 | MCP | MCP Servers | `.mcp.json`、`mcp.json`、`.cursor/mcp.json`、`.vscode/mcp.json`、`.workbuddy-ai/mcp.json`、`claude_desktop_config.json` | `mcp-lock.json` | 服务器清单、传输方式、版本固定、明文凭据与 HTTP 端点检查、声明增删 |
 | Agent Skills | Skills | `skills.json` 声明 + 任意位置的 `SKILL.md` | `skills.lock.json` | frontmatter 校验、描述长度、脚本与 allowed-tools 一致性、重名与来源漂移 |
 | Agent 指令 | Agents | `agents.json` 声明 + `AGENTS.md`、`CLAUDE.md`、`.cursor/rules/*.mdc`、`.github/copilot-instructions.md` 等 | `agents.lock.json` | 指令/规则/子代理清单、空文件与缺失 frontmatter、工具权限声明、锁漂移 |
+| A2A | Agent Endpoints | `a2a.json`、`.well-known/agent-card.json`、`a2a.config.json` | `a2a-lock.json` | Agent Card 清单、端点与认证声明检查、声明增删与锁证据 |
 
 - 操作集为 `sync`、`install`、`remove`、`audit`、`tree`、`list`、`lock`。这些生态没有统一的包管理器 CLI，因此操作由 DependencyHub 本地引擎执行：只读操作重新扫描工程并输出清单或审计结果，写操作以原子写入修改清单/锁文件，并先生成可恢复的备份；不支持任意自定义命令，避免伪装成外部 CLI 成功。
 - 健康检查会报告未固定版本、`http://` 远程端点、配置中的明文凭据、重复/冲突声明、声明与本地文件不一致、锁证据缺失或漂移。
 - 锁文件由 DependencyHub 管理（记录来源、版本与内容哈希），可提交到仓库用于复现；`npm run verify:ai-managers` 覆盖清单解析、计划、锁写入、dry-run 不写、增删变更、失败回滚与恢复。
 - 与既有治理链路打通：AI 组件会出现在 SBOM（CycloneDX / SPDX）中，并带上 `pkg:generic/mcp-server|agent-skill|agent-instruction` 形式的 package URL；工作区发现会检测 `.mcp.json`、`skills/*`、`AGENTS.md` 等标记（仅含 AI 清单的目录会被识别为 `ai-project`，同时存在语言清单时保留其原有生态类型）；锁文件漂移报告会对「已声明但缺少锁证据」的 AI 生态给出 warning 级发现。
+
+- MCP 搜索合并内置目录与官方 Registry 的在线结果；网络失败时保留内置匹配结果。目录中的版本是固定记录，不表示当前最新版本。
+- LLM 服务商页面支持 OpenAI、Anthropic、Google、Azure OpenAI、Ollama、OpenAI-compatible 和自定义端点，管理模型列表、默认模型、活动服务商与连接测试。密钥保留在主进程凭据存储中，界面仅接收配置状态和掩码；可用时使用系统安全存储。此功能用于配置和连通性检查，不提供聊天或 Agent 执行功能。
 
 #### 搜索、发布与供应链
 
@@ -84,7 +95,9 @@ AI 工具链本身也是依赖面：MCP 服务器、Agent Skills 和 Agent 指�
 
 ### 预览能力与扩展路线
 
-pnpm、Yarn、Bun、uv、Poetry、Pipenv、Conda、NuGet、Composer 与 Bundler 已进入 `preview`。Node 组提供工作区/锁文件库存与 npm Registry 搜索；Python 和后端组提供结构化清单及传递依赖解析、PyPI/Anaconda/NuGet/Packagist/RubyGems 搜索、专项健康检查、操作计划、可用时的原生命令 dry-run，以及变更前备份和恢复。AI 组（MCP / Skills / Agents）同样为 `preview`，提供清单解析、健康检查、本地锁证据与可回滚的声明变更。共享注册表仍预留 Deno、Docker、Helm、Terraform、Ansible、GitHub Actions、Bazel、Homebrew、Scoop、winget 等入口；`planned` 仅表示检测模型和页面骨架已预留，不代表完整读写能力。
+pnpm、Yarn、Bun、Deno、uv、Poetry、Pipenv、Conda、NuGet、Composer、Bundler、SwiftPM、CocoaPods、Helm、Docker、Kustomize、Helmfile、Skaffold、Argo CD、Flux、Terraform、OpenTofu、Ansible，以及 MCP / Skills / Agents / A2A 均标记为 `preview`。具体能力以管理器页面显示的清单、健康检查、计划与可用操作为准；预览不等于完整 CLI 功能覆盖。SwiftPM 的计算式依赖、原始/多行字符串及嵌套注释等复杂清单需要手工编辑。
+
+GitHub Actions、Bazel、Homebrew、Scoop、winget 等仍为 `planned`；该状态表示检测模型或工作区入口已预留，不代表完整读写能力。
 
 ### 界面演示
 
@@ -219,6 +232,13 @@ dependencyhub-desktop/
 
 ## English
 
+### New in 1.1.0
+
+- MCP registry search, A2A endpoint inventory and lock evidence, plus a dedicated LLM provider configuration and connectivity page.
+- Broader English/Simplified Chinese coverage across health, toolchains, search and npm publishing.
+- Safer write serialization, failure reporting, bounded backups and binary lockfile recovery; fixes for stale publish checks and SwiftPM manifest editing.
+- This release ships Windows x64 installer/portable executables and `SHA256SUMS.txt`. macOS/Linux remain source-build targets; their binaries are not attached to this release.
+
 ### What it is
 
 DependencyHub Desktop is a cross-platform Electron workspace for project dependency management and engineering governance. It started as an npm desktop helper and now provides one context for Node.js, Python, JVM, Rust, Go, Flutter, and C/C++ projects. The app detects manifests and lockfiles, separates project/global/publish scopes, and exposes package operations, toolchain configuration, health checks, security audits, release readiness, and plugin-oriented extensions.
@@ -233,7 +253,11 @@ DependencyHub Desktop is a cross-platform Electron workspace for project depende
 - **Toolchains and UX**: project/global executable paths, English/Simplified Chinese localization, dark/light themes, lazy-loaded routes, and a secure Electron preload boundary.
 - **AI dependency workspace**: MCP servers (`.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.workbuddy-ai/mcp.json`, `claude_desktop_config.json`), Agent Skills (`SKILL.md` + `skills.json`), and agent instructions/rules (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/*.mdc`, `.github/copilot-instructions.md`, `agents.json`) with pinning, transport and plaintext-credential findings, duplicate/declaration drift, and DependencyHub-managed lock evidence (`mcp-lock.json`, `skills.lock.json`, `agents.lock.json`). Because these ecosystems have no package-manager CLI, operations run in a local engine: read-only operations re-scan the project, mutations rewrite the manifest or lock file atomically behind a restorable backup, and arbitrary shell commands are refused instead of faked. AI entries also flow into the existing governance chains: they appear in CycloneDX/SPDX exports with `pkg:generic/mcp-server|agent-skill|agent-instruction` package URLs, workspace discovery recognises AI markers (an AI-only manifest directory is reported as `ai-project`, while a directory that also ships a language manifest keeps that ecosystem as its primary kind), and the lockfile drift report raises warning-level findings for AI ecosystems that declare inputs without lock evidence.
 
-pnpm, Yarn, Bun, uv, Poetry, Pipenv, Conda, NuGet, Composer, and Bundler are available as preview adapters. Node managers provide workspace/lockfile inventory and npm Registry search. Python and backend managers add structured manifest and transitive lock parsing, PyPI/Anaconda/NuGet/Packagist/RubyGems search, manager-specific health diagnostics, operation plans, native dry-runs where supported, and manifest backup/restore. The AI managers (MCP, Skills, Agents) are preview adapters with the same inventory, health, lock evidence, and reversible declaration mutations. Deno, Docker, Helm, Terraform, Ansible, CI managers, Bazel, Homebrew, Scoop, winget, and other entries remain planned roadmap metadata rather than a claim of full read/write support.
+- **A2A**: `a2a.json`, local Agent Cards and `a2a-lock.json` support endpoint inventory, transport/authentication findings and reversible declarations.
+- **MCP search**: merges a built-in catalog with best-effort official registry results. Catalog versions are pinned records, not a guarantee of the latest version.
+- **LLM providers**: configure OpenAI, Anthropic, Google, Azure OpenAI, Ollama, OpenAI-compatible and custom endpoints, models and an active provider. API keys remain in the main-process credential store (using OS secure storage when available); the renderer receives only a masked/configured status. This is configuration and connectivity testing, not a chat or agent execution feature.
+
+Preview adapters include pnpm, Yarn, Bun, Deno, uv, Poetry, Pipenv, Conda, NuGet, Composer, Bundler, SwiftPM, CocoaPods, Helm, Docker, Kustomize, Helmfile, Skaffold, Argo CD, Flux, Terraform, OpenTofu, Ansible and the four AI managers. Capabilities vary by adapter; use the displayed operation plans and supported actions rather than assuming full CLI coverage. Complex SwiftPM manifests (computed dependencies, raw/multiline strings or nested comments) require manual editing. CI managers, Bazel, Homebrew, Scoop, winget and other `planned` entries remain roadmap metadata.
 
 ### Screenshots
 

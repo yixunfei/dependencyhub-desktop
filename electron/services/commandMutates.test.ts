@@ -26,4 +26,14 @@ describe('commandMutatesProjectFiles', () => {
     expect(commandMutatesProjectFiles(['audit', 'fix'])).toBe(true)
     expect(commandMutatesProjectFiles(['mod', 'tidy'])).toBe(true)
   })
+
+  it('separates npm ci from glab ci lint', () => {
+    // Regression: a whole-string `ci` match classified the read-only
+    // `glab ci lint` pipeline validation as a mutating command.
+    expect(commandMutatesProjectFiles(['ci', 'lint'])).toBe(false)
+    expect(commandMutatesProjectFiles(['ci', 'lint', '--strict'])).toBe(false)
+    // `npm ci` / `yarn ci` wipe and reinstall node_modules.
+    expect(commandMutatesProjectFiles(['ci'])).toBe(true)
+    expect(commandMutatesProjectFiles(['ci', '--omit=dev'])).toBe(true)
+  })
 })

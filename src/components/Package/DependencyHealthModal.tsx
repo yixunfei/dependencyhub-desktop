@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Empty, Modal, Space, Spin, Table, Tag, Tooltip, Typography } from 'antd'
 import { CopyOutlined, FileTextOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../stores/appStore'
@@ -53,11 +53,18 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
   const [outputTitle, setOutputTitle] = useState('')
   const [output, setOutput] = useState('')
 
+  // Scans are slow and can overlap (effect re-run, rescan after an action);
+  // a stale scan must not overwrite newer results or push duplicate
+  // notifications.
+  const scanRequestRef = useRef(0)
+
   const scan = async () => {
     if (!cwd) return
+    const requestId = ++scanRequestRef.current
     setLoading(true)
     try {
       const nextResult = await window.electronAPI.dependencyHealth.scan(manager, cwd)
+      if (requestId !== scanRequestRef.current) return
       setResult(nextResult)
       onScanned?.(nextResult)
       addNotification({
@@ -66,9 +73,10 @@ export const DependencyHealthModal: React.FC<DependencyHealthModalProps> = ({
         description: nextResult.summary.total > 0 ? t('health.issuesFound', { manager, count: nextResult.summary.total }) : manager
       })
     } catch (error: any) {
+      if (requestId !== scanRequestRef.current) return
       addNotification({ type: 'error', message: t('health.scanFailed'), description: error.message })
     } finally {
-      setLoading(false)
+      if (requestId === scanRequestRef.current) setLoading(false)
     }
   }
 

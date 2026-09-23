@@ -142,9 +142,13 @@ export async function searchMcpServers(query: ManagerSearchQuery): Promise<Manag
 
   if (!text) return curated.slice(0, limit)
 
+  // The curated catalog is the offline-safe floor of these results: when the
+  // live registry fills the limit on its own, live-first ordering pushed the
+  // reference servers out of the result set. Curated entries always win, and
+  // live entries only fill the remaining slots without duplicating them.
   const live = await fetchLiveRegistry(text, limit)
-  const seen = new Set(live.map((item) => item.name.toLowerCase()))
-  const merged = [...live, ...curated.filter((item) => !seen.has(item.name.toLowerCase()))]
+  const seen = new Set(curated.map((item) => item.name.toLowerCase()))
+  const merged = [...curated, ...live.filter((item) => !seen.has(item.name.toLowerCase()))]
   return merged.slice(0, limit)
 }
 

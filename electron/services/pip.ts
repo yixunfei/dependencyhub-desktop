@@ -501,13 +501,12 @@ export class PipService {
     if (args.password) { /* supplied via TWINE_PASSWORD below */ }
     command.push(...files)
 
-    const previousTwinePassword = process.env.TWINE_PASSWORD
-    if (args.password) process.env.TWINE_PASSWORD = args.password
-    let result: { stdout: string; stderr: string }
-    try { result = await this.executePythonModule('twine', 'twine', command, args.cwd) } finally {
-      if (previousTwinePassword === undefined) delete process.env.TWINE_PASSWORD
-      else process.env.TWINE_PASSWORD = previousTwinePassword
-    }
+    // The password must only reach the twine child process. Writing it into
+    // the main-process global env leaked it to every concurrent child (other
+    // commands, terminals, tool probes) and raced with a parallel publish,
+    // which could send one project's credentials to another's registry.
+    const result = await this.executePythonModule('twine', 'twine', command, args.cwd,
+      args.password ? { TWINE_PASSWORD: args.password } : undefined)
     const { stdout, stderr } = result
     output.push(stdout || stderr)
     return output.filter(Boolean).join('\n')
@@ -565,7 +564,8 @@ export class PipService {
     moduleName: string,
     executableName: string,
     args: string[],
-    cwd?: string
+    cwd?: string,
+    env?: NodeJS.ProcessEnv
   ): Promise<{ stdout: string; stderr: string }> {
     const configured = (await getToolchainConfig(cwd)).pip
     const executable = process.platform === 'win32' && !executableName.endsWith('.exe')
@@ -586,7 +586,7 @@ export class PipService {
           { bin: executableName, args }
         ]
 
-    return await this.executeExternalCandidates([...configuredCandidates, ...candidates], cwd)
+    return await this.executeExternalCandidates([...configuredCandidates, ...candidates], cwd, env)
   }
 
   private async installPythonTool(tool: string, cwd?: string): Promise<string> {
@@ -675,7 +675,8 @@ export class PipService {
 
   private async executeExternalCandidates(
     candidates: Array<{ bin: string; args: string[] }>,
-    cwd?: string
+    cwd?: string,
+    env?: NodeJS.ProcessEnv
   ): Promise<{ stdout: string; stderr: string }> {
     let lastError: any
     for (const candidate of candidates) {
@@ -683,7 +684,8 @@ export class PipService {
         return await runLoggedCommand(candidate.bin, candidate.args, {
           cwd,
           maxBuffer: 1024 * 1024 * 20,
-          displayBin: candidate.bin
+          displayBin: candidate.bin,
+          env
         })
       } catch (error: any) {
         lastError = error

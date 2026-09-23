@@ -10,6 +10,7 @@ import {
 import { ExtendedManagerService } from './extendedManager'
 import { existingPatternMatches, readdirSafe } from '../managers/patternFiles'
 import { writeFileAtomic } from './atomicWrite'
+import { manifestContentToWritable, readManifestContent } from './manifestContent'
 import { writeTextReport, writeJsonReport } from './reportWriter'
 import { pruneDirectory } from './retention'
 
@@ -49,6 +50,8 @@ export interface SnapshotFile {
   hash: string
   size: number
   content: string
+  /** 'base64' when the file is binary (e.g. bun.lockb); content is then base64. */
+  encoding?: 'base64'
 }
 
 export interface SnapshotResult {
@@ -587,15 +590,19 @@ export class SupplyChainService {
       reason: `Before restoring ${snapshot.id}`,
       source: 'restore'
     })
-    const restoredFiles: string[] = []
-    for (const file of snapshot.files) {
+    // Validate every target before writing anything: a mid-loop throw used to
+    // leave the project half-restored with mixed manifest versions.
+    const writes = snapshot.files.map((file) => {
       const targetPath = resolve(cwd, file.file)
       if (!isInside(cwd, targetPath)) {
         throw new Error(`Snapshot contains an unsafe file path: ${file.file}`)
       }
-
+      return { file, targetPath }
+    })
+    const restoredFiles: string[] = []
+    for (const { file, targetPath } of writes) {
       await mkdir(dirname(targetPath), { recursive: true })
-      await writeFile(targetPath, file.content, 'utf-8')
+      await writeFileAtomic(targetPath, manifestContentToWritable(file))
       restoredFiles.push(file.file)
     }
 
@@ -2139,12 +2146,15 @@ async function readSupplyChainFiles(cwd: string): Promise<SnapshotFile[]> {
   }
 
   return await Promise.all([...files].sort().map(async (file) => {
-    const content = await readText(join(cwd, file))
+    // Binary lockfiles (bun.lockb) must round-trip losslessly: a utf-8 read
+    // replaces invalid bytes with U+FFFD and corrupts the file on restore.
+    const stored = await readManifestContent(join(cwd, file))
     return {
       file,
-      hash: sha256(content),
-      size: Buffer.byteLength(content, 'utf-8'),
-      content
+      hash: sha256(stored.content),
+      size: stored.bytes,
+      content: stored.content,
+      ...(stored.encoding ? { encoding: stored.encoding } : {})
     }
   }))
 }

@@ -104,6 +104,12 @@ export class GradleService {
     const buildPath = await ensureBuildFile(args.cwd)
     const content = await readFile(buildPath, 'utf-8')
     const configuration = args.configuration || 'implementation'
+    // The configuration name is interpolated straight into the build script;
+    // anything beyond an identifier would inject Groovy/Kotlin code into a
+    // file every later build evaluates.
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(configuration)) {
+      throw new Error(`Invalid configuration name: ${configuration}`)
+    }
     const coordinate = `${args.groupId}:${args.artifactId}:${args.version}`
     const line = buildPath.endsWith('.kts')
       ? `    ${configuration}("${coordinate}")`
@@ -267,12 +273,15 @@ function removeGradleDependency(content: string, dep: Pick<GradleDependency, 'gr
 }
 
 function httpsGet(url: string): Promise<string> {
-  return registryHttpGet(url, {
-    headers: {
+  return registryHttpGet(url, {    headers: {
       Accept: 'application/json',
       'User-Agent': 'DependencyHubDesktop/1.0'
     }
   })
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 const DEFAULT_GRADLE_SEARCH_OPTIONS: Required<Omit<GradleSearchOptions, 'customUrl'>> & { customUrl: string } = {

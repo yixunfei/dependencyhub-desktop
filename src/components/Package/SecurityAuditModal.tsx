@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Modal, Table, Tag, Alert, Button, Space, Spin, Typography, Card, Row, Col, Descriptions } from 'antd'
 import {
   WarningOutlined, CheckCircleOutlined,
@@ -56,27 +56,33 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   const [fixing, setFixing] = useState(false)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const isGlobal = scope === 'global'
-  
+  // npm audit takes seconds; a stale response must never overwrite the result
+  // of a newer scan (e.g. reopening the modal or switching projectPath).
+  const auditRequestRef = useRef(0)
+
   React.useEffect(() => {
     if (visible && (isGlobal || projectPath)) {
       runAudit()
     }
   }, [visible, projectPath, scope])
-  
+
   const runAudit = async () => {
+    const requestId = ++auditRequestRef.current
     setLoading(true)
     try {
       const result = isGlobal
         ? await window.electronAPI.npm.globalAudit()
         : await window.electronAPI.npm.audit(projectPath)
+      if (requestId !== auditRequestRef.current) return
       setAuditResult(result)
       if (result?.error) {
         message.warning(result.error)
       }
     } catch (error: any) {
+      if (requestId !== auditRequestRef.current) return
       message.error(error.message || t('security.auditFailed'))
     } finally {
-      setLoading(false)
+      if (requestId === auditRequestRef.current) setLoading(false)
     }
   }
   

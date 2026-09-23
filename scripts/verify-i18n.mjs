@@ -71,7 +71,9 @@ function parseDictionary(source, file, language) {
   const entries = new Map()
   const duplicates = []
   for (const line of source.slice(start, end).split('\n')) {
-    const match = /^ {2}'([^']+)': (.*?),?$/.exec(line)
+    // Dictionary files may be checked out with CRLF endings; a trailing \r
+    // otherwise breaks the `$` anchor and every entry silently vanishes.
+    const match = /^ {2}'((?:[^'\\]|\\.)*)': (.*?),?\r?$/.exec(line)
     if (!match) continue
     const [, key, value] = match
     if (entries.has(key)) duplicates.push(key)

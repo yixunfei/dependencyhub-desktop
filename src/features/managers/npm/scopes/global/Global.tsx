@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { AutoComplete, Button, Descriptions, Empty, Spin, Modal, Form, Select, Tag, Dropdown, Space, Tooltip, Table } from 'antd'
 import { ReloadOutlined, PlusOutlined, SwapOutlined, FolderFilled, SyncOutlined, CheckCircleOutlined, WarningOutlined, HistoryOutlined, ApartmentOutlined, InfoCircleOutlined, SecurityScanOutlined, FolderOpenOutlined, CloudDownloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '../../../../../stores/appStore'
@@ -62,6 +62,7 @@ const GlobalPage: React.FC = () => {
   const [cachePath, setCachePath] = useState('')
   
   const addNotification = useAppStore((state) => state.addNotification)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const t = useT()
   const updateStrategy = useSettingsStore((state) => state.updateStrategy)
   const conflictStrategy = useSettingsStore((state) => state.conflictStrategy)
@@ -168,21 +169,25 @@ const GlobalPage: React.FC = () => {
       })
       addNotification({
         type: 'success',
-        message: '安装成功',
-        description: `${values.package} 已成功安装到全局`
+        message: t('npm.installSucceeded'),
+        description: t('npm.installedGloballyDescription', { name: values.package })
       })
       setInstallVisible(false)
       installForm.resetFields()
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '安装失败',
+        message: t('npm.installFailed'),
         description: error.message
       })
     }
   }
 
-  const searchInstallPackages = async (query: string) => {
+  const searchInstallPackages = (query: string) => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+      searchDebounceRef.current = null
+    }
     if (!query.trim()) {
       // Invalidate in-flight searches so stale replies cannot repopulate the
       // cleared suggestion list.
@@ -193,7 +198,12 @@ const GlobalPage: React.FC = () => {
       setPackageSearchHasMore(false)
       return
     }
-    await loadPackageOptions(query, 1)
+    // Every keystroke used to fire a full registry search plus a batch of
+    // download-stat requests.
+    searchDebounceRef.current = setTimeout(() => {
+      searchDebounceRef.current = null
+      void loadPackageOptions(query, 1)
+    }, 300)
   }
 
   const loadPackageOptions = async (query: string, page: number) => {
@@ -237,14 +247,24 @@ const GlobalPage: React.FC = () => {
     const versionMark = rawName.startsWith('@') ? rawName.indexOf('@', 1) : rawName.indexOf('@')
     const name = versionMark > 0 ? rawName.slice(0, versionMark) : rawName
     const requestId = ++installVersionsRequestId
-    const metadata = await window.electronAPI.npm.getVersionMetadata(name)
-    if (requestId !== installVersionsRequestId || installForm.getFieldValue('package') !== packageName) return
-    setInstallVersionMetadata(metadata)
-    setInstallVersionPage(1)
-    const options = buildInstallVersionOptions(metadata, installVersionFilter, 1)
-    setInstallVersionOptions(options)
-    if (options[0]) {
-      installForm.setFieldValue('version', options[0].value)
+    // The button onClick references this async function directly; an
+    // unhandled rejection surfaced as a generic "unexpected error".
+    try {
+      const metadata = await window.electronAPI.npm.getVersionMetadata(name)
+      if (requestId !== installVersionsRequestId || installForm.getFieldValue('package') !== packageName) return
+      setInstallVersionMetadata(metadata)
+      setInstallVersionPage(1)
+      const options = buildInstallVersionOptions(metadata, installVersionFilter, 1)
+      setInstallVersionOptions(options)
+      if (options[0]) {
+        installForm.setFieldValue('version', options[0].value)
+      }
+    } catch (error: any) {
+      addNotification({
+        type: 'error',
+        message: t('npm.loadVersionsFailed'),
+        description: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 
@@ -293,12 +313,12 @@ const GlobalPage: React.FC = () => {
       if (requestId !== versionDialogRequestId) return
       addNotification({
         type: 'error',
-        message: '获取版本列表失败',
+        message: t('npm.loadVersionsFailed'),
         description: error.message
       })
     }
   }
-  
+
   const handleInstallVersion = async (version: string) => {
     if (!selectedPackage) return
     
@@ -310,14 +330,14 @@ const GlobalPage: React.FC = () => {
       })
       addNotification({
         type: 'success',
-        message: '版本切换成功',
-        description: `${selectedPackage.name}@${version} 已安装`
+        message: t('npm.versionSwitched'),
+        description: t('npm.versionInstalledDescription', { name: selectedPackage.name, version })
       })
       setVersionVisible(false)
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '版本切换失败',
+        message: t('npm.versionSwitchFailed'),
         description: error.message
       })
     }
@@ -370,8 +390,8 @@ const GlobalPage: React.FC = () => {
 
       addNotification({
         type: successCount > 0 ? 'success' : 'info',
-        message: '批量更新完成',
-        description: `成功: ${successCount}, 失败: ${failCount}`
+        message: t('npm.batchUpdateComplete'),
+        description: t('npm.batchResult', { succeeded: successCount, failed: failCount })
       })
 
       setSelectedRowKeys([])
@@ -379,7 +399,7 @@ const GlobalPage: React.FC = () => {
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: '批量更新失败',
+        message: t('npm.batchUpdateFailed'),
         description: error.message
       })
     } finally {
@@ -391,19 +411,19 @@ const GlobalPage: React.FC = () => {
     if (selectedRowKeys.length === 0) {
       addNotification({
         type: 'warning',
-        message: '请先选择要更新的包'
+        message: t('npm.selectUpdateFirst')
       })
       return
     }
 
-    const packagesToUpdate = globalPackages.filter(pkg => 
+    const packagesToUpdate = globalPackages.filter(pkg =>
       selectedRowKeys.includes(pkg.name) && pkg.outdated
     )
-    
+
     if (packagesToUpdate.length === 0) {
       addNotification({
         type: 'warning',
-        message: '没有可更新的包'
+        message: t('npm.noUpdatablePackages')
       })
       return
     }
@@ -418,7 +438,7 @@ const GlobalPage: React.FC = () => {
     if (outdatedPackages.length === 0) {
       addNotification({
         type: 'info',
-        message: '所有包已是最新版本'
+        message: t('npm.allUpToDate')
       })
       return
     }
@@ -431,14 +451,14 @@ const GlobalPage: React.FC = () => {
     if (selectedRowKeys.length === 0) {
       addNotification({
         type: 'warning',
-        message: '请先选择要卸载的包'
+        message: t('npm.selectUninstallFirst')
       })
       return
     }
 
     localizedModal.confirm({
-      title: '确认批量卸载',
-      content: `确定要卸载选中的 ${selectedRowKeys.length} 个包吗？`,
+      title: t('npm.confirmBatchUninstallTitle'),
+      content: t('npm.confirmBatchUninstall', { count: selectedRowKeys.length }),
       onOk: async () => {
         setUninstallingSelected(true)
         let successCount = 0

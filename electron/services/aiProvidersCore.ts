@@ -182,6 +182,7 @@ export class AiProviderStore {
     try {
       const response = await this.fetchImpl(endpoint, {
         headers,
+        redirect: 'error',
         signal: AbortSignal.timeout(8000)
       })
       const latencyMs = Date.now() - startedAt
@@ -304,7 +305,7 @@ function probeEndpoint(kind: AiProviderKind, base: string): string {
     case 'anthropic': return `${base}/v1/models`
     case 'google': return `${base}/v1beta/models`
     case 'ollama': return `${base}/api/tags`
-    case 'azure-openai': return `${base}/models?api-version=2024-02-01`
+    case 'azure-openai': return `${new URL(base).origin}/openai/models?api-version=2024-10-21`
     default: return `${base}/models`
   }
 }
@@ -316,6 +317,9 @@ function probeHeaders(kind: AiProviderKind, apiKey: string | undefined): Record<
     case 'anthropic':
       headers['x-api-key'] = apiKey
       headers['anthropic-version'] = '2023-06-01'
+      break
+    case 'azure-openai':
+      headers['api-key'] = apiKey
       break
     case 'google':
       headers['x-goog-api-key'] = apiKey
