@@ -49,6 +49,12 @@ export class OperationTimeoutError extends Error {
   }
 }
 
+export function isOperationAbort(error: unknown): boolean {
+  const value = error as { category?: string; failure?: { category?: string } } | null
+  const category = value?.category || value?.failure?.category
+  return category === 'cancelled' || category === 'timeout'
+}
+
 interface ActiveOperation {
   operationId: string
   label?: string

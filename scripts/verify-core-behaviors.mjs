@@ -18,7 +18,7 @@ import { ExtendedManagerService } from './electron/services/extendedManager'
 import { NpmService } from './electron/services/npm'
 import { getManagerDefinition } from './shared/managerRegistry'
 import { withProjectMutation } from './electron/services/projectMutation'
-import { getCalls, resetCalls, setCommandFailure, setCommandStdout } from './commandRunner'
+import { getCalls, resetCalls, setCommandFailure, setCommandStdout, setRealNpm } from './commandRunner'
 
 const checks = []
 const assert = (value, message) => { if (!value) throw new Error(message); checks.push(message) }
@@ -120,7 +120,9 @@ async function testRealNpmFixture() {
   await writeFile(join(packageRoot, 'index.js'), 'module.exports = 1')
   await writeFile(join(cwd, 'package.json'), JSON.stringify({ name: 'fixture-root', private: true, dependencies: { 'fixture-real-package': 'file:' + packageRoot, 'fixture-missing': '1.0.0', 'fixture-extraneous': '1.0.0' }, devDependencies: { 'fixture-dev': '1.0.0' }, optionalDependencies: { 'fixture-optional': '1.0.0' }, peerDependencies: { 'fixture-peer': '^2.0.0' } }))
   const npm = new NpmService()
+  setRealNpm(true)
   const result = await npm.list(cwd, false)
+  setRealNpm(false)
   assert(result.manifest.dependencies['fixture-real-package'], 'F3 real fixture reads production manifest')
   assert(result.statuses?.['fixture-missing']?.status === 'missing', 'F3 real fixture reports missing dependency')
   assert(result.statuses?.['fixture-dev']?.type === 'devDependencies', 'F3 real fixture preserves dev declaration type')
@@ -129,9 +131,7 @@ async function testRealNpmFixture() {
   assert(result.statuses?.['fixture-peer']?.status === 'peer-conflict' || result.statuses?.['fixture-peer']?.type === 'peerDependencies', 'F3 real fixture exposes peer conflict classification')
   assert(result.statuses?.['fixture-peer']?.problems !== undefined, 'F3 peer classification preserves problem details')
 
-  // Feed a realistic npm list --json payload so the installed/declared split
-  // is actually exercised; the empty fallback above only proves that missing
-  // dependencies are reported as missing.
+  // Also exercise installed and undeclared nodes deterministically.
   setCommandStdout(JSON.stringify({
     name: 'fixture-root',
     dependencies: {
@@ -162,11 +162,18 @@ async function testNpmManifestResult() {
   assert(result.manifest.devDependencies.dev === '^2.0.0', 'F3 development declarations are returned')
   assert(result.manifest.optionalDependencies.optional === '^3.0.0', 'F3 optional declarations are returned')
   assert(result.manifest.peerDependencies.peer === '^4.0.0', 'F3 peer declarations are returned')
-  setCommandFailure(true)
+  setCommandStdout(JSON.stringify({ dependencies: {}, problems: ['missing: dev@^2.0.0'], error: { code: 'ELSPROBLEMS' } }))
+  setCommandFailure('findings')
   const partial = await npm.list(cwd, false)
   setCommandFailure(false)
-  assert(partial.manifest.devDependencies.dev === '^2.0.0', 'F3 non-zero npm list preserves manifest data')
-  assert(typeof partial.error === 'string', 'F3 non-zero npm list exposes an error without dropping the result')
+  setCommandStdout(null)
+  assert(partial.manifest.devDependencies.dev === '^2.0.0', 'F3 dependency findings preserve manifest data')
+  assert(partial.statuses.dev.status === 'missing', 'F3 non-zero npm findings remain actionable')
+  setCommandFailure(true)
+  let rejected = false
+  try { await npm.list(cwd, false) } catch { rejected = true }
+  setCommandFailure(false)
+  assert(rejected, 'F3 real command failures must not masquerade as an empty inventory')
 }
 
 async function assertMissing(path, message) {
@@ -191,19 +198,40 @@ try {
 `
 
 const commandRunnerStub = `
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { dirname, join } from 'node:path'
+import { existsSync } from 'node:fs'
 let calls = []
 let commandFailure = false
 let commandStdout = null
+let realNpm = false
+export function setRealNpm(value) { realNpm = value }
 export function resetCalls() { calls = [] }
 export function getCalls() { return calls }
 export function setCommandFailure(value) { commandFailure = value }
 export function setCommandStdout(value) { commandStdout = value }
 export async function runLoggedCommand(_bin, args, options = {}) {
   calls.push([...args])
+  if (realNpm) {
+    try {
+      const npmCli = [
+        process.env.npm_execpath,
+        join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+      ].find((candidate) => candidate && existsSync(candidate))
+      if (!npmCli) throw new Error('Cannot locate npm CLI. Run npm run verify:core with the intended Node.js installation.')
+      return await promisify(execFile)(process.execPath, [npmCli, ...args], { cwd: options.cwd, timeout: 15000 })
+    } catch (error) {
+      if (options.acceptExitCode?.(error.code, error)) return { stdout: error.stdout, stderr: error.stderr }
+      throw error
+    }
+  }
   if (commandFailure === 'cancelled') throw Object.assign(new Error('fixture was cancelled'), { failure: { category: 'cancelled' } })
+  if (commandFailure === 'findings' && options.acceptExitCode?.(1, { stdout: commandStdout, stderr: '' })) return { stdout: commandStdout, stderr: '' }
   if (commandFailure) throw Object.assign(new Error('fixture command failure'), { stderr: 'fixture command failure', code: 1 })
   if (commandStdout !== null) return { stdout: commandStdout, stderr: '' }
-  return { stdout: 'ok', stderr: '' }
+  return { stdout: args[0] === 'list' ? JSON.stringify({ dependencies: {} }) : 'ok', stderr: '' }
 }
 export function resolveShellFreeCommand(bin, args) { return { bin, args } }
 `
@@ -223,7 +251,7 @@ try {
       name: 'core-stubs',
       setup(api) {
         api.onResolve({ filter: /^\.\/(commandRunner|toolchain)$/ }, (args) => {
-          if (args.importer.endsWith('extendedManager.ts') || args.importer.endsWith('npm.ts') || args.importer.endsWith('core-verifier.ts')) return { path: args.path, namespace: 'core-stub' }
+          if (['extendedManager.ts', 'npm.ts', 'npmRuntime.ts', 'core-verifier.ts'].some((file) => args.importer.endsWith(file))) return { path: args.path, namespace: 'core-stub' }
         })
         api.onLoad({ filter: /.*/, namespace: 'core-stub' }, (args) => ({ loader: 'js', contents: args.path === './toolchain' ? toolchainStub : commandRunnerStub }))
       }

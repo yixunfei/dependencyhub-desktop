@@ -120,10 +120,7 @@ export class FlutterService {
         displayBin: 'flutter'
       })
     } catch (error: any) {
-      const wrapped = new Error(error.message || 'flutter command failed') as Error & { stdout?: string; stderr?: string }
-      wrapped.stdout = error.stdout
-      wrapped.stderr = error.stderr
-      throw wrapped
+      throw error
     }
   }
 

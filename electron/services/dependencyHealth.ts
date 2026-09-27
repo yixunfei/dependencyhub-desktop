@@ -1,6 +1,7 @@
 import { access, readFile } from 'fs/promises'
 import { join, resolve } from 'path'
 import { runLoggedCommand } from './commandRunner'
+import { acceptsNpmReadExit, requireNpmReadResult } from './npmReadResult'
 import { PipService } from './pip'
 import { NativeService, type NativeDependencyInfo } from './native'
 import { resolveToolBin, type ToolName } from './toolchain'
@@ -202,6 +203,8 @@ export class DependencyHealthService {
         raw = result.raw
       }
     } catch (error: any) {
+      if (error?.category === 'cancelled' || error?.category === 'timeout'
+        || error?.failure?.category === 'cancelled' || error?.failure?.category === 'timeout') throw error
       issues = [createIssue({
         type: 'tooling',
         severity: 'medium',
@@ -263,7 +266,7 @@ export class DependencyHealthService {
 
   private async scanNpm(cwd: string, createIssue: IssueFactory): Promise<{ issues: DependencyHealthIssue[]; raw: string }> {
     const output = await runToolCapture('npm', ['ls', '--json', '--all', '--long'], cwd)
-    const tree = parseJson<NpmTreeNode>(output.stdout, {})
+    const tree = requireNpmReadResult(output.stdout, 'list') as NpmTreeNode
     const issues: DependencyHealthIssue[] = []
     const versions = new Map<string, Map<string, string[]>>()
     const problemKeys = new Set<string>()
@@ -691,18 +694,12 @@ async function runToolCapture(tool: ToolName, args: string[], cwd: string, displ
     ? await resolveGradleBin(cwd)
     : await resolveToolBin(tool, cwd)
 
-  try {
-    return await runLoggedCommand(bin, args, {
-      cwd,
-      maxBuffer: 1024 * 1024 * 30,
-      displayBin
-    })
-  } catch (error: any) {
-    return {
-      stdout: error.stdout || '',
-      stderr: error.stderr || error.message || ''
-    }
-  }
+  return await runLoggedCommand(bin, args, {
+    cwd,
+    maxBuffer: 1024 * 1024 * 30,
+    displayBin,
+    acceptExitCode: tool === 'npm' ? (code, output) => acceptsNpmReadExit('list', code, output.stdout) : undefined
+  })
 }
 
 async function resolveGradleBin(cwd: string): Promise<string> {

@@ -46,10 +46,7 @@ export class GradleService {
         displayBin: 'gradle'
       })
     } catch (error: any) {
-      const wrapped = new Error(error.message || 'gradle command failed') as Error & { stdout?: string; stderr?: string }
-      wrapped.stdout = error.stdout
-      wrapped.stderr = error.stderr
-      throw wrapped
+      throw error
     }
   }
 

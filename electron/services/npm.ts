@@ -8,6 +8,8 @@ import { terminateProcessTree } from './processTree'
 import { writeFileAtomic } from './atomicWrite'
 import { setCommandLogWindow } from './commandLogger'
 import { resolveToolBin } from './toolchain'
+import { acceptsNpmReadExit, requireNpmReadResult, type NpmReadKind } from './npmReadResult'
+import { checkNpmSelfInstall } from './npmRuntime'
 
 const CACHE_TTL = 10 * 60 * 1000
 const packageInfoCache = new Map<string, { expiresAt: number; value: any }>()
@@ -42,8 +44,22 @@ function parseJson(stdout: string, fallback: any = null): any {
   }
 }
 
+function parseJsonRequired<T = unknown>(stdout: string, operation: string): T {
+  if (!stdout.trim()) throw new Error(`${operation} returned no JSON output`)
+  try {
+    return JSON.parse(stdout) as T
+  } catch (error) {
+    throw new Error(`${operation} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 function normalizePackageSpec(packageName: string, version?: string): string {
-  return version ? `${packageName}@${version}` : packageName
+  const name = packageName.trim()
+  if (!name || name.startsWith('-')) throw new Error('A package name is required')
+  if (!version) return name
+  const versionMark = name.indexOf('@', name.startsWith('@') ? 1 : 0)
+  if (versionMark > 0) throw new Error('Specify the version either in the package name or in the version field')
+  return `${name}@${version}`
 }
 
 function registryPackageUrl(packageName: string, version = 'latest'): string {
@@ -88,7 +104,7 @@ export function classifyNpmDependencies(
         return packagePattern.test(text)
       })
       const peerConflict = matchingProblems.some((problem) => /peer|eresolve/i.test(problem))
-      const status = !node ? 'missing' : peerConflict ? 'peer-conflict' : node.invalid || matchingProblems.some((problem) => /invalid|missing/i.test(problem)) ? 'invalid' : 'installed'
+      const status = !node || node.missing ? 'missing' : peerConflict ? 'peer-conflict' : node.invalid || matchingProblems.some((problem) => /invalid|missing/i.test(problem)) ? 'invalid' : 'installed'
       if (!result[name] || type === 'optionalDependencies' || type === 'peerDependencies') {
         result[name] = { type, status, version: node?.version, problems: matchingProblems }
       }
@@ -135,21 +151,19 @@ async function readNpmManifest(cwd: string): Promise<Record<string, Record<strin
 }
 
 export class NpmService {
-  private async executeNpm(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
-    try {
-      return await runLoggedCommand(await resolveToolBin('npm', cwd), args, {
-        cwd,
-        maxBuffer: 1024 * 1024 * 10,
-        env: { ...process.env },
-        displayBin: 'npm'
-      })
-    } catch (error: any) {
-      const wrapped = new Error(error.message || 'Command execution failed') as Error & { stdout?: string; stderr?: string; code?: number }
-      wrapped.stdout = error.stdout
-      wrapped.stderr = error.stderr
-      wrapped.code = error.code
-      throw wrapped
-    }
+  private async executeNpm(args: string[], cwd?: string, readKind?: NpmReadKind): Promise<{ stdout: string; stderr: string }> {
+    return await runLoggedCommand(await resolveToolBin('npm', cwd), args, {
+      cwd,
+      maxBuffer: 1024 * 1024 * 10,
+      env: { ...process.env },
+      displayBin: 'npm',
+      acceptExitCode: readKind ? (code, output) => acceptsNpmReadExit(readKind, code, output.stdout) : undefined
+    })
+  }
+
+  private async readNpm(args: string[], kind: NpmReadKind, cwd?: string): Promise<any> {
+    const { stdout } = await this.executeNpm(args, cwd, kind)
+    return requireNpmReadResult(stdout, kind)
   }
 
   async search(query: string, limit?: number): Promise<any[]> {
@@ -158,31 +172,37 @@ export class NpmService {
       command.push(`--searchlimit=${Math.max(1, Math.min(Math.floor(limit), 250))}`)
     }
     const { stdout } = await this.executeNpm(command)
-    return parseJson(stdout, [])
+    const result = parseJsonRequired<unknown>(stdout, 'npm search')
+    if (!Array.isArray(result)) throw new Error('npm search returned an invalid result')
+    return result
   }
 
   async view(packageName: string): Promise<any> {
     const { stdout } = await this.executeNpm(['view', packageName, '--json'])
-    return parseJson(stdout, null)
+    return parseJsonRequired(stdout, 'npm view')
   }
 
   async install(args: any): Promise<string> {
     const { packageName, cwd, global, dev, version } = args
-    const command = ['install', normalizePackageSpec(packageName, version)]
+    const spec = normalizePackageSpec(packageName, version)
+    const commandCwd = global ? undefined : cwd
+    if (global) await checkNpmSelfInstall(spec, commandCwd)
+    const command = ['install', spec]
     if (global) command.push('-g')
     if (dev) command.push('--save-dev')
     command.push('--legacy-peer-deps')
     
-    const { stdout, stderr } = await this.executeNpm(command, cwd)
+    const { stdout, stderr } = await this.executeNpm(command, commandCwd)
     return stdout || stderr
   }
 
   async uninstall(args: any): Promise<string> {
     const { packageName, cwd, global } = args
+    if (!packageName || packageName.startsWith('-')) throw new Error('A package name is required')
     const command = ['uninstall', packageName]
     if (global) command.push('-g')
     
-    const { stdout, stderr } = await this.executeNpm(command, cwd)
+    const { stdout, stderr } = await this.executeNpm(command, global ? undefined : cwd)
     return stdout || stderr
   }
 
@@ -190,52 +210,32 @@ export class NpmService {
     const { packageName, cwd, global, version } = args
     
     if (packageName) {
-      const command = ['install', normalizePackageSpec(packageName, version || 'latest'), '--legacy-peer-deps']
-      if (global) command.push('-g')
-      
-      const { stdout, stderr } = await this.executeNpm(command, cwd)
-      return stdout || stderr
+      return this.install({ ...args, version: version || 'latest' })
     } else {
       const command = ['update', '--legacy-peer-deps']
       if (global) command.push('-g')
       
-      const { stdout, stderr } = await this.executeNpm(command, cwd)
+      const { stdout, stderr } = await this.executeNpm(command, global ? undefined : cwd)
       return stdout || stderr
     }
   }
 
   async outdated(cwd: string): Promise<any> {
-    try {
-      const { stdout } = await this.executeNpm(['outdated', '--json'], cwd)
-      return parseJson(stdout, {})
-    } catch (error: any) {
-      if (error.stdout) {
-        return parseJson(error.stdout, {})
-      }
-      return {}
-    }
+    return this.readNpm(['outdated', '--json'], 'outdated', cwd)
   }
 
   async list(cwd: string, global: boolean): Promise<any> {
     const command = ['list', '--json', '--depth=0']
     if (global) command.push('-g')
-    try {
-      const { stdout } = await this.executeNpm(command, global ? undefined : cwd)
-      const parsed = parseJson(stdout, {})
-      const manifest = global ? undefined : await readNpmManifest(cwd)
-      const tree = collectNpmTree(parsed)
-      return { ...parsed, manifest, statuses: manifest ? classifyNpmDependencies(manifest, tree.installed, tree.problems) : undefined }
-    } catch (error: any) {
-      const parsed = parseJson(error.stdout || '', {})
-      const manifest = global ? undefined : await readNpmManifest(cwd)
-      const tree = collectNpmTree(parsed)
-      return { ...parsed, manifest, statuses: manifest ? classifyNpmDependencies(manifest, tree.installed, tree.problems) : undefined, error: error.message || 'npm list failed' }
-    }
+    const parsed = await this.readNpm(command, 'list', global ? undefined : cwd)
+    const manifest = global ? undefined : await readNpmManifest(cwd)
+    const tree = collectNpmTree(parsed)
+    return { ...parsed, manifest, statuses: manifest ? classifyNpmDependencies(manifest, parsed.dependencies || {}, tree.problems) : undefined }
   }
 
   async configList(): Promise<any> {
     const { stdout } = await this.executeNpm(['config', 'list', '--json'])
-    return parseJson(stdout, {})
+    return parseJsonRequired(stdout, 'npm config list')
   }
 
   async configSet(key: string, value: string): Promise<void> {
@@ -246,8 +246,13 @@ export class NpmService {
     try {
       const { stdout } = await this.executeNpm(['whoami'])
       return stdout.trim()
-    } catch (error) {
-      return ''
+    } catch (error: any) {
+      // `npm whoami` exits nonzero for a normal logged-out session. Preserve
+      // that empty identity while surfacing network, permission, and other
+      // failures to the settings page.
+      const text = [error?.message, error?.stderr].filter(Boolean).join('\n')
+      if (error?.code === 'ENEEDAUTH' || /ENEEDAUTH|not logged in|login required|unauthorized/i.test(text)) return ''
+      throw error
     }
   }
 
@@ -301,13 +306,12 @@ export class NpmService {
   }
 
   async getScripts(cwd: string): Promise<string[]> {
-    try {
-      const { stdout } = await this.executeNpm(['pkg', 'get', 'scripts', '--json'], cwd)
-      const result = parseJson(stdout, {})
-      return Object.keys(result || {})
-    } catch (error) {
-      return []
+    const { stdout } = await this.executeNpm(['pkg', 'get', 'scripts', '--json'], cwd)
+    const result = parseJsonRequired<unknown>(stdout, 'npm pkg get scripts')
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+      throw new Error('npm pkg get scripts returned an invalid result')
     }
+    return Object.keys(result)
   }
 
   async configGet(key: string): Promise<string> {
@@ -329,6 +333,10 @@ export class NpmService {
 
   async moveDependency(args: any): Promise<string> {
     const { packageName, cwd, from, to } = args
+    if (!packageName || !cwd || from === to) throw new Error('A dependency, project path and different target section are required')
+    const manifest = await readNpmManifest(cwd)
+    const requested = manifest[from]?.[packageName]
+    if (!requested) throw new Error(`${packageName} is not declared in ${from}`)
 
     // The move runs as two separate commands. If the second leg fails after
     // uninstall already rewrote package.json, the dependency would be silently
@@ -348,6 +356,7 @@ export class NpmService {
 
       return await this.install({
         packageName,
+        version: requested,
         cwd,
         global: false,
         dev: to === 'devDependencies'
@@ -365,12 +374,10 @@ export class NpmService {
   }
 
   async getPublishedPackages(username: string): Promise<any[]> {
-    try {
-      const { stdout } = await this.executeNpm(['search', `maintainer:${username}`, '--json', '--long'])
-      return parseJson(stdout, [])
-    } catch (error) {
-      return []
-    }
+    const { stdout } = await this.executeNpm(['search', `maintainer:${username}`, '--json', '--long'])
+    const result = parseJsonRequired<unknown>(stdout, 'npm maintainer search')
+    if (!Array.isArray(result)) throw new Error('npm maintainer search returned an invalid result')
+    return result
   }
 
   async checkAllOutdated(cwd: string): Promise<any> {
@@ -381,21 +388,13 @@ export class NpmService {
     const cached = getCached(packageInfoCache, packageName)
     if (cached) return cached
 
-    try {
-      const { stdout } = await this.executeNpm(['info', packageName, '--json'])
-      return setCached(packageInfoCache, packageName, parseJson(stdout, null))
-    } catch (error) {
-      return null
-    }
+    const { stdout } = await this.executeNpm(['info', packageName, '--json'])
+    return setCached(packageInfoCache, packageName, parseJsonRequired(stdout, 'npm info'))
   }
 
   async getVersions(packageName: string): Promise<string[]> {
-    try {
-      const metadata = await this.getVersionMetadata(packageName)
-      return metadata.versions.map((item: any) => item.version)
-    } catch (error) {
-      return []
-    }
+    const metadata = await this.getVersionMetadata(packageName)
+    return metadata.versions.map((item: NpmVersionInfo) => item.version)
   }
 
   async getVersionMetadata(packageName: string): Promise<any> {
@@ -417,7 +416,7 @@ export class NpmService {
         'description',
         '--json'
       ])
-      const data = parseJson(stdout, {})
+      const data = parseJsonRequired<any>(stdout, 'npm view metadata')
       const versions = Array.isArray(data?.versions)
         ? data.versions
         : data?.versions
@@ -431,37 +430,22 @@ export class NpmService {
     } catch (error) {
       try {
         const { stdout } = await this.executeNpm(['view', normalizedName, 'versions', '--json'])
-        const versions = parseJson(stdout, [])
+        const versions = parseJsonRequired<unknown>(stdout, 'npm view versions')
         const versionList = Array.isArray(versions) ? versions : versions ? [versions] : []
         const metadata = buildVersionMetadata(normalizedName, versionList, {}, {}, '')
         return setCached(versionMetadataCache, normalizedName, metadata)
-      } catch {
-        return emptyVersionMetadata(normalizedName)
+      } catch (fallbackError) {
+        throw fallbackError
       }
     }
   }
 
   async installVersion(args: any): Promise<string> {
-    const { packageName, version, cwd, global, dev } = args
-    const command = ['install', normalizePackageSpec(packageName, version)]
-    if (global) command.push('-g')
-    if (dev) command.push('--save-dev')
-    command.push('--legacy-peer-deps')
-    
-    const { stdout, stderr } = await this.executeNpm(command, cwd)
-    return stdout || stderr
+    return this.install(args)
   }
 
   async globalOutdated(): Promise<any> {
-    try {
-      const { stdout } = await this.executeNpm(['outdated', '-g', '--json'])
-      return parseJson(stdout, {})
-    } catch (error: any) {
-      if (error.stdout) {
-        return parseJson(error.stdout, {})
-      }
-      return {}
-    }
+    return this.readNpm(['outdated', '-g', '--json'], 'outdated')
   }
 
   async adduser(registry?: string): Promise<void> {
@@ -500,16 +484,8 @@ export class NpmService {
   }
 
   async getRegistryInfo(registry?: string): Promise<any> {
-    try {
-      let url = 'https://registry.npmjs.org/'
-      if (registry) {
-        url = registry
-      }
-      const data = await httpsGet(url)
-      return JSON.parse(data)
-    } catch (error) {
-      return null
-    }
+    const url = registry || 'https://registry.npmjs.org/'
+    return parseJsonRequired(await httpsGet(url), 'npm registry info')
   }
 
   async getPackageSize(packageName: string, version?: string): Promise<any> {
@@ -517,24 +493,19 @@ export class NpmService {
     const cached = getCached(packageSizeCache, cacheKey)
     if (cached) return cached
 
-    try {
-      const pkgVersion = version || 'latest'
-      const url = registryPackageUrl(packageName, pkgVersion)
-      const data = JSON.parse(await httpsGet(url))
-      
-      const dist = data.dist || {}
-      const unpackedSize = dist.unpackedSize || 0
-      const fileCount = dist.fileCount || 0
-      
-      return setCached(packageSizeCache, cacheKey, {
-        unpackedSize,
-        fileCount,
-        packedSize: dist.tarball ? 'unknown' : 0,
-        prettySize: formatBytes(unpackedSize)
-      })
-    } catch (error) {
-      return { unpackedSize: 0, fileCount: 0, prettySize: 'unknown' }
-    }
+    const pkgVersion = version || 'latest'
+    const url = registryPackageUrl(packageName, pkgVersion)
+    const data = parseJsonRequired<any>(await httpsGet(url), 'npm package metadata')
+    const dist = data?.dist
+    if (!dist || typeof dist !== 'object') throw new Error('npm package metadata did not include distribution information')
+    const unpackedSize = Number.isFinite(dist.unpackedSize) ? dist.unpackedSize : 0
+    const fileCount = Number.isFinite(dist.fileCount) ? dist.fileCount : 0
+    return setCached(packageSizeCache, cacheKey, {
+      unpackedSize,
+      fileCount,
+      packedSize: dist.tarball ? 'unknown' : 0,
+      prettySize: formatBytes(unpackedSize)
+    })
   }
 
   async getDependencyTree(packageName: string, version?: string, depth: number = 2): Promise<any> {
@@ -569,7 +540,10 @@ export class NpmService {
     try {
       const pkgVersion = version || 'latest'
       const { stdout } = await this.executeNpm(['view', normalizePackageSpec(packageName, pkgVersion), 'dependencies', '--json'])
-      const dependencies = parseJson(stdout, {})
+      const dependencies = parseJsonRequired<unknown>(stdout, 'npm dependency metadata')
+      if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) {
+        throw new Error('npm dependency metadata returned an invalid result')
+      }
 
       if (!dependencies || Object.keys(dependencies).length === 0) {
         return { name: packageName, version: pkgVersion, dependencies: [] }
@@ -592,110 +566,46 @@ export class NpmService {
 
       return tree
     } catch (error) {
-      return { name: packageName, version: version || 'latest', dependencies: [] }
-    }
-  }
-
-  async audit(cwd: string): Promise<any> {
-    try {
-      const { stdout } = await this.executeNpm(['audit', '--json'], cwd)
-      return parseJson(stdout, { vulnerabilities: {} })
-    } catch (error: any) {
-      if (error.stdout) {
-        try {
-          return parseJson(error.stdout, { vulnerabilities: {} })
-        } catch {
-          return { vulnerabilities: {} }
-        }
-      }
-      return { vulnerabilities: {} }
-    }
-  }
-
-  async globalAudit(): Promise<any> {
-    try {
-      const { stdout } = await this.executeNpm(['audit', '-g', '--json'])
-      return parseJson(stdout, { vulnerabilities: {} })
-    } catch (error: any) {
-      if (error.stdout) {
-        return parseJson(error.stdout, { vulnerabilities: {} })
-      }
-      return {
-        vulnerabilities: {},
-        error: error.stderr || error.message || 'Global audit failed'
-      }
-    }
-  }
-
-  async auditFix(cwd: string): Promise<string> {
-    try {
-      const { stdout, stderr } = await this.executeNpm(['audit', 'fix', '--legacy-peer-deps'], cwd)
-      return stdout || stderr
-    } catch (error: any) {
-      if (error.stdout || error.stderr) {
-        return [error.stdout, error.stderr].filter(Boolean).join('\n')
-      }
       throw error
     }
   }
 
+  async audit(cwd: string): Promise<any> {
+    return this.readNpm(['audit', '--json'], 'audit', cwd)
+  }
+
+  async globalAudit(): Promise<any> {
+    throw Object.assign(new Error('npm audit does not support global packages. Select a project to run a security audit.'), {
+      code: 'EAUDITGLOBAL', category: 'conflict', retryable: false
+    })
+  }
+
+  async auditFix(cwd: string): Promise<string> {
+    const { stdout, stderr } = await this.executeNpm(['audit', 'fix', '--legacy-peer-deps'], cwd)
+    return stdout || stderr
+  }
+
   async getPackageReadme(packageName: string): Promise<string> {
-    try {
-      const data = JSON.parse(await httpsGet(registryPackageUrl(packageName)))
-      return data.readme || 'No README available'
-    } catch (error) {
-      return 'No README available'
-    }
+    const data = parseJsonRequired<any>(await httpsGet(registryPackageUrl(packageName)), 'npm package metadata')
+    return typeof data.readme === 'string' ? data.readme : 'No README available'
   }
 
   async getDependents(packageName: string): Promise<number> {
-    try {
-      const data = JSON.parse(await httpsGet(`https://registry.npmjs.org/-/v1/search?text=dependencies:${packageName}&size=0`))
-      return data.total || 0
-    } catch (error) {
-      return 0
-    }
+    const data = parseJsonRequired<any>(await httpsGet(`https://registry.npmjs.org/-/v1/search?text=dependencies:${packageName}&size=0`), 'npm dependents search')
+    if (!Number.isFinite(data.total)) throw new Error('npm dependents search returned an invalid result')
+    return data.total
   }
 
   async downloadStats(packageName: string): Promise<any> {
-    try {
-      const lastWeek = await httpsGet(`https://api.npmjs.org/downloads/point/last-week/${packageName}`)
-      return JSON.parse(lastWeek)
-    } catch (error) {
-      return { downloads: 0 }
-    }
+    return parseJsonRequired(await httpsGet(`https://api.npmjs.org/downloads/point/last-week/${packageName}`), 'npm download stats')
   }
 
   async getProjectDependencyTree(cwd: string, depth: number = 2): Promise<any> {
-    try {
-      const { stdout } = await this.executeNpm(['list', '--json', `--depth=${depth}`], cwd)
-      return parseJson(stdout, { dependencies: {} })
-    } catch (error: any) {
-      if (error.stdout) {
-        try {
-          return parseJson(error.stdout, { dependencies: {} })
-        } catch {
-          return { dependencies: {} }
-        }
-      }
-      return { dependencies: {} }
-    }
+    return this.readNpm(['list', '--json', `--depth=${depth}`], 'list', cwd)
   }
 
   async getGlobalDependencyTree(depth: number = 1): Promise<any> {
-    try {
-      const { stdout } = await this.executeNpm(['list', '-g', '--json', `--depth=${depth}`])
-      return parseJson(stdout, { dependencies: {} })
-    } catch (error: any) {
-      if (error.stdout) {
-        try {
-          return parseJson(error.stdout, { dependencies: {} })
-        } catch {
-          return { dependencies: {} }
-        }
-      }
-      return { dependencies: {} }
-    }
+    return this.readNpm(['list', '-g', '--json', `--depth=${depth}`], 'list')
   }
 }
 

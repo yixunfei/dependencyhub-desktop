@@ -49,19 +49,17 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
   const [dependents, setDependents] = useState<number>(0)
   const [downloads, setDownloads] = useState<any>(null)
   const [versions, setVersions] = useState<string[]>([])
-  
+  const [loadError, setLoadError] = useState('')
+
   useEffect(() => {
     if (!visible || !packageName) return
-    // Clear the previous package's data up front, and guard against a stale
-    // reply: quickly opening A then B must not show A's data in B's modal —
-    // "install this version" would use the wrong package's version list.
-    setPackageInfo(null)
-    setSizeInfo(null)
+    setPackageInfo(null); setSizeInfo(null)
     setDependencyTree(null)
     setReadme('')
     setDependents(0)
     setDownloads(null)
     setVersions([])
+    setLoadError('')
     let active = true
     setLoading(true)
     void (async () => {
@@ -86,6 +84,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
         setVersions(versionList)
       } catch (error) {
         console.error('Failed to load package info:', error)
+        if (active) setLoadError(error instanceof Error ? error.message : String(error))
       } finally {
         if (active) setLoading(false)
       }
@@ -371,6 +370,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
       width={800}
     >
       <Tabs items={TabItems} />
+      {loadError && <Alert type="error" showIcon title={loadError} />}
     </Modal>
   )
 }

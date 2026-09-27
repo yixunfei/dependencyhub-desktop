@@ -37,10 +37,7 @@ export class CargoService {
         displayBin: 'cargo'
       })
     } catch (error: any) {
-      const wrapped = new Error(error.message || 'cargo command failed') as Error & { stdout?: string; stderr?: string }
-      wrapped.stdout = error.stdout
-      wrapped.stderr = error.stderr
-      throw wrapped
+      throw error
     }
   }
 

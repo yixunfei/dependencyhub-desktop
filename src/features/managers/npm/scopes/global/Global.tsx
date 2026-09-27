@@ -103,7 +103,7 @@ const GlobalPage: React.FC = () => {
   
   const handleRefresh = async () => {
     try {
-      await fetchGlobalPackages()
+      await fetchGlobalPackages(true)
       await loadGlobalMeta()
     } catch (error: any) {
       // fetchGlobalPackages rethrows on failure; surface it instead of a false success.

@@ -169,6 +169,8 @@ export const enUS = {
   'health.scanning': 'Scanning for dependency issues',
   'health.noNotices': 'No dependency diagnostic notices',
   'security.auditFailed': 'Security audit failed',
+  'security.globalAuditUnsupported': 'npm audit does not support global packages. Select a project to run a security audit; no global safety conclusion is available.',
+  'failure.engine': 'This package requires a different Node.js runtime. Upgrade the configured Node.js toolchain or select a compatible package version.',
   'security.globalFixUnsupported': 'npm does not support a reliable global audit fix. Fix the dependency versions inside the project itself.',
   'security.fixCommandRun': 'The fix command has been run. Check the terminal log to confirm the result.',
   'security.fixComplete': 'Automatic fix finished',

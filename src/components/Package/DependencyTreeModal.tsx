@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Modal, Tree, Spin, Input, Card, Tag, Empty, Space, Typography, Select, Button, Pagination, Tooltip } from 'antd'
+import { Modal, Tree, Spin, Input, Card, Tag, Empty, Space, Typography, Select, Button, Pagination, Tooltip, Alert } from 'antd'
 import { ApartmentOutlined, GlobalOutlined, FolderOutlined, ExpandOutlined, CompressOutlined, LinkOutlined } from '@ant-design/icons'
 import { useT } from '../../i18n'
 
@@ -24,25 +24,24 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
   const t = useT()
   const [loading, setLoading] = useState(false)
   const [treeData, setTreeData] = useState<any>(null)
+  const [loadError, setLoadError] = useState('')
   const [searchText, setSearchText] = useState('')
   const [searchMode, setSearchMode] = useState<'fuzzy' | 'exact'>('fuzzy')
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
   const [allKeys, setAllKeys] = useState<string[]>([])
   const [pageSize, setPageSize] = useState<number>(0) // 0 means show every row
   const [currentPage, setCurrentPage] = useState(1)
-  
+
   useEffect(() => {
     if (!visible) {
       // Reset state
-      setSearchText('')
-      setExpandedKeys([])
+      setSearchText(''); setExpandedKeys([])
       setCurrentPage(1)
       return
     }
-    // Switching the project (or reopening for another package) while a tree
-    // request is in flight must not let the stale reply overwrite the new one.
     let active = true
     setLoading(true)
+    setTreeData(null); setLoadError('')
     void (async () => {
       try {
         let result: any = null
@@ -58,18 +57,18 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
         if (!active) return
         setTreeData(result)
 
-        // Collect every key so the tree can expand fully
         const keys = collectAllKeys(result)
         setAllKeys(keys)
       } catch (error) {
         console.error('Failed to load dependency tree:', error)
+        if (active) setLoadError(error instanceof Error ? error.message : String(error))
       } finally {
         if (active) setLoading(false)
       }
     })()
     return () => { active = false }
   }, [visible, type, projectPath, packageName])
-  
+
   const collectAllKeys = (node: any, parentKey = ''): string[] => {
     if (!node) return []
     
@@ -231,6 +230,7 @@ export const DependencyTreeModal: React.FC<DependencyTreeModalProps> = ({
       width={900}
     >
       <Spin spinning={loading}>
+        {loadError && <Alert type="error" showIcon title={loadError} />}
         {treeData && (
           <>
             <Card size="small" style={{ marginBottom: 16 }}>

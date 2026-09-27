@@ -169,6 +169,8 @@ export const zhCN = {
   'health.scanning': '正在扫描依赖问题',
   'health.noNotices': '暂无依赖诊断提醒',
   'security.auditFailed': '安全审计失败',
+  'security.globalAuditUnsupported': 'npm audit 不支持全局包。请选择项目进行安全审计；当前无法得出全局包安全结论。',
+  'failure.engine': '此包要求其他 Node.js 运行时版本。请升级所配置的 Node.js 工具链，或选择兼容的包版本。',
   'security.globalFixUnsupported': 'npm 不支持可靠的全局 audit fix，请在对应项目中修复依赖版本',
   'security.fixCommandRun': '自动修复命令已执行，请查看终端日志确认结果',
   'security.fixComplete': '自动修复完成',

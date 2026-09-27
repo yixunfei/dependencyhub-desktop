@@ -795,7 +795,7 @@ function setupIpcHandlers() {
   })
 
   handleIpc('system:update-npm', async () => {
-    return await systemService.updateNpm()
+    return await withNpmMutation({ global: true }, 'npm self-update', () => systemService.updateNpm())
   })
 
   handleIpc('system:npm-help', async (_, command?: string) => {

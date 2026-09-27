@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-27
+
+### Fixed
+- Preserve npm command failures instead of reporting empty results for network, authentication, permission, malformed JSON, and registry errors.
+- Validate Node.js engine requirements before switching the global npm version, including a clear `EBADENGINE` diagnostic.
+- Correct global npm working-directory handling, npm audit result handling, dependency moves, stale audit responses, and dependency-health failures.
+- Preserve original failures across Python, Go, Cargo, Maven, Gradle, Flutter, and toolchain operations.
+- Show package detail and dependency tree loading failures in the UI and add regression coverage for the repaired execution paths.
+
 ## [1.1.0] - 2026-09-23
 
 ### Release highlights

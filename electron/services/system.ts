@@ -2,6 +2,8 @@ import { spawn } from 'child_process'
 import { app } from 'electron'
 import { resolveToolBin } from './toolchain'
 import { runLoggedCommand } from './commandRunner'
+import { getNpmRuntime } from './npmRuntime'
+import { NpmService } from './npm'
 
 function run(
   bin: string,
@@ -32,17 +34,11 @@ export class SystemService {
     }
 
     try {
-      const { stdout } = await run(await resolveToolBin('npm'), ['--version'])
-      info.npmVersion = stdout.trim()
+      const runtime = await getNpmRuntime()
+      info.npmVersion = runtime.npmVersion
+      info.nodeVersion = runtime.nodeVersion
     } catch (error: any) {
       info.npmError = readableError(error)
-    }
-
-    try {
-      const { stdout } = await run('node', ['--version'])
-      info.nodeVersion = stdout.trim() || info.nodeVersion
-    } catch (error: any) {
-      info.nodeError = readableError(error)
     }
 
     return info
@@ -67,12 +63,7 @@ export class SystemService {
   }
 
   async updateNpm(): Promise<string> {
-    try {
-      const { stdout, stderr } = await run(await resolveToolBin('npm'), ['install', '-g', 'npm@latest'], undefined, 300_000)
-      return stdout || stderr
-    } catch (error: any) {
-      throw new Error(error.message)
-    }
+    return new NpmService().update({ packageName: 'npm', global: true, version: 'latest' })
   }
 
   async npmHelp(command?: string): Promise<string> {

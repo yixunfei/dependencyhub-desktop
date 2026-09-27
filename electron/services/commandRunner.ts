@@ -39,6 +39,8 @@ export interface LoggedCommandOptions {
   signal?: AbortSignal
   operationId?: string
   log?: boolean
+  /** Accept a documented nonzero result only after validating its output. */
+  acceptExitCode?: (code: number, output: LoggedCommandResult) => boolean
 }
 
 export interface ShellFreeCommand {

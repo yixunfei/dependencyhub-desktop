@@ -277,6 +277,7 @@ export async function checkTool(tool: ToolName, projectPath?: string): Promise<T
         await accessIfConfigured(configuredPath)
       }
       const { stdout, stderr } = await runLoggedCommand(candidate.bin, candidate.args, {
+        cwd: projectPath,
         log: false,
         maxBuffer: 1024 * 1024,
         displayBin: tool === 'maven' ? 'mvn' : tool
@@ -402,9 +403,10 @@ function directoryBinCandidates(tool: ToolName, directory: string): string[] {
 }
 
 function versionArgs(tool: ToolName): string[] {
-  if (tool === 'maven' || tool === 'gradle') return ['-version']
-  if (tool === 'go' || tool === 'flutter' || tool === 'cmake' || tool === 'conan') return ['--version']
-  if (tool === 'vcpkg') return ['version']
+  if (tool === 'maven') return ['-version']
+  if (tool === 'go' || tool === 'vcpkg') return ['version']
+  if (tool === 'helm') return ['version', '--short']
+  if (tool === 'bundle') return ['--version']
   return ['--version']
 }
 

@@ -202,7 +202,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ hideToolchainPanel = false, h
   }
   
   const handleRefresh = async () => {
-    const refreshed = await fetchProjectPackages(currentPath)
+    const refreshed = await fetchProjectPackages(currentPath, true)
     await loadScripts(currentPath)
     if (!refreshed) {
       // fetchProjectPackages resolves false when the current refresh failed;

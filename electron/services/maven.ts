@@ -230,10 +230,7 @@ export class MavenService {
         displayBin: 'mvn'
       })
     } catch (error: any) {
-      const wrapped = new Error(error.message || 'maven command failed') as Error & { stdout?: string; stderr?: string }
-      wrapped.stdout = error.stdout
-      wrapped.stderr = error.stderr
-      throw wrapped
+      throw error
     }
   }
 

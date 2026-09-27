@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useState } from 'react'
 import { Modal, Table, Tag, Alert, Button, Space, Spin, Typography, Card, Row, Col, Descriptions } from 'antd'
 import {
   WarningOutlined, CheckCircleOutlined,
@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons'
 import { localizedMessage as message } from '../../utils/localizedFeedback'
 import { useT, type TranslationKey } from '../../i18n'
+import { useNpmAudit } from '../../hooks/useNpmAudit'
 
 const { Text, Title, Paragraph } = Typography
 
@@ -51,40 +52,14 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   onClose
 }) => {
   const t = useT()
-  const [loading, setLoading] = useState(false)
-  const [auditResult, setAuditResult] = useState<any>(null)
   const [fixing, setFixing] = useState(false)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const isGlobal = scope === 'global'
-  // npm audit takes seconds; a stale response must never overwrite the result
-  // of a newer scan (e.g. reopening the modal or switching projectPath).
-  const auditRequestRef = useRef(0)
+  const { loading, auditResult, auditError, runAudit } = useNpmAudit(visible, projectPath, isGlobal)
 
   React.useEffect(() => {
-    if (visible && (isGlobal || projectPath)) {
-      runAudit()
-    }
+    setSelectedIssue(null)
   }, [visible, projectPath, scope])
-
-  const runAudit = async () => {
-    const requestId = ++auditRequestRef.current
-    setLoading(true)
-    try {
-      const result = isGlobal
-        ? await window.electronAPI.npm.globalAudit()
-        : await window.electronAPI.npm.audit(projectPath)
-      if (requestId !== auditRequestRef.current) return
-      setAuditResult(result)
-      if (result?.error) {
-        message.warning(result.error)
-      }
-    } catch (error: any) {
-      if (requestId !== auditRequestRef.current) return
-      message.error(error.message || t('security.auditFailed'))
-    } finally {
-      if (requestId === auditRequestRef.current) setLoading(false)
-    }
-  }
   
   const handleFix = async () => {
     if (isGlobal) {
@@ -142,8 +117,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   // npm audit's `vulnerabilities` object also carries `total`, which already
   // equals the severity sum; summing every value double-counts the findings.
   const totalVulnerabilities = metadata?.vulnerabilities
-    ? Number(metadata.vulnerabilities.total)
-      || (['info', 'low', 'moderate', 'high', 'critical'] as const)
+    ? (['info', 'low', 'moderate', 'high', 'critical'] as const)
         .reduce((sum, severity) => sum + (Number(metadata.vulnerabilities[severity]) || 0), 0)
     : vulnerabilities.length
   
@@ -229,7 +203,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
         footer={
           <Space>
             <Button onClick={onClose}>{t('common.close')}</Button>
-            <Button onClick={runAudit} loading={loading}>{t('security.rescan')}</Button>
+            <Button onClick={runAudit} loading={loading} disabled={isGlobal || fixing}>{t('security.rescan')}</Button>
             {totalVulnerabilities > 0 && (
               <Button type="primary" onClick={handleFix} loading={fixing} disabled={isGlobal}>{t('security.autoFix')}</Button>
             )}
@@ -283,7 +257,9 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
             </Row>
           )}
 
-          {totalVulnerabilities === 0 ? (
+          {auditError ? (
+            <Alert title={t('security.auditFailed')} description={auditError} type={isGlobal ? 'warning' : 'error'} showIcon />
+          ) : !auditResult ? null : totalVulnerabilities === 0 ? (
             <Alert
               title={t('security.noVulnerabilities')}
               description={isGlobal ? t('security.noVulnerabilitiesGlobal') : t('security.noVulnerabilitiesProject')}

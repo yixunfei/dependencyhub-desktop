@@ -4,6 +4,7 @@ import { runLoggedCommand } from './commandRunner'
 import { registryHttpGet } from './registryHttp'
 import { resolveToolBin } from './toolchain'
 import { splitCommandLine } from './splitCommandLine'
+import { isOperationAbort } from './operationContext'
 
 export interface GoModuleDependency {
   path: string
@@ -31,10 +32,7 @@ export class GoService {
         displayBin: 'go'
       })
     } catch (error: any) {
-      const wrapped = new Error(error.message || 'go command failed') as Error & { stdout?: string; stderr?: string }
-      wrapped.stdout = error.stdout
-      wrapped.stderr = error.stderr
-      throw wrapped
+      throw error
     }
   }
 
@@ -65,7 +63,8 @@ export class GoService {
             ? `${module.Replace.Path}${module.Replace.Version ? `@${module.Replace.Version}` : ''}`
             : undefined
         }))
-    } catch {
+    } catch (error) {
+      if (isOperationAbort(error)) throw error
       return [...declared.values()]
     }
   }
@@ -87,7 +86,8 @@ export class GoService {
           { path: normalized, version: versions[0] },
         )
       }
-    } catch {
+    } catch (error) {
+      if (isOperationAbort(error)) throw error
     }
 
     if (looksLikeGithubModule(normalized)) {
@@ -96,7 +96,8 @@ export class GoService {
 
     try {
       results.push(...await searchGithubGoModules(normalized))
-    } catch {
+    } catch (error) {
+      if (isOperationAbort(error)) throw error
     }
 
     return uniqueGoModules(results).slice(0, 20)

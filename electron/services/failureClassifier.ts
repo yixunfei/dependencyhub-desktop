@@ -41,6 +41,11 @@ interface FailureRule {
  */
 const RULES: FailureRule[] = [
   {
+    category: 'conflict', retryable: false, reasonKey: 'failure.engine',
+    patterns: [/EBADENGINE/, /Unsupported engine/i, /requires Node.js/i],
+    evidence: () => ({ errorCode: 'EBADENGINE', tool: 'node' })
+  },
+  {
     // Before the network rule: TLS problems arrive wrapped in the same
     // "request to ... failed" sentence, and calling a rejected certificate a
     // connectivity problem sends users to check a network that works fine.

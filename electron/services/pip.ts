@@ -108,6 +108,7 @@ export class PipService {
           })
         } catch (error: any) {
           lastError = error
+          if (error.code !== 'ENOENT' && !isMissingToolError(error, 'pip')) throw error
         }
       }
       throw lastError || new Error('Configured pip path is not available')
@@ -137,16 +138,11 @@ export class PipService {
         })
       } catch (error: any) {
         lastError = error
-        if (error.code !== 'ENOENT') {
-          const wrapped = new Error(error.message || 'pip command failed') as Error & { stdout?: string; stderr?: string }
-          wrapped.stdout = error.stdout
-          wrapped.stderr = error.stderr
-          throw wrapped
-        }
+        if (error.code !== 'ENOENT' && !isMissingToolError(error, 'pip')) throw error
       }
     }
 
-    throw new Error(lastError?.message || 'pip is not available')
+    throw lastError || new Error('pip is not available')
   }
 
   async list(options?: string | PipCommandOptions): Promise<PipPackage[]> {
@@ -537,7 +533,7 @@ export class PipService {
           { bin: 'pip-audit', args }
         ]
 
-    return await this.executeExternalCandidates([...configuredCandidates, ...candidates], cwd)
+    return await this.executeExternalCandidates(configured ? configuredCandidates : candidates, cwd)
   }
 
   private async executePipDeptree(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
@@ -557,7 +553,7 @@ export class PipService {
           { bin: 'pipdeptree', args }
         ]
 
-    return await this.executeExternalCandidates([...configuredCandidates, ...candidates], cwd)
+    return await this.executeExternalCandidates(configured ? configuredCandidates : candidates, cwd)
   }
 
   private async executePythonModule(
@@ -586,7 +582,7 @@ export class PipService {
           { bin: executableName, args }
         ]
 
-    return await this.executeExternalCandidates([...configuredCandidates, ...candidates], cwd, env)
+    return await this.executeExternalCandidates(configured ? configuredCandidates : candidates, cwd, env)
   }
 
   private async installPythonTool(tool: string, cwd?: string): Promise<string> {
@@ -819,12 +815,13 @@ function formatFailedPipStep(step: string, error: any): string {
 }
 
 function isMissingToolError(error: any, moduleName?: string): boolean {
+  if (['cancelled', 'timeout', 'output-limit'].includes(error?.category || error?.failure?.category)) return false
   const text = [error?.message, error?.stdout, error?.stderr].filter(Boolean).join('\n')
   if (!text) return false
   if (/No module named/i.test(text)) {
     return moduleName ? text.includes(moduleName) : true
   }
-  return /not recognized|not found|ENOENT|is not available/i.test(text)
+  return error?.code === 'ENOENT' || /is not recognized as|command not found|spawn .* ENOENT/i.test(text)
 }
 
 function uniquePipResults(items: PipSearchResult[]): PipSearchResult[] {
@@ -943,10 +940,15 @@ async function getConfiguredModuleCandidates(
     return [{ bin: configured, args: ['-m', moduleName, ...args] }]
   }
 
-  const candidates = [{ bin: configured, args }]
   const configuredDir = dirname(configured)
-  candidates.push({ bin: join(configuredDir, executableName), args })
-  return candidates
+  // Resolve an auxiliary executable in the selected Python environment.
+  // Passing audit/build flags directly to pip runs the wrong command.
+  const python = process.platform === 'win32' ? 'python.exe' : 'python'
+  const environmentDir = /^(scripts|bin)$/i.test(basename(configuredDir)) ? dirname(configuredDir) : configuredDir
+  return [
+    { bin: join(configuredDir, executableName), args },
+    { bin: join(process.platform === 'win32' ? environmentDir : configuredDir, python), args: ['-m', moduleName, ...args] }
+  ]
 }
 
 async function isDirectory(path: string): Promise<boolean> {

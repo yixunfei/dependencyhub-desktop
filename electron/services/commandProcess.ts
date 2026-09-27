@@ -89,7 +89,7 @@ export class CommandProcess {
   private async complete(code: number | null, signal: NodeJS.Signals | null): Promise<LoggedCommandResult> {
     await this.stopping
     if (this.stopError) throw this.stopError
-    if (code !== 0) {
+    if (code !== 0 && !(code !== null && this.options.acceptExitCode?.(code, this.output))) {
       throw Object.assign(new Error(this.output.stderr || `Command exited with ${signal || `code ${code}`}`), {
         code: code ?? signal
       })
