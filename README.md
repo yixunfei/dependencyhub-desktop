@@ -16,16 +16,23 @@
 
 </div>
 
-> 当前版本：**1.1.0**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases) 下载）。
+> 当前版本：**1.1.2**（Windows 安装版与便携版可在 [GitHub Releases](https://github.com/yixunfei/dependencyhub-desktop/releases/tag/v1.1.2) 下载）。
 
 ## 简体中文
+
+### 1.1.1–1.1.2 更新重点
+
+- 修复 npm 网络、权限、认证、损坏 JSON 和 Registry 错误被误报为空结果的问题。
+- 切换全局 npm 版本前校验 Node.js `engines`，不兼容时明确返回 `EBADENGINE`，避免破坏性安装。
+- 修复全局 npm 工作目录、审计结果、依赖移动、缓存刷新和依赖健康诊断链路。
+- 清理仓库中的内部审查报告、计划文件和本地工作记录，只保留面向用户与贡献者的正式文档。
 
 ### 1.1.0 更新重点
 
 - AI 工作区增加 MCP 注册表搜索、A2A Agent 端点清单与锁证据；独立的 LLM 服务商页面管理模型、默认服务商、API Key 和连接测试。
 - 完善健康中心、工具链、搜索和 npm 发布页面的中英文文案，并增加翻译完整性检查。
 - 加强项目写入串行化、失败诊断、取消/超时、备份保留与二进制锁文件恢复；修复跨项目发布检查串用和 SwiftPM 清单编辑问题。
-- 发行附件提供 Windows x64 安装版、便携版与 `SHA256SUMS.txt`；macOS/Linux 可从源码构建，本次不提供对应二进制附件。
+- 发行附件提供 Windows x64 安装版、便携版与 `SHA256SUMS-v1.1.2.txt`；macOS/Linux 可从源码构建，本次不提供对应二进制附件。
 
 ### 项目定位
 
@@ -101,27 +108,48 @@ GitHub Actions、Bazel、Homebrew、Scoop、winget 等仍为 `planned`；该状�
 
 ### 界面演示
 
-以下截图来自项目实际运行界面，分别展示项目依赖、依赖树、发布检查和 Registry 配置；本地路径和凭据字段已脱敏。
+以下截图用于展示主要操作流程。它们来自历史运行版本，部分界面仍显示旧的产品名称、版本或本地路径；功能和布局以当前版本为准，请不要将截图中的路径或版本号当作发布信息。
 
-![DependencyHub Desktop 首次启动与统一工作区](dependencyhub-desktop.png)
+![DependencyHub Desktop 首次启动与统一工作区](assets/readme/overview.png)
 
-*DependencyHub Desktop 1.0.2：首次启动语言选择与多生态统一工作区。*
+*首次启动语言选择与多生态统一工作区。*
 
-![项目依赖列表](image-1.png)
+![项目依赖列表](assets/readme/project-dependencies.png)
 
 *项目依赖列表：批量安装、更新、审计和依赖树入口集中在同一工作区。*
 
-![依赖树](image.png)
+![依赖树](assets/readme/dependency-tree.png)
 
 *依赖树：同时查看直接依赖与完整传递依赖，并支持搜索和展开/折叠。*
 
-![发布检查](image-4.png)
+![发布检查](assets/readme/publish-checks.png)
 
 *发布检查：在执行发布前确认清单、版本、许可证和 Registry 配置。*
 
-![Registry 配置](image-6.png)
+![Registry 配置](assets/readme/registry-settings.png)
 
 *Registry 配置：管理镜像源、缓存目录、全局前缀和用户配置。*
+
+<details>
+<summary>更多界面截图</summary>
+
+![项目脚本](assets/readme/project-scripts.png)
+
+*项目脚本：在项目上下文中刷新并运行 package.json scripts。*
+
+![全局依赖](assets/readme/global-dependencies.png)
+
+*全局依赖：查看全局包的当前版本和可用更新。*
+
+![包操作](assets/readme/package-actions.png)
+
+*包操作：从依赖列表进入详情、版本切换、更新日志和卸载操作。*
+
+![账户设置](assets/readme/account-settings.png)
+
+*账户设置：管理发布账户和凭据状态。*
+
+</details>
 
 ### 性能与工作流对比
 
@@ -217,7 +245,7 @@ dependencyhub-desktop/
 ├─ src/stores/               # Zustand 状态模块
 ├─ scripts/                  # 构建、发布、完整性和框架验证
 ├─ build/                    # electron-builder/NSIS 资源
-├─ image*.png                # README 演示截图
+├─ assets/readme/            # README 演示截图（按功能命名）
 ├─ LICENSE                   # MIT 许可证
 └─ package.json              # 开发、构建和发布入口
 ```
@@ -232,12 +260,19 @@ dependencyhub-desktop/
 
 ## English
 
+### Highlights in 1.1.1–1.1.2
+
+- Preserve npm network, permission, authentication, malformed JSON, and registry failures instead of presenting empty results.
+- Validate Node.js `engines` before switching the global npm version and report incompatible releases as `EBADENGINE`.
+- Correct global npm working directories, audit results, dependency moves, cache refreshes, and dependency-health diagnostics.
+- Remove internal review reports, planning files, and local session artifacts from the public repository.
+
 ### New in 1.1.0
 
 - MCP registry search, A2A endpoint inventory and lock evidence, plus a dedicated LLM provider configuration and connectivity page.
 - Broader English/Simplified Chinese coverage across health, toolchains, search and npm publishing.
 - Safer write serialization, failure reporting, bounded backups and binary lockfile recovery; fixes for stale publish checks and SwiftPM manifest editing.
-- This release ships Windows x64 installer/portable executables and `SHA256SUMS.txt`. macOS/Linux remain source-build targets; their binaries are not attached to this release.
+- The release ships Windows x64 installer/portable executables and `SHA256SUMS-v1.1.2.txt`. macOS/Linux remain source-build targets; their binaries are not attached to this release.
 
 ### What it is
 
@@ -261,10 +296,23 @@ Preview adapters include pnpm, Yarn, Bun, Deno, uv, Poetry, Pipenv, Conda, NuGet
 
 ### Screenshots
 
-![Project dependencies](image-1.png)
-![Dependency tree](image.png)
-![Release checks](image-4.png)
-![Registry configuration](image-6.png)
+These screenshots document the main workflows and come from an earlier running build. Some images still contain the former product name, older versions, or local paths; use the current release and UI as the source of truth.
+
+![DependencyHub Desktop overview](assets/readme/overview.png)
+![Project dependencies](assets/readme/project-dependencies.png)
+![Dependency tree](assets/readme/dependency-tree.png)
+![Release checks](assets/readme/publish-checks.png)
+![Registry configuration](assets/readme/registry-settings.png)
+
+<details>
+<summary>More interface screenshots</summary>
+
+![Project scripts](assets/readme/project-scripts.png)
+![Global dependencies](assets/readme/global-dependencies.png)
+![Package actions](assets/readme/package-actions.png)
+![Account settings](assets/readme/account-settings.png)
+
+</details>
 
 ### Performance notes
 
