@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-27
+
+### Changed
+- Remove local review reports, audit notes, release review files, and workspace session artifacts from repository tracking.
+- Keep only project documentation intended for users and contributors in the open-source repository.
+
 ## [1.1.1] - 2026-09-27
 
 ### Fixed

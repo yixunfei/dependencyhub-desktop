@@ -39,6 +39,14 @@ Desktop.ini
 .workbuddy-ai/
 .workbuddy/
 
+# Local review and planning reports; keep product and contributor docs tracked.
+BUG_REVIEW_*.md
+BUG_TRIAGE_*.md
+CODE_RISK_CHECKLIST_*.md
+PROJECT_AUDIT_*.md
+PROJECT_REVIEW*.md
+RELEASE_REVIEW_*.md
+
 # Temporary files
 *.tmp
 *.temp

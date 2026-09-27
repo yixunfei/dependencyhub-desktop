@@ -1,2 +1,0 @@
-﻿ 
-Electron IPC verification passed: isolated preload preserves failure, backup, restore, and success data
